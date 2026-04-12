@@ -1,0 +1,28 @@
+C:/Users/Admin/synthex/ui/app.py: OK
+C:/Users/Admin/synthex/modules/browser/actions.py: 14 non-ASCII lines
+  L35: U+2500
+  L74: U+2500
+  L114: U+2014
+  L124: U+2014
+  L126: U+2500
+  L161: U+2014
+  L225: U+2500
+  L323: U+2500
+  L351: U+2500
+  L426: U+2014
+  L501: U+2192
+  L541: U+2500
+  L609: U+2014
+  L665: U+2500
+C:/Users/Admin/synthex/core/engine.py: 3 non-ASCII lines
+  L26: U+2500
+  L65: U+2500
+  L87: U+2500
+C:/Users/Admin/synthex/auth/firebase_auth.py: OK
+C:/Users/Admin/synthex/modules/macro/recorder.py: OK
+C:/Users/Admin/synthex/modules/scheduler/jobs.py: OK
+C:/Users/Admin/synthex/modules/cloud/sheets.py: 4 non-ASCII lines
+  L19: U+2500
+  L47: U+2500
+  L74: U+2014
+  L75: U+2014

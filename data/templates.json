@@ -1,0 +1,97 @@
+[
+  {
+    "name": "Update Price to Sheet",
+    "description": "Get price from a website and save it to Google Sheet automatically",
+    "steps": [
+      {"type": "go_to_url",        "url": "{url}"},
+      {"type": "get_number",       "selector": "{price_selector}", "var": "price"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{price}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{current_date} {current_time}"},
+      {"type": "notify",           "message": "Price updated: {price}"}
+    ]
+  },
+  {
+    "name": "Confirm Order on Website",
+    "description": "Read order ID from sheet, go to website, confirm it, update status",
+    "steps": [
+      {"type": "sheet_read_cell",  "sheet": "{sheet}", "cell": "{order_cell}", "var": "order_id"},
+      {"type": "if_equals",        "value1": "{order_id}", "value2": "", "action_false": "stop", "stop_message": "No order to confirm"},
+      {"type": "go_to_url",        "url": "{confirmation_url}"},
+      {"type": "click",            "selector": "{order_field}"},
+      {"type": "type",             "selector": "{order_field}", "text": "{order_id}"},
+      {"type": "click",            "selector": "{confirm_button}"},
+      {"type": "get_text",         "selector": "{result_selector}", "var": "result"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{status_cell}", "value": "{result}"},
+      {"type": "notify",           "message": "Order {order_id} done: {result}"}
+    ]
+  },
+  {
+    "name": "Monitor Stock Level",
+    "description": "Check stock on website, alert if low or out of stock",
+    "steps": [
+      {"type": "go_to_url",        "url": "{product_url}"},
+      {"type": "get_text",         "selector": "{stock_selector}", "var": "stock"},
+      {"type": "if_contains",      "text": "{stock}", "keyword": "Habis", "action_true": "notify", "notify_message": "STOK HABIS! {product_url}", "action_false": "skip"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{stock_cell}", "value": "{stock}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{time_cell}", "value": "{current_time}"}
+    ]
+  },
+  {
+    "name": "Copy Data from Web to Sheet",
+    "description": "Open website, grab multiple values, paste all into Google Sheet",
+    "steps": [
+      {"type": "go_to_url",        "url": "{url}"},
+      {"type": "get_text",         "selector": "{selector_1}", "var": "value1"},
+      {"type": "get_text",         "selector": "{selector_2}", "var": "value2"},
+      {"type": "get_text",         "selector": "{selector_3}", "var": "value3"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{value1}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{value2}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "C{row}", "value": "{value3}"},
+      {"type": "notify",           "message": "Data saved to sheet"}
+    ]
+  },
+  {
+    "name": "Bulk Order Confirmation (Continuous)",
+    "description": "Continuously cross-check sheet orders vs website, confirm matches, flag mismatches. Loops every 60 seconds until stopped.",
+    "continuous_mode": true,
+    "continuous_interval": 60,
+    "steps": [
+      {
+        "type": "sheet_get_pending_rows",
+        "sheet": "{sheet}",
+        "status_column": "{status_column}",
+        "status_value": "Pending",
+        "order_id_column": "{order_id_column}",
+        "name_column": "{name_column}",
+        "total_column": "{total_column}",
+        "var": "pending_rows"
+      },
+      {
+        "type": "go_to_url",
+        "url": "{order_list_url}"
+      },
+      {
+        "type": "web_get_order_list",
+        "list_selector": "{order_row_selector}",
+        "id_selector": "{order_id_selector}",
+        "name_selector": "{order_name_selector}",
+        "total_selector": "{order_total_selector}",
+        "var": "web_orders"
+      },
+      {
+        "type": "validate_and_confirm_orders",
+        "sheet": "{sheet}",
+        "status_column": "{status_column}",
+        "pending_var": "pending_rows",
+        "web_orders_var": "web_orders",
+        "confirm_url_template": "{confirm_url_template}",
+        "confirm_selector": "{confirm_button_selector}",
+        "var": "validation_result"
+      },
+      {
+        "type": "notify",
+        "message": "Bulk confirmation loop done: {validation_result}"
+      }
+    ]
+  }
+]

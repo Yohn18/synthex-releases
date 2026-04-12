@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cek Rekening Bulk — Synthex</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:      #111318;
+    --surface: #1a1c24;
+    --card:    #1e2029;
+    --border:  #2a2d3a;
+    --acc:     #6c63ff;
+    --acc2:    #4e46d4;
+    --fg:      #b0b3c6;
+    --fg2:     #787b94;
+    --fg3:     #4a4d60;
+    --grn:     #3d9970;
+    --grn-bg:  #1a2d25;
+    --red:     #c0404a;
+    --red-bg:  #2d1a1c;
+    --yel:     #b89a30;
+    --yel-bg:  #2a2510;
+    --row-alt: #191b22;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    padding: 24px 28px 48px;
+  }
+
+  h1 {
+    color: var(--acc);
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    margin-bottom: 4px;
+  }
+  .subtitle {
+    color: var(--fg3);
+    font-size: 11px;
+    margin-bottom: 22px;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .panel-title {
+    color: var(--fg2);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  textarea {
+    width: 100%;
+    height: 280px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--fg);
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    resize: vertical;
+    outline: none;
+    transition: border-color .15s;
+  }
+  textarea:focus { border-color: var(--acc); }
+  textarea::placeholder { color: var(--fg3); }
+
+  .hint {
+    color: var(--fg3);
+    font-size: 10px;
+    margin-top: 8px;
+    line-height: 1.6;
+  }
+  .hint code {
+    color: var(--fg2);
+    background: var(--surface);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+  }
+
+  .btn-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    align-items: center;
+  }
+
+  button {
+    cursor: pointer;
+    border: none;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 18px;
+    transition: background .15s, opacity .15s;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .btn-primary {
+    background: var(--acc);
+    color: #0d0e13;
+  }
+  .btn-primary:not(:disabled):hover { background: var(--acc2); }
+
+  .btn-secondary {
+    background: var(--surface);
+    color: var(--fg2);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:not(:disabled):hover { border-color: var(--acc); color: var(--fg); }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--fg3);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  .btn-ghost:not(:disabled):hover { color: var(--fg); border-color: var(--fg3); }
+
+  #progress-wrap {
+    display: none;
+    margin-top: 10px;
+  }
+  .progress-bar-bg {
+    background: var(--surface);
+    border-radius: 99px;
+    height: 4px;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--acc);
+    border-radius: 99px;
+    width: 0%;
+    transition: width .2s;
+  }
+  #progress-label {
+    color: var(--fg3);
+    font-size: 10px;
+    margin-top: 5px;
+  }
+
+  /* Stats row */
+  .stats {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .stat-chip {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 11px;
+    color: var(--fg2);
+  }
+  .stat-chip span { color: var(--fg); font-weight: 700; }
+  .stat-chip.ok   span { color: var(--grn); }
+  .stat-chip.fail span { color: var(--red); }
+  .stat-chip.pend span { color: var(--yel); }
+
+  /* Results table */
+  .tbl-wrap {
+    overflow-x: auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  thead th {
+    background: var(--surface);
+    color: var(--fg3);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    padding: 8px 10px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); }
+  tbody tr:nth-child(even) { background: var(--row-alt); }
+  tbody tr:hover { background: #20222e; }
+  td {
+    padding: 8px 10px;
+    color: var(--fg);
+    vertical-align: middle;
+  }
+  td.num  { font-family: "Consolas", monospace; color: var(--fg2); }
+  td.bank { color: var(--fg2); font-size: 11px; }
+  td.name { font-weight: 600; color: var(--fg); }
+
+  .badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .5px;
+    white-space: nowrap;
+  }
+  .badge-ok   { background: var(--grn-bg); color: var(--grn); }
+  .badge-fail { background: var(--red-bg); color: var(--red); }
+  .badge-pend { background: var(--yel-bg); color: var(--yel); }
+
+  .copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--fg3);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 2px 7px;
+  }
+  .copy-btn:hover { color: var(--fg); border-color: var(--fg3); }
+
+  .empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--fg3);
+    font-size: 12px;
+    line-height: 2;
+  }
+
+  .export-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    justify-content: flex-end;
+  }
+
+  /* Bank pills in hint */
+  .bank-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .bank-pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--fg3);
+    font-size: 9px;
+    padding: 2px 6px;
+    font-family: monospace;
+  }
+
+  #spinner {
+    display: inline-block;
+    width: 12px; height: 12px;
+    border: 2px solid var(--border);
+    border-top-color: var(--acc);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+    vertical-align: middle;
+    margin-right: 4px;
+    display: none;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  select {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--fg2);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 5px 8px;
+    outline: none;
+  }
+  select:focus { border-color: var(--acc); }
+
+  label { color: var(--fg2); font-size: 11px; }
+
+  .concurrency-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Cek Rekening Bulk</h1>
+<p class="subtitle">Synthex — powered by bank verification API &nbsp;|&nbsp; format: <code style="color:var(--fg2);background:var(--surface);padding:1px 5px;border-radius:3px;font-size:10px;">PROVIDER NOMOR</code> per baris</p>
+
+<div class="layout">
+
+  <!-- LEFT: input panel -->
+  <div>
+    <div class="panel">
+      <div class="panel-title">Input Rekening</div>
+      <textarea id="input" placeholder="BCA 1234567890&#10;BNI 0987654321&#10;MANDIRI 1122334455&#10;BRI 0011223344&#10;BSI 7171234567"></textarea>
+
+      <p class="hint">
+        Satu rekening per baris &rarr; <code>PROVIDER NOMOR</code><br>
+        Provider tidak case-sensitive. Kosongkan baris untuk dilewati.
+      </p>
+
+      <div class="bank-list" id="bank-list-pills"></div>
+
+      <div class="concurrency-row">
+        <label for="concurrency">Concurrent:</label>
+        <select id="concurrency">
+          <option value="1">1 (aman)</option>
+          <option value="2">2</option>
+          <option value="3" selected>3</option>
+          <option value="5">5 (cepat)</option>
+        </select>
+        <label for="delay-ms" style="margin-left:8px">Delay (ms):</label>
+        <select id="delay-ms">
+          <option value="0">0</option>
+          <option value="200" selected>200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-run" onclick="runCheck()">
+          <span id="spinner"></span> Cek Sekarang
+        </button>
+        <button class="btn-secondary" id="btn-stop" onclick="stopCheck()" disabled>Stop</button>
+        <button class="btn-ghost" onclick="clearAll()">Clear</button>
+      </div>
+
+      <div id="progress-wrap">
+        <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-fill"></div></div>
+        <div id="progress-label">0 / 0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: results panel -->
+  <div>
+    <div class="stats" id="stats-row" style="display:none">
+      <div class="stat-chip">Total <span id="s-total">0</span></div>
+      <div class="stat-chip ok">Valid <span id="s-ok">0</span></div>
+      <div class="stat-chip fail">Tidak Ditemukan <span id="s-fail">0</span></div>
+      <div class="stat-chip pend">Error <span id="s-err">0</span></div>
+    </div>
+
+    <div class="export-row" id="export-row" style="display:none">
+      <button class="btn-ghost" onclick="exportCSV()">Export CSV</button>
+      <button class="btn-ghost" onclick="copyValidNames()">Copy Nama Valid</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Hasil</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Bank</th>
+              <th>Nomor Rekening</th>
+              <th>Nama Pemilik</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="result-body">
+            <tr>
+              <td colspan="6">
+                <div class="empty-state">
+                  Masukkan daftar rekening di sebelah kiri<br>lalu klik <strong style="color:var(--acc)">Cek Sekarang</strong>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const API_KEY = "AV-0J9DDNVJ";
+const API_URL = "https://api.apigrate.id/bank/inquiry";   // adjust if needed
+
+// ── Bank code mappings ────────────────────────────────────────────────────────
+const BANK_MAP = {
+  // Big 4
+  "BCA":          "014",
+  "BNI":          "009",
+  "BRI":          "002",
+  "MANDIRI":      "008",
+  // Syariah
+  "BSI":          "451",
+  "BNI SYARIAH":  "427",
+  "BRI SYARIAH":  "422",
+  "MANDIRI SYARIAH": "451",
+  "MUAMALAT":     "147",
+  // Swasta
+  "CIMB":         "022",
+  "CIMB NIAGA":   "022",
+  "DANAMON":      "011",
+  "PERMATA":      "013",
+  "PANIN":        "019",
+  "MAYBANK":      "016",
+  "OCBC":         "028",
+  "OCBC NISP":    "028",
+  "MEGA":         "426",
+  "BUKOPIN":      "441",
+  "BTN":          "200",
+  "BTPN":         "213",
+  "SINARMAS":     "153",
+  "COMMONWEALTH": "950",
+  "UOB":          "023",
+  "HSBC":         "087",
+  "CITIBANK":     "031",
+  "STANDARD CHARTERED": "050",
+  "ANZ":          "061",
+  // Digital / Neo
+  "JAGO":         "542",
+  "JENIUS":       "213",
+  "SEA BANK":     "536",
+  "SEABANK":      "536",
+  "ALLO":         "567",
+  "LINE BANK":    "867",
+  "LINEBANK":     "867",
+  "MOTION":       "947",
+  "NEO":          "490",
+  "NEOBANK":      "490",
+  "NOBU":         "503",
+  "PRIMA MASTER": "520",
+  // Daerah
+  "BPD JATIM":    "114",
+  "JATIM":        "114",
+  "BPD JABAR":    "110",
+  "BJB":          "110",
+  "BPD JATENG":   "113",
+  "BPD BALI":     "129",
+  "BPD DIY":      "112",
+  "BPD SUMSEL":   "120",
+  "BPD SUMUT":    "117",
+  "BPD RIAU":     "119",
+  "BPD KALSEL":   "122",
+  "BPD KALBAR":   "123",
+  "BPD SULSEL":   "126",
+  "BPD NTBALI":   "128",
+  "BPD NTT":      "130",
+  "BPD ACEH":     "116",
+  "BANK ACEH":    "116",
+  // E-wallet / transfer codes (beberapa mendukung inquiry)
+  "DANA":         "911",
+  "OVO":          "789",
+  "GOPAY":        "022",
+  "LINKAJA":      "911",
+  "SAKUKU":       "014",
+};
+
+// ── Render bank pills ─────────────────────────────────────────────────────────
+(function renderPills() {
+  const el = document.getElementById("bank-list-pills");
+  const keys = Object.keys(BANK_MAP).filter(k => !k.includes(" ")).slice(0, 28);
+  el.innerHTML = keys.map(k =>
+    `<span class="bank-pill">${k}</span>`
+  ).join("") + `<span class="bank-pill" style="color:var(--acc)">+${Object.keys(BANK_MAP).length - keys.length}</span>`;
+})();
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let results  = [];
+let stopped  = false;
+let running  = false;
+let cntOk    = 0;
+let cntFail  = 0;
+let cntErr   = 0;
+
+function parseLines(raw) {
+  return raw.split("\n")
+    .map(l => l.trim())
+    .filter(l => l.length > 0)
+    .map((l, i) => {
+      const parts = l.split(/\s+/);
+      if (parts.length < 2) return { idx: i, raw: l, bank: null, code: null, number: null, error: "Format salah" };
+      const bankRaw  = parts.slice(0, parts.length - 1).join(" ").toUpperCase();
+      const number   = parts[parts.length - 1];
+      const code     = BANK_MAP[bankRaw] || null;
+      return { idx: i, raw: l, bank: bankRaw, code, number, error: code ? null : "Bank tidak dikenal" };
+    });
+}
+
+async function inquire(entry) {
+  if (!entry.code) return { ...entry, status: "error", name: "-", message: entry.error };
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": API_KEY,
+      },
+      body: JSON.stringify({ bank_code: entry.code, account_number: entry.number }),
+    });
+    const data = await res.json();
+    if (res.ok && (data.account_name || data.data?.account_name)) {
+      const name = data.account_name || data.data?.account_name || data.name || "";
+      return { ...entry, status: "ok", name };
+    }
+    const msg = data.message || data.error || data.msg || "Tidak ditemukan";
+    return { ...entry, status: "fail", name: "-", message: msg };
+  } catch (e) {
+    return { ...entry, status: "error", name: "-", message: String(e) };
+  }
+}
+
+async function runCheck() {
+  if (running) return;
+  const raw = document.getElementById("input").value;
+  const entries = parseLines(raw);
+  if (entries.length === 0) { alert("Input kosong."); return; }
+
+  running = true;
+  stopped = false;
+  results = entries.map(e => ({ ...e, status: "pending", name: "" }));
+  cntOk = cntFail = cntErr = 0;
+
+  document.getElementById("btn-run").disabled  = true;
+  document.getElementById("btn-stop").disabled = false;
+  document.getElementById("spinner").style.display = "inline-block";
+  document.getElementById("progress-wrap").style.display = "block";
+  document.getElementById("stats-row").style.display     = "flex";
+  document.getElementById("export-row").style.display    = "flex";
+
+  renderTable(results);
+  updateStats();
+
+  const concurrency = parseInt(document.getElementById("concurrency").value);
+  const delayMs     = parseInt(document.getElementById("delay-ms").value);
+  const total       = entries.length;
+  let   done        = 0;
+
+  // Process with concurrency limit
+  async function runOne(idx) {
+    if (stopped) return;
+    const entry = entries[idx];
+
+    // instant-fail for unknown banks
+    if (!entry.code) {
+      results[idx] = { ...entry, status: "error", name: "-", message: entry.error };
+    } else {
+      results[idx].status = "pending";
+      renderRow(idx);
+      const r = await inquire(entry);
+      results[idx] = r;
+    }
+
+    done++;
+    if (results[idx].status === "ok")    cntOk++;
+    else if (results[idx].status === "fail") cntFail++;
+    else cntErr++;
+
+    renderRow(idx);
+    updateStats();
+    setProgress(done, total);
+    if (delayMs > 0) await sleep(delayMs);
+  }
+
+  // Simple pool
+  const queue = entries.map((_, i) => i);
+  async function worker() {
+    while (queue.length > 0 && !stopped) {
+      const idx = queue.shift();
+      if (idx === undefined) break;
+      await runOne(idx);
+    }
+  }
+  const workers = Array.from({ length: concurrency }, () => worker());
+  await Promise.all(workers);
+
+  running = false;
+  stopped = false;
+  document.getElementById("btn-run").disabled  = false;
+  document.getElementById("btn-stop").disabled = true;
+  document.getElementById("spinner").style.display = "none";
+}
+
+function stopCheck() {
+  stopped = true;
+  document.getElementById("btn-stop").disabled = true;
+  document.getElementById("spinner").style.display = "none";
+  document.getElementById("progress-label").textContent += " — dihentikan";
+}
+
+function clearAll() {
+  if (running) return;
+  document.getElementById("input").value = "";
+  results = [];
+  document.getElementById("result-body").innerHTML = `
+    <tr><td colspan="6"><div class="empty-state">
+      Masukkan daftar rekening di sebelah kiri<br>lalu klik <strong style="color:var(--acc)">Cek Sekarang</strong>
+    </div></td></tr>`;
+  document.getElementById("stats-row").style.display  = "none";
+  document.getElementById("export-row").style.display = "none";
+  document.getElementById("progress-wrap").style.display = "none";
+}
+
+// ── Render helpers ────────────────────────────────────────────────────────────
+function badgeHTML(status) {
+  if (status === "ok")      return `<span class="badge badge-ok">VALID</span>`;
+  if (status === "fail")    return `<span class="badge badge-fail">TIDAK ADA</span>`;
+  if (status === "pending") return `<span class="badge badge-pend">...</span>`;
+  return `<span class="badge badge-fail">ERROR</span>`;
+}
+
+function rowHTML(r, i) {
+  const copyBtn = r.status === "ok"
+    ? `<button class="copy-btn" onclick="copyText('${escHtml(r.name)}')">copy</button>`
+    : "";
+  const nameTxt = r.status === "ok"
+    ? escHtml(r.name)
+    : `<span style="color:var(--fg3);font-size:10px">${escHtml(r.message || "")}</span>`;
+  return `
+    <tr id="row-${i}">
+      <td style="color:var(--fg3);font-size:10px">${i + 1}</td>
+      <td class="bank">${escHtml(r.bank || "-")}</td>
+      <td class="num">${escHtml(r.number || r.raw)}</td>
+      <td class="name">${nameTxt}</td>
+      <td>${badgeHTML(r.status)}</td>
+      <td>${copyBtn}</td>
+    </tr>`;
+}
+
+function renderTable(rows) {
+  document.getElementById("result-body").innerHTML = rows.map((r, i) => rowHTML(r, i)).join("");
+}
+
+function renderRow(idx) {
+  const el = document.getElementById("row-" + idx);
+  if (el) el.outerHTML = rowHTML(results[idx], idx);
+}
+
+function updateStats() {
+  document.getElementById("s-total").textContent = results.length;
+  document.getElementById("s-ok").textContent    = cntOk;
+  document.getElementById("s-fail").textContent  = cntFail;
+  document.getElementById("s-err").textContent   = cntErr;
+}
+
+function setProgress(done, total) {
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById("prog-fill").style.width = pct + "%";
+  document.getElementById("progress-label").textContent = `${done} / ${total} (${pct}%)`;
+}
+
+// ── Export / copy ─────────────────────────────────────────────────────────────
+function exportCSV() {
+  const header = "No,Bank,Nomor Rekening,Nama Pemilik,Status\n";
+  const rows = results.map((r, i) =>
+    [i + 1, r.bank, r.number || r.raw, r.status === "ok" ? r.name : (r.message || ""), r.status]
+      .map(v => `"${String(v).replace(/"/g, '""')}"`)
+      .join(",")
+  ).join("\n");
+  const blob = new Blob([header + rows], { type: "text/csv" });
+  const a    = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(blob),
+    download: "cek_rekening_" + new Date().toISOString().slice(0, 10) + ".csv",
+  });
+  a.click();
+}
+
+function copyValidNames() {
+  const names = results.filter(r => r.status === "ok").map(r => r.name).join("\n");
+  if (!names) { alert("Belum ada hasil valid."); return; }
+  navigator.clipboard.writeText(names).then(() => alert("Nama valid disalin ke clipboard!"));
+}
+
+function copyText(txt) {
+  navigator.clipboard.writeText(txt);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+</script>
+</body>
+</html>

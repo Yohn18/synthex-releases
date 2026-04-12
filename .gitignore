@@ -1,0 +1,39 @@
+# Secrets & credentials
+config.json
+auth/token.json
+*.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# PyInstaller build output
+dist/
+build/
+*.spec
+
+# EasyOCR model cache
+.EasyOCR/
+
+# Playwright browsers
+playwright/
+.playwright/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

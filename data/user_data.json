@@ -1,0 +1,112 @@
+{
+  "websites": [],
+  "recordings": [
+    {
+      "id": "f6ce5568-c4f1-48a6-8fb7-8aff36084302",
+      "name": "s",
+      "description": "",
+      "folder": "General",
+      "rec_type": "simple",
+      "steps": [
+        {
+          "type": "click",
+          "x": 971,
+          "y": 332,
+          "button": "left",
+          "delay": 1.39
+        },
+        {
+          "type": "click",
+          "x": 892,
+          "y": 284,
+          "button": "left",
+          "delay": 0.491
+        },
+        {
+          "type": "click",
+          "x": 830,
+          "y": 324,
+          "button": "left",
+          "delay": 0.332
+        },
+        {
+          "type": "click",
+          "x": 860,
+          "y": 343,
+          "button": "left",
+          "delay": 0.221
+        },
+        {
+          "type": "click",
+          "x": 965,
+          "y": 34,
+          "button": "left",
+          "delay": 1.329
+        },
+        {
+          "type": "click",
+          "x": 1018,
+          "y": 32,
+          "button": "left",
+          "delay": 0.641
+        }
+      ],
+      "step_count": 6,
+      "last_run": "-",
+      "duration": "-",
+      "created": "2026-04-10 10:55:29",
+      "modified": "2026-04-10 10:57:00",
+      "speed": 1.0,
+      "repeat": 3,
+      "silent_mode": true
+    }
+  ],
+  "tasks": [],
+  "activity": [
+    {
+      "time": "2026-04-08 11:38:42",
+      "task": "Task: Update harga",
+      "result": "0/0 steps OK",
+      "ok": true
+    },
+    {
+      "time": "2026-04-07 13:03:37",
+      "task": "open_url",
+      "result": "",
+      "ok": false
+    },
+    {
+      "time": "2026-04-07 13:02:44",
+      "task": "open_url",
+      "result": "Browser worker stopped unexpectedly. Check Logs for details.",
+      "ok": false
+    },
+    {
+      "time": "2026-04-07 13:00:54",
+      "task": "open_url",
+      "result": "Browser worker stopped unexpectedly. Check Logs for details.",
+      "ok": false
+    },
+    {
+      "time": "2026-04-07 13:00:51",
+      "task": "open_url",
+      "result": "Browser worker stopped unexpectedly. Check Logs for details.",
+      "ok": false
+    },
+    {
+      "time": "2026-04-06 18:42:31",
+      "task": "open_url",
+      "result": "",
+      "ok": false
+    },
+    {
+      "time": "2026-04-06 18:41:42",
+      "task": "open_url",
+      "result": "Browser worker stopped unexpectedly. Check Logs for details.",
+      "ok": false
+    }
+  ],
+  "elements": [],
+  "sheets": [],
+  "onboarding_complete": true
+}
