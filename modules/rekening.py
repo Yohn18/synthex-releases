@@ -127,14 +127,19 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
                 continue
             break
 
-        if resp is None or resp.status_code != 200:
-            code_str = str(resp.status_code) if resp is not None else "?"
-            result["status"] = "Error: HTTP {}".format(code_str)
+        if resp is None:
+            result["status"] = "Tidak ada respons"
+            return result
+
+        # API pakai HTTP 200 (berhasil) dan HTTP 400 (tidak ditemukan) —
+        # keduanya punya JSON body yang valid, bukan error teknis
+        if resp.status_code not in (200, 400):
+            result["status"] = "Error: HTTP {}".format(resp.status_code)
             return result
 
         body = resp.json()
 
-        # Expected: {"status": true/false, "data": {"account_name": "...", "bank_name"/"ewallet_name": "..."}}
+        # {"status": true/false, "data": {"account_name": "..."}}
         if body.get("status") is True or body.get("status") == "success":
             data = body.get("data") or {}
             name = (
@@ -147,8 +152,8 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
             result["name"]   = name
             result["status"] = "Valid" if name and name != "-" else "Tidak Ditemukan"
         else:
-            msg = body.get("message") or body.get("msg") or "Gagal"
-            result["status"] = str(msg)[:40]
+            # 400 atau status false = nomor tidak ditemukan
+            result["status"] = "Tidak Ditemukan"
 
     except requests.Timeout:
         result["status"] = "Timeout"
