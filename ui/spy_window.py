@@ -655,6 +655,17 @@ class FloatingSpyWindow:
                 self._win.after(0, lambda: self._v_eid.set(entry.get("id", "-")))
                 self._win.after(0, lambda: self._v_ecss.set(entry.get("css", "-")[:40]))
                 self._win.after(0, lambda: self._v_expath.set(entry.get("xpath", "-")[:40]))
+                # Kirim ke Saved Elements utama (halaman Spy) pakai nama yang sudah diisi
+                if self.on_capture:
+                    capture_info = {
+                        "name":         entry["name"],
+                        "tagName":      entry.get("tag", ""),
+                        "css_selector": entry.get("css", ""),
+                        "xpath":        entry.get("xpath", ""),
+                        "text":         entry.get("text", ""),
+                        "id":           entry.get("id", ""),
+                    }
+                    self._win.after(0, lambda i=capture_info: self.on_capture(i))
             self._saved.append(entry)
             _save_all(self._saved)
             self._win.after(0, self._refresh_list)

@@ -2988,9 +2988,15 @@ class SynthexApp:
             "button": "Button", "input": "Input", "a": "Link",
             "img": "Image", "select": "Dropdown", "textarea": "Textarea",
         }
-        name = simpledialog.askstring(
-            "Save Element", "Name for this element:", parent=self._root)
+        # Pakai nama dari entry kalau sudah ada (dari floating spy),
+        # baru tanya kalau belum ada
+        name = info.get("name") or simpledialog.askstring(
+            "Simpan Elemen", "Nama untuk elemen ini:", parent=self._root)
         if not name:
+            return
+        # Hindari duplikat nama
+        existing = [e.get("name") for e in self._ud.elements]
+        if name in existing:
             return
         self._ud.elements.append({
             "name":     name,
@@ -3002,7 +3008,7 @@ class SynthexApp:
         })
         self._ud.save()
         self._refresh_spy_elements_tree()
-        self._sv.set("Element '{}' saved.".format(name))
+        self._sv.set("Elemen '{}' disimpan.".format(name))
 
     def _save_spy_element(self):
         info = self._spy_current_info

@@ -33,7 +33,10 @@ def _load_api_key() -> str:
     try:
         with open(_CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
-        return cfg.get("settings", {}).get("rekening_api_key", "")
+        # Cari di root config dulu, fallback ke cfg["settings"]
+        return (cfg.get("rekening_api_key")
+                or cfg.get("settings", {}).get("rekening_api_key", "")
+                or "")
     except Exception:
         return ""
 
