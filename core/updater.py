@@ -18,8 +18,9 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Version manifest — raw JSON file di GitHub (edit lewat repo, langsung update semua client)
-_RTDB_URL = "https://raw.githubusercontent.com/Yohn18/synthex-releases/main/version.json"
+# Version manifest — GitHub Gist publik (repo tetap private, update cukup edit gist ini)
+# Gist ID: 3920fa0dd0e4c2a400c69940ad614d3b
+_RTDB_URL = "https://gist.githubusercontent.com/Yohn18/3920fa0dd0e4c2a400c69940ad614d3b/raw/version.json"
 _TIMEOUT  = 6  # seconds
 
 
