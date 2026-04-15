@@ -1,0 +1,8 @@
+{
+  "latest_version": "1.1.0",
+  "min_version": "1.0.0",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.1.0/Synthex.exe",
+  "changelog": "Rate limit cek rekening, recorder window baru, shortcut Ctrl+Q, smart record lebih mudah",
+  "maintenance": false,
+  "maintenance_msg": ""
+}
