@@ -95,22 +95,23 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
 
     result = {"provider": provider, "nomor": nomor, "name": "-", "status": "Gagal"}
 
-    # ── Input validation (avoids HTTP 400) ────────────────────────────────────
+    # ── Input validation ──────────────────────────────────────────────────────
     if not nomor or len(nomor) < 5:
         result["status"] = "Nomor tidak valid"
         return result
-    if not api_key:
-        result["status"] = "API key belum diatur"
-        return result
 
     try:
+        # api_key opsional — tanpa key tetap jalan (rate limit server),
+        # dengan key = unlimited
         if provider in EWALLETS:
-            url = "{}?type=ewallet&code={}&accountNumber={}&api_key={}".format(
-                _BASE, provider.lower(), nomor, api_key)
+            url = "{}?type=ewallet&code={}&accountNumber={}".format(
+                _BASE, provider.lower(), nomor)
         else:
             code = BANK_CODES.get(provider, provider.lower())
-            url = "{}?type=bank&code={}&accountNumber={}&api_key={}".format(
-                _BASE, code, nomor, api_key)
+            url = "{}?type=bank&code={}&accountNumber={}".format(
+                _BASE, code, nomor)
+        if api_key:
+            url += "&api_key={}".format(api_key)
 
         # ── Rate-limited request with 429 retry ───────────────────────────────
         _rate_wait()
