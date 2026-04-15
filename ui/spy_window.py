@@ -1,9 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ui/spy_window.py - Lightweight floating element inspector.
-
-Like AutoHotkey Window Spy - instant cursor/window info via Windows API only.
-CDP is used ONLY when user presses F8/CAPTURE (not continuously).
-"""
+"""ui/spy_window.py - AHK-style spy window with coordinate saving."""
 
 import base64
 import ctypes
@@ -14,19 +10,94 @@ import socket
 import struct
 import threading
 import tkinter as tk
-import urllib.request
+from tkinter import messagebox
 
 from core.logger import get_logger
 
-# Palette
-BG   = "#0A0A0F"; CARD = "#12121A"; ACC  = "#6C63FF"
-FG   = "#E0DFFF"; MUT  = "#555575"; GRN  = "#4CAF88"
-RED  = "#F06070"; YEL  = "#F0C060"; PRP  = "#9D5CF6"
+# ── Palette ──────────────────────────────────────────────────────────────────
+BG    = "#0A0A0F"
+CARD  = "#12121A"
+CARD2 = "#1A1A28"
+ACC   = "#6C4AFF"
+ACC2  = "#4A9EFF"
+FG    = "#E0DFFF"
+MUT   = "#555575"
+GRN   = "#4CAF88"
+RED   = "#F06070"
+YEL   = "#F0C060"
+BORD  = "#2A2A44"
 
-# JS to read the hovered element (injected once on capture request)
+SAVED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                          "..", "data", "spy_coords.json")
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _load_saved():
+    try:
+        with open(SAVED_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_all(entries):
+    os.makedirs(os.path.dirname(SAVED_FILE), exist_ok=True)
+    with open(SAVED_FILE, "w", encoding="utf-8") as f:
+        json.dump(entries, f, indent=2, ensure_ascii=False)
+
+
+def _get_cursor_pos():
+    pt = ctypes.wintypes.POINT()
+    try:
+        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+    except Exception:
+        pass
+    return pt.x, pt.y
+
+
+def _get_color_at(x, y):
+    """Return hex color of pixel at (x, y) using GDI."""
+    try:
+        hdc = ctypes.windll.user32.GetDC(0)
+        color = ctypes.windll.gdi32.GetPixel(hdc, x, y)
+        ctypes.windll.user32.ReleaseDC(0, hdc)
+        r = color & 0xFF
+        g = (color >> 8) & 0xFF
+        b = (color >> 16) & 0xFF
+        return "#{:02X}{:02X}{:02X}".format(r, g, b), (r, g, b)
+    except Exception:
+        return "#??????", (0, 0, 0)
+
+
+def _get_window_info(x, y):
+    title = "-"
+    cls   = "-"
+    hwnd_hex = "-"
+    client_x = "-"
+    client_y = "-"
+    try:
+        import win32gui
+        hwnd = win32gui.WindowFromPoint((x, y))
+        if hwnd:
+            title    = win32gui.GetWindowText(hwnd) or "-"
+            cls      = win32gui.GetClassName(hwnd) or "-"
+            hwnd_hex = "0x{:08X}".format(hwnd)
+            # Client-relative coords
+            pt = ctypes.wintypes.POINT(x, y)
+            ctypes.windll.user32.ScreenToClient(hwnd, ctypes.byref(pt))
+            client_x = str(pt.x)
+            client_y = str(pt.y)
+    except Exception:
+        pass
+    return title, cls, hwnd_hex, client_x, client_y
+
+
+# ── CDP (used only on F8/CAPTURE) ─────────────────────────────────────────────
+
 _JS_INJECT = r"""
 (function() {
-    function getCSSSelector(el) {
+    function getCSS(el) {
         if (!el || el === document.body) return 'body';
         var parts = [], cur = el;
         while (cur && cur !== document.documentElement) {
@@ -56,16 +127,16 @@ _JS_INJECT = r"""
         document.addEventListener('mousemove', function(e) {
             var el = document.elementFromPoint(e.clientX, e.clientY);
             if (el) {
-                var css = getCSSSelector(el);
-                var xpath = getXPath(el);
                 window.__sx_spy = {
                     tagName: el.tagName.toLowerCase(),
-                    text: (el.innerText || el.value || el.textContent || '').trim().slice(0, 100),
+                    text: (el.innerText || el.value || el.textContent || '').trim().slice(0, 80),
                     id: el.id || '',
                     className: (typeof el.className === 'string' ? el.className : '') || '',
                     value: el.value || '',
                     href: el.href || '',
-                    selector: css, css_selector: css, xpath: xpath
+                    selector: getCSS(el),
+                    css_selector: getCSS(el),
+                    xpath: getXPath(el)
                 };
             }
         }, true);
@@ -75,10 +146,6 @@ _JS_INJECT = r"""
 """
 _JS_READ = "JSON.stringify(window.__sx_spy || {})"
 
-
-# ---------------------------------------------------------------------------
-# Minimal CDP WebSocket client (stdlib only, no external deps)
-# ---------------------------------------------------------------------------
 
 class _CDP:
     def __init__(self, ws_url, timeout=4.0):
@@ -96,25 +163,21 @@ class _CDP:
         self._plock   = threading.Lock()
         self._closed  = False
         self._do_handshake(host, port, path)
-        threading.Thread(target=self._reader, daemon=True,
-                         name="cdp-reader").start()
+        threading.Thread(target=self._reader, daemon=True).start()
 
     def _do_handshake(self, host, port, path):
         key = base64.b64encode(os.urandom(16)).decode()
         req = (
-            "GET {} HTTP/1.1\r\n"
-            "Host: {}:{}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            "Sec-WebSocket-Key: {}\r\n"
-            "Sec-WebSocket-Version: 13\r\n\r\n"
+            "GET {} HTTP/1.1\r\nHost: {}:{}\r\n"
+            "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+            "Sec-WebSocket-Key: {}\r\nSec-WebSocket-Version: 13\r\n\r\n"
         ).format(path, host, port, key).encode()
         self._sock.sendall(req)
         resp = b""
         while b"\r\n\r\n" not in resp:
             chunk = self._sock.recv(4096)
             if not chunk:
-                raise ConnectionError("CDP handshake: connection closed")
+                raise ConnectionError("CDP handshake failed")
             resp += chunk
         if b"101 " not in resp:
             raise ConnectionError("CDP handshake failed")
@@ -231,8 +294,6 @@ class _CDP:
 
 
 class _CDPTracker:
-    """Connect to Chrome CDP on demand, inject JS, read element under cursor."""
-
     CDP_PORT = 9222
 
     def __init__(self):
@@ -241,14 +302,32 @@ class _CDPTracker:
         self._injected = False
 
     def get_element_now(self):
-        """Connect (if needed), inject JS, return element dict or {}."""
-        cdp = self._connect_if_needed()
-        if cdp is None:
-            return {}
+        import urllib.request
+        cdp = None
+        with self._lock:
+            cdp = self._cdp
+        if cdp is None or cdp._closed:
+            try:
+                raw  = urllib.request.urlopen(
+                    "http://localhost:{}/json".format(self.CDP_PORT),
+                    timeout=2.0).read()
+                tabs = json.loads(raw)
+                ws_url = next(
+                    (t["webSocketDebuggerUrl"] for t in tabs
+                     if t.get("type") == "page" and t.get("webSocketDebuggerUrl")),
+                    None)
+                if not ws_url:
+                    return {}
+                cdp = _CDP(ws_url, timeout=3.0)
+                with self._lock:
+                    self._cdp      = cdp
+                    self._injected = False
+            except Exception:
+                return {}
         try:
             if not self._injected:
-                result = cdp.evaluate(_JS_INJECT, timeout=3.0)
-                self._injected = (result == "ok")
+                r = cdp.evaluate(_JS_INJECT, timeout=3.0)
+                self._injected = (r == "ok")
             raw = cdp.evaluate(_JS_READ, timeout=2.0)
             if not raw:
                 return {}
@@ -260,31 +339,6 @@ class _CDPTracker:
                 self._injected = False
             return {}
 
-    def _connect_if_needed(self):
-        with self._lock:
-            cdp = self._cdp
-        if cdp and not cdp._closed:
-            return cdp
-        try:
-            raw  = urllib.request.urlopen(
-                "http://localhost:{}/json".format(self.CDP_PORT),
-                timeout=2.0).read()
-            tabs = json.loads(raw)
-            ws_url = None
-            for tab in tabs:
-                if tab.get("type") == "page" and tab.get("webSocketDebuggerUrl"):
-                    ws_url = tab["webSocketDebuggerUrl"]
-                    break
-            if not ws_url:
-                return None
-            cdp = _CDP(ws_url, timeout=3.0)
-            with self._lock:
-                self._cdp      = cdp
-                self._injected = False
-            return cdp
-        except Exception:
-            return None
-
     def close(self):
         with self._lock:
             if self._cdp:
@@ -292,21 +346,17 @@ class _CDPTracker:
                 self._cdp = None
 
 
-# ---------------------------------------------------------------------------
-# FloatingSpyWindow - Lightweight, like AutoHotkey Window Spy
-# ---------------------------------------------------------------------------
+# ── FloatingSpyWindow ─────────────────────────────────────────────────────────
 
 class FloatingSpyWindow:
-    """
-    280x400 always-on-top draggable window.
+    """AHK-style spy: live coords, window info, color, client coords.
+    Press F8 or SAVE to save a named coordinate entry."""
 
-    Cursor position and window info update every 100ms via Windows API only.
-    Element info only updates when CAPTURE / F8 is pressed (uses CDP then).
-    """
+    W = 300
+    H = 560
 
     def __init__(self, parent, browser=None, on_capture=None,
                  on_use_in_macro=None):
-        # browser arg kept for backwards-compat; not used
         self.on_capture      = on_capture
         self.on_use_in_macro = on_use_in_macro
         self.logger          = get_logger("spy_window")
@@ -317,13 +367,7 @@ class FloatingSpyWindow:
         self._drag_y  = 0
         self._poll_id = None
         self._f8_listener = None
-
-        # Try win32gui for window-under-cursor info
-        try:
-            import win32gui
-            self._win32gui = win32gui
-        except ImportError:
-            self._win32gui = None
+        self._saved   = _load_saved()
 
         self._win = tk.Toplevel(parent)
         self._win.title("Synthex Spy")
@@ -335,113 +379,176 @@ class FloatingSpyWindow:
         self._build()
 
         sw = self._win.winfo_screenwidth()
-        self._win.geometry("280x400+{}+60".format(sw - 300))
+        self._win.geometry("{}x{}+{}+60".format(self.W, self.H, sw - self.W - 20))
         self._win.update_idletasks()
 
         self._start_poll()
         self._start_f8()
 
-    # ------------------------------------------------------------------
-    # UI build
-    # ------------------------------------------------------------------
+    # ── Build UI ──────────────────────────────────────────────────────────────
 
     def _build(self):
         win = self._win
 
-        # Header (draggable)
-        hdr = tk.Frame(win, bg=ACC, height=32, cursor="fleur")
+        # ── Header ────────────────────────────────────────────────────────────
+        hdr = tk.Frame(win, bg=ACC, height=30, cursor="fleur")
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="  Synthex Spy", bg=ACC, fg=BG,
-                 font=("Segoe UI", 10, "bold")).pack(side="left", pady=5)
-        tk.Button(hdr, text="X", bg=ACC, fg=BG,
+        tk.Label(hdr, text="  Synthex Spy", bg=ACC, fg="#FFFFFF",
+                 font=("Segoe UI", 9, "bold")).pack(side="left", pady=5)
+        tk.Button(hdr, text="X", bg=ACC, fg="#FFFFFF",
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=8, cursor="hand2",
-                  activebackground=RED, activeforeground=BG,
-                  command=self.close).pack(side="right", padx=2, pady=4)
+                  activebackground=RED, activeforeground="#FFFFFF",
+                  command=self.close).pack(side="right", padx=2, pady=3)
+        pin_btn = tk.Button(hdr, text="PIN", bg=ACC, fg="#FFFFFF",
+                            font=("Segoe UI", 8), relief="flat", bd=0,
+                            padx=6, cursor="hand2",
+                            command=self._toggle_pin)
+        pin_btn.pack(side="right", pady=3)
+        self._pin_btn = pin_btn
         self._bind_drag(hdr)
 
-        # Mouse Position
-        mp = tk.Frame(win, bg=CARD, padx=10, pady=6)
-        mp.pack(fill="x", padx=5, pady=(5, 0))
-        tk.Label(mp, text="Mouse Position", bg=CARD, fg=MUT,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
-        self._xy_var = tk.StringVar(value="X: 0    Y: 0")
-        tk.Label(mp, textvariable=self._xy_var, bg=CARD, fg=FG,
-                 font=("Consolas", 10)).pack(anchor="w")
-        sw = win.winfo_screenwidth()
-        sh = win.winfo_screenheight()
-        tk.Label(mp, text="Screen: {} x {}".format(sw, sh), bg=CARD, fg=MUT,
-                 font=("Consolas", 8)).pack(anchor="w")
+        def _section(label):
+            f = tk.Frame(win, bg=CARD, padx=8, pady=5)
+            f.pack(fill="x", padx=4, pady=(4, 0))
+            tk.Label(f, text=label, bg=CARD, fg=ACC2,
+                     font=("Segoe UI", 7, "bold")).pack(anchor="w")
+            tk.Frame(f, bg=BORD, height=1).pack(fill="x", pady=(2, 4))
+            return f
 
-        # Window under cursor
-        wf = tk.Frame(win, bg=CARD, padx=10, pady=6)
-        wf.pack(fill="x", padx=5, pady=(4, 0))
-        tk.Label(wf, text="Window", bg=CARD, fg=MUT,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
-        self._win_title_var = tk.StringVar(value="Title: -")
-        self._win_class_var = tk.StringVar(value="Class: -")
-        self._win_hwnd_var  = tk.StringVar(value="Handle: -")
-        for v in (self._win_title_var, self._win_class_var, self._win_hwnd_var):
-            tk.Label(wf, textvariable=v, bg=CARD, fg=FG,
-                     font=("Consolas", 8), anchor="w",
-                     wraplength=252).pack(anchor="w")
-
-        # Element info (only updated on F8/CAPTURE)
-        ef = tk.Frame(win, bg=CARD, padx=10, pady=6)
-        ef.pack(fill="x", padx=5, pady=(4, 0))
-        tk.Label(ef, text="Element  (press F8 to capture)", bg=CARD, fg=MUT,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
-
-        self._elem_vars = {}
-        for label, key in [
-            ("Tag",   "tagName"),
-            ("Text",  "text"),
-            ("ID",    "id"),
-            ("CSS",   "css_selector"),
-            ("XPath", "xpath"),
-            ("Value", "value"),
-        ]:
-            row = tk.Frame(ef, bg=CARD)
+        def _row(parent, label, var, fg=FG):
+            row = tk.Frame(parent, bg=CARD)
             row.pack(fill="x", pady=1)
-            tk.Label(row, text="{:<6}:".format(label), bg=CARD, fg=MUT,
-                     font=("Consolas", 8), width=8, anchor="w").pack(side="left")
-            var = tk.StringVar(value="-")
-            tk.Label(row, textvariable=var, bg=CARD, fg=FG,
-                     font=("Consolas", 8), anchor="w",
-                     wraplength=185).pack(side="left")
-            self._elem_vars[key] = var
+            tk.Label(row, text="{:<9}".format(label), bg=CARD, fg=MUT,
+                     font=("Consolas", 8), width=10, anchor="w").pack(side="left")
+            tk.Label(row, textvariable=var, bg=CARD, fg=fg,
+                     font=("Consolas", 9), anchor="w",
+                     wraplength=190).pack(side="left", fill="x", expand=True)
+            return row
 
-        # Buttons row
-        btm = tk.Frame(win, bg=BG, padx=6, pady=8)
-        btm.pack(fill="x", side="bottom")
+        # ── Mouse / Screen ────────────────────────────────────────────────────
+        ms = _section("Mouse / Screen")
+        self._v_screen  = tk.StringVar(value="0, 0")
+        self._v_client  = tk.StringVar(value="-, -")
+        self._v_color   = tk.StringVar(value="#??????")
+        _row(ms, "Screen", self._v_screen, YEL)
+        _row(ms, "Client", self._v_client)
+        # Color row with swatch
+        crow = tk.Frame(ms, bg=CARD)
+        crow.pack(fill="x", pady=1)
+        tk.Label(crow, text="{:<9}".format("Color"), bg=CARD, fg=MUT,
+                 font=("Consolas", 8), width=10, anchor="w").pack(side="left")
+        tk.Label(crow, textvariable=self._v_color, bg=CARD, fg=FG,
+                 font=("Consolas", 9), anchor="w").pack(side="left")
+        self._color_swatch = tk.Label(crow, text="   ", bg="#000000",
+                                      relief="flat", width=3)
+        self._color_swatch.pack(side="left", padx=(6, 0))
 
-        tk.Button(btm, text="CAPTURE  F8", bg=ACC, fg=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                  padx=10, pady=6, cursor="hand2",
-                  activebackground="#8880FF", activeforeground=BG,
-                  command=self._capture).pack(side="left", expand=True,
-                                              fill="x", padx=(0, 3))
+        # ── Window ────────────────────────────────────────────────────────────
+        wf = _section("Window")
+        self._v_wtitle = tk.StringVar(value="-")
+        self._v_wclass = tk.StringVar(value="-")
+        self._v_hwnd   = tk.StringVar(value="-")
+        _row(wf, "Title", self._v_wtitle)
+        _row(wf, "Class", self._v_wclass)
+        _row(wf, "Handle", self._v_hwnd, MUT)
 
-        self._pin_var = tk.StringVar(value="PIN")
-        self._pin_btn = tk.Button(btm, textvariable=self._pin_var,
-                                   bg=CARD, fg=FG,
-                                   font=("Segoe UI", 9, "bold"),
-                                   relief="flat", bd=0,
-                                   padx=10, pady=6, cursor="hand2",
-                                   command=self._toggle_pin)
-        self._pin_btn.pack(side="left", padx=(0, 3))
+        # ── Element (F8) ─────────────────────────────────────────────────────
+        ef = _section("Element  (Ctrl+Q to save)")
+        self._v_etag  = tk.StringVar(value="-")
+        self._v_etext = tk.StringVar(value="-")
+        self._v_eid   = tk.StringVar(value="-")
+        self._v_ecss  = tk.StringVar(value="-")
+        self._v_expath = tk.StringVar(value="-")
+        _row(ef, "Tag", self._v_etag, GRN)
+        _row(ef, "Text", self._v_etext)
+        _row(ef, "ID", self._v_eid)
+        _row(ef, "CSS", self._v_ecss)
+        _row(ef, "XPath", self._v_expath)
 
-        tk.Button(btm, text="X", bg=RED, fg=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                  padx=10, pady=6, cursor="hand2",
-                  command=self.close).pack(side="left")
+        # ── Save coords ───────────────────────────────────────────────────────
+        sf = tk.Frame(win, bg=CARD2, padx=8, pady=6)
+        sf.pack(fill="x", padx=4, pady=(6, 0))
+        tk.Label(sf, text="Save Coordinate", bg=CARD2, fg=ACC2,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
+        tk.Frame(sf, bg=BORD, height=1).pack(fill="x", pady=(2, 4))
 
-        # Status line
-        self._status_var = tk.StringVar(value="Hover cursor anywhere")
-        tk.Label(win, textvariable=self._status_var, bg=BG, fg=MUT,
-                 font=("Segoe UI", 7), wraplength=268).pack(
-            padx=6, pady=(0, 4))
+        name_row = tk.Frame(sf, bg=CARD2)
+        name_row.pack(fill="x")
+        tk.Label(name_row, text="Name:", bg=CARD2, fg=MUT,
+                 font=("Consolas", 8)).pack(side="left")
+        self._name_var = tk.StringVar()
+        name_entry = tk.Entry(name_row, textvariable=self._name_var,
+                              bg=CARD, fg=FG, insertbackground=ACC,
+                              font=("Consolas", 9), relief="flat",
+                              bd=4, highlightthickness=1,
+                              highlightbackground=BORD,
+                              highlightcolor=ACC)
+        name_entry.pack(side="left", fill="x", expand=True, padx=(6, 0))
+        name_entry.bind("<Return>", lambda e: self._save_coord())
+
+        btn_row = tk.Frame(sf, bg=CARD2)
+        btn_row.pack(fill="x", pady=(5, 0))
+        tk.Button(btn_row, text="SAVE  Ctrl+Q", bg=ACC, fg="#FFFFFF",
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                  padx=8, pady=4, cursor="hand2",
+                  activebackground="#8870FF", activeforeground="#FFFFFF",
+                  command=self._save_coord).pack(side="left", fill="x",
+                                                  expand=True, padx=(0, 3))
+        tk.Button(btn_row, text="COPY XY", bg=CARD, fg=FG,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  padx=8, pady=4, cursor="hand2",
+                  command=self._copy_xy).pack(side="left", padx=(0, 3))
+        tk.Button(btn_row, text="CLEAR", bg=CARD, fg=RED,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  padx=8, pady=4, cursor="hand2",
+                  command=self._clear_element).pack(side="left")
+
+        # ── Saved list ────────────────────────────────────────────────────────
+        lf = tk.Frame(win, bg=CARD, padx=6, pady=5)
+        lf.pack(fill="both", expand=True, padx=4, pady=(4, 4))
+
+        list_hdr = tk.Frame(lf, bg=CARD)
+        list_hdr.pack(fill="x")
+        tk.Label(list_hdr, text="Saved Coordinates", bg=CARD, fg=ACC2,
+                 font=("Segoe UI", 7, "bold")).pack(side="left")
+        tk.Button(list_hdr, text="DELETE ALL", bg=CARD, fg=RED,
+                  font=("Segoe UI", 7), relief="flat", bd=0,
+                  cursor="hand2", command=self._delete_all).pack(side="right")
+        tk.Frame(lf, bg=BORD, height=1).pack(fill="x", pady=(2, 3))
+
+        # Scrollable list
+        list_frame = tk.Frame(lf, bg=CARD)
+        list_frame.pack(fill="both", expand=True)
+
+        sb = tk.Scrollbar(list_frame, orient="vertical", width=8,
+                          bg=CARD, troughcolor=BG, relief="flat")
+        sb.pack(side="right", fill="y")
+
+        self._listbox = tk.Listbox(
+            list_frame,
+            bg=CARD, fg=FG, selectbackground=ACC, selectforeground="#FFFFFF",
+            font=("Consolas", 8), relief="flat", bd=0,
+            highlightthickness=0, activestyle="none",
+            yscrollcommand=sb.set)
+        self._listbox.pack(side="left", fill="both", expand=True)
+        sb.config(command=self._listbox.yview)
+        self._listbox.bind("<Double-Button-1>", self._on_list_dbl)
+        self._listbox.bind("<Button-3>",        self._on_list_right)
+
+        tk.Label(lf, text="Double-click: copy  |  Right-click: delete",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 7)).pack(pady=(3, 0))
+
+        # ── Status ────────────────────────────────────────────────────────────
+        self._v_status = tk.StringVar(value="Hover to inspect")
+        tk.Label(win, textvariable=self._v_status,
+                 bg=BG, fg=MUT, font=("Segoe UI", 7),
+                 wraplength=self.W - 10).pack(pady=(2, 4))
+
+        self._refresh_list()
+
+    # ── Drag ─────────────────────────────────────────────────────────────────
 
     def _bind_drag(self, widget):
         widget.bind("<ButtonPress-1>", self._drag_start)
@@ -454,134 +561,201 @@ class FloatingSpyWindow:
         self._drag_y = e.y_root - self._win.winfo_y()
 
     def _drag_move(self, e):
-        self._win.geometry(
-            "+{}+{}".format(e.x_root - self._drag_x,
-                            e.y_root - self._drag_y))
+        self._win.geometry("+{}+{}".format(
+            e.x_root - self._drag_x, e.y_root - self._drag_y))
 
-    # ------------------------------------------------------------------
-    # Lightweight 100ms poll - Windows API only, no network
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _get_cursor_pos():
-        pt = ctypes.wintypes.POINT()
-        try:
-            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
-        except Exception:
-            pass
-        return pt.x, pt.y
-
-    def _get_window_info(self, x, y):
-        title = "-"; cls = "-"; hwnd_hex = "-"
-        if self._win32gui:
-            try:
-                hwnd = self._win32gui.WindowFromPoint((x, y))
-                if hwnd:
-                    title   = (self._win32gui.GetWindowText(hwnd) or "-")
-                    cls     = (self._win32gui.GetClassName(hwnd) or "-")
-                    hwnd_hex = "0x{:08X}".format(hwnd)
-            except Exception:
-                pass
-        return title, cls, hwnd_hex
-
-    def _start_poll(self):
-        self._poll()
+    # ── Poll (100ms) ─────────────────────────────────────────────────────────
 
     def _poll(self):
         if not self._win.winfo_exists():
             return
         if not self._pinned:
-            x, y = self._get_cursor_pos()
-            self._xy_var.set("X: {}    Y: {}".format(x, y))
-            title, cls, hwnd = self._get_window_info(x, y)
-            self._win_title_var.set("Title: " + title[:36])
-            self._win_class_var.set("Class: " + cls[:36])
-            self._win_hwnd_var.set("Handle: " + hwnd)
+            x, y = _get_cursor_pos()
+            self._v_screen.set("{}, {}".format(x, y))
+
+            hex_col, rgb = _get_color_at(x, y)
+            self._v_color.set("{} rgb({},{},{})".format(hex_col, *rgb))
+            try:
+                self._color_swatch.configure(bg=hex_col)
+            except Exception:
+                pass
+
+            title, cls, hwnd, cx, cy = _get_window_info(x, y)
+            self._v_client.set("{}, {}".format(cx, cy))
+            self._v_wtitle.set(title[:38])
+            self._v_wclass.set(cls[:38])
+            self._v_hwnd.set(hwnd)
+
         self._poll_id = self._win.after(100, self._poll)
 
-    # ------------------------------------------------------------------
-    # F8 hotkey
-    # ------------------------------------------------------------------
+    def _start_poll(self):
+        self._poll()
+
+    # ── Ctrl+Q hotkey ────────────────────────────────────────────────────────
 
     def _start_f8(self):
-        def _listen():
-            try:
-                from pynput import keyboard
-                def _on_press(key):
-                    if key == keyboard.Key.f8:
-                        self._win.after(0, self._capture)
-                self._f8_listener = keyboard.Listener(on_press=_on_press)
-                self._f8_listener.start()
-            except Exception as e:
-                self.logger.debug("F8 hotkey unavailable: {}".format(e))
-        threading.Thread(target=_listen, daemon=True, name="spy-f8").start()
+        try:
+            from pynput import keyboard
 
-    # ------------------------------------------------------------------
-    # PIN toggle
-    # ------------------------------------------------------------------
+            def _on_activate():
+                if self._win.winfo_exists():
+                    self._win.after(0, self._save_coord)
+
+            self._f8_listener = keyboard.GlobalHotKeys({"<ctrl>+q": _on_activate})
+            self._f8_listener.start()
+        except Exception as e:
+            self.logger.debug("Ctrl+Q hotkey unavailable: {}".format(e))
+
+    # ── PIN ──────────────────────────────────────────────────────────────────
 
     def _toggle_pin(self):
         self._pinned = not self._pinned
         if self._pinned:
-            self._pin_var.set("UNPIN")
-            self._pin_btn.configure(bg=YEL, fg=BG)
-            self._status_var.set("Pinned. Click UNPIN to resume tracking.")
+            self._pin_btn.configure(text="UNPIN", bg=YEL, fg=BG)
+            self._v_status.set("Pinned - koordinat dibekukan")
         else:
-            self._pin_var.set("PIN")
-            self._pin_btn.configure(bg=CARD, fg=FG)
-            self._status_var.set("Hover cursor anywhere")
+            self._pin_btn.configure(text="PIN", bg=ACC, fg="#FFFFFF")
+            self._v_status.set("Hover to inspect")
 
-    # ------------------------------------------------------------------
-    # CAPTURE - only here do we try CDP
-    # ------------------------------------------------------------------
+    # ── SAVE coord ───────────────────────────────────────────────────────────
 
-    def _capture(self):
-        """Called on F8 or CAPTURE button. Try CDP; fall back to X,Y coords."""
-        x, y = self._get_cursor_pos()
-        self._status_var.set("Capturing at ({}, {})...".format(x, y))
+    def _save_coord(self):
+        x, y = _get_cursor_pos()
+        title, cls, hwnd, cx, cy = _get_window_info(x, y)
+        hex_col, rgb = _get_color_at(x, y)
 
-        def _do():
+        name = self._name_var.get().strip()
+        if not name:
+            # Auto-name
+            name = "coord_{}".format(len(self._saved) + 1)
+
+        entry = {
+            "name":    name,
+            "x":       x,
+            "y":       y,
+            "client_x": cx,
+            "client_y": cy,
+            "color":   hex_col,
+            "window":  title[:60],
+            "class":   cls[:60],
+            "hwnd":    hwnd,
+        }
+
+        # Also try CDP element
+        def _try_cdp():
             info = self._tracker.get_element_now()
             if info and info.get("tagName"):
-                info["x"] = x
-                info["y"] = y
-                self._win.after(0, lambda: self._status_var.set(
-                    "Captured: <{}>".format(info.get("tagName", ""))))
-            else:
-                info = {"type": "coords", "x": x, "y": y}
-                self._win.after(0, lambda: self._status_var.set(
-                    "No CDP - saved position ({}, {})".format(x, y)))
+                entry["tag"]    = info.get("tagName", "")
+                entry["id"]     = info.get("id", "")
+                entry["css"]    = info.get("css_selector", "")
+                entry["xpath"]  = info.get("xpath", "")
+                entry["text"]   = info.get("text", "")
+                self._win.after(0, lambda: self._v_etag.set(entry.get("tag", "-")))
+                self._win.after(0, lambda: self._v_etext.set(entry.get("text", "-")[:40]))
+                self._win.after(0, lambda: self._v_eid.set(entry.get("id", "-")))
+                self._win.after(0, lambda: self._v_ecss.set(entry.get("css", "-")[:40]))
+                self._win.after(0, lambda: self._v_expath.set(entry.get("xpath", "-")[:40]))
+            self._saved.append(entry)
+            _save_all(self._saved)
+            self._win.after(0, self._refresh_list)
+            self._win.after(0, lambda: self._name_var.set(""))
+            self._win.after(0, lambda: self._v_status.set(
+                "Saved: \"{}\" ({}, {})".format(name, x, y)))
 
-            self._win.after(0, lambda i=info: self._show_element(i))
-            if self.on_capture:
-                self.on_capture(dict(info))
+        threading.Thread(target=_try_cdp, daemon=True).start()
 
-        threading.Thread(target=_do, daemon=True, name="spy-capture").start()
+    # ── Copy XY ──────────────────────────────────────────────────────────────
 
-    def _show_element(self, info):
-        if not info:
+    def _copy_xy(self):
+        x, y = _get_cursor_pos()
+        text = "{}, {}".format(x, y)
+        self._win.clipboard_clear()
+        self._win.clipboard_append(text)
+        self._v_status.set("Copied: {}".format(text))
+
+    # ── Clear element fields ─────────────────────────────────────────────────
+
+    def _clear_element(self):
+        for v in (self._v_etag, self._v_etext, self._v_eid,
+                  self._v_ecss, self._v_expath):
+            v.set("-")
+        self._v_status.set("Element info cleared")
+
+    # ── Saved list ───────────────────────────────────────────────────────────
+
+    def _refresh_list(self):
+        self._listbox.delete(0, tk.END)
+        for i, e in enumerate(self._saved):
+            line = "{:>2}. {:<18} ({}, {})".format(
+                i + 1, e.get("name", "")[:18],
+                e.get("x", "?"), e.get("y", "?"))
+            self._listbox.insert(tk.END, line)
+
+    def _on_list_dbl(self, event):
+        sel = self._listbox.curselection()
+        if not sel:
             return
-        if info.get("type") == "coords":
-            for k in self._elem_vars:
-                self._elem_vars[k].set("-")
-            self._elem_vars["value"].set("({}, {})".format(
-                info.get("x", "?"), info.get("y", "?")))
-        else:
-            tag = info.get("tagName", "") or "-"
-            self._elem_vars["tagName"].set(tag)
-            self._elem_vars["text"].set(
-                (info.get("text", "") or "-")[:40])
-            self._elem_vars["id"].set(info.get("id", "") or "-")
-            css = (info.get("css_selector", info.get("selector", ""))
-                   or "-")
-            self._elem_vars["css_selector"].set(css[:40])
-            self._elem_vars["xpath"].set(
-                (info.get("xpath", "") or "-")[:40])
-            self._elem_vars["value"].set(info.get("value", "") or "-")
+        idx = sel[0]
+        if idx >= len(self._saved):
+            return
+        e = self._saved[idx]
+        text = "{}, {}".format(e.get("x"), e.get("y"))
+        self._win.clipboard_clear()
+        self._win.clipboard_append(text)
+        self._v_status.set("Copied: {} -> ({})".format(e.get("name"), text))
 
-    # ------------------------------------------------------------------
-    # Public interface
-    # ------------------------------------------------------------------
+    def _on_list_right(self, event):
+        idx = self._listbox.nearest(event.y)
+        if idx < 0 or idx >= len(self._saved):
+            return
+        name = self._saved[idx].get("name", str(idx))
+        menu = tk.Menu(self._win, tearoff=0, bg=CARD, fg=FG,
+                       activebackground=ACC, activeforeground="#FFFFFF",
+                       font=("Segoe UI", 9))
+        menu.add_command(
+            label="Copy X, Y",
+            command=lambda i=idx: self._copy_entry(i))
+        menu.add_command(
+            label="Copy JSON",
+            command=lambda i=idx: self._copy_entry_json(i))
+        menu.add_separator()
+        menu.add_command(
+            label="Delete \"{}\"".format(name),
+            command=lambda i=idx: self._delete_entry(i))
+        menu.tk_popup(event.x_root, event.y_root)
+
+    def _copy_entry(self, idx):
+        e = self._saved[idx]
+        text = "{}, {}".format(e.get("x"), e.get("y"))
+        self._win.clipboard_clear()
+        self._win.clipboard_append(text)
+        self._v_status.set("Copied: {}".format(text))
+
+    def _copy_entry_json(self, idx):
+        text = json.dumps(self._saved[idx], ensure_ascii=False, indent=2)
+        self._win.clipboard_clear()
+        self._win.clipboard_append(text)
+        self._v_status.set("Copied JSON: {}".format(self._saved[idx].get("name")))
+
+    def _delete_entry(self, idx):
+        name = self._saved[idx].get("name", "")
+        del self._saved[idx]
+        _save_all(self._saved)
+        self._refresh_list()
+        self._v_status.set("Deleted: \"{}\"".format(name))
+
+    def _delete_all(self):
+        if not self._saved:
+            return
+        if messagebox.askyesno("Hapus Semua",
+                               "Hapus semua {} koordinat tersimpan?".format(len(self._saved)),
+                               parent=self._win):
+            self._saved.clear()
+            _save_all(self._saved)
+            self._refresh_list()
+            self._v_status.set("Semua koordinat dihapus")
+
+    # ── Public ───────────────────────────────────────────────────────────────
 
     def close(self):
         if self._poll_id:

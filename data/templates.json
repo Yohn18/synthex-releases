@@ -1,33 +1,33 @@
 [
   {
     "name": "Update Price to Sheet",
-    "description": "Get price from a website and save it to Google Sheet automatically",
+    "description": "Ambil harga dari website dan simpan otomatis ke Google Sheet",
     "steps": [
       {"type": "go_to_url",        "url": "{url}"},
       {"type": "get_number",       "selector": "{price_selector}", "var": "price"},
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{price}"},
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{current_date} {current_time}"},
-      {"type": "notify",           "message": "Price updated: {price}"}
+      {"type": "notify",           "message": "Harga diperbarui: {price}"}
     ]
   },
   {
     "name": "Confirm Order on Website",
-    "description": "Read order ID from sheet, go to website, confirm it, update status",
+    "description": "Baca order ID dari sheet, buka website, konfirmasi, update status",
     "steps": [
       {"type": "sheet_read_cell",  "sheet": "{sheet}", "cell": "{order_cell}", "var": "order_id"},
-      {"type": "if_equals",        "value1": "{order_id}", "value2": "", "action_false": "stop", "stop_message": "No order to confirm"},
+      {"type": "if_equals",        "value1": "{order_id}", "value2": "", "action_false": "stop", "stop_message": "Tidak ada order untuk dikonfirmasi"},
       {"type": "go_to_url",        "url": "{confirmation_url}"},
       {"type": "click",            "selector": "{order_field}"},
       {"type": "type",             "selector": "{order_field}", "text": "{order_id}"},
       {"type": "click",            "selector": "{confirm_button}"},
       {"type": "get_text",         "selector": "{result_selector}", "var": "result"},
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{status_cell}", "value": "{result}"},
-      {"type": "notify",           "message": "Order {order_id} done: {result}"}
+      {"type": "notify",           "message": "Order {order_id} selesai: {result}"}
     ]
   },
   {
     "name": "Monitor Stock Level",
-    "description": "Check stock on website, alert if low or out of stock",
+    "description": "Cek stok di website, kirim alert jika habis atau menipis",
     "steps": [
       {"type": "go_to_url",        "url": "{product_url}"},
       {"type": "get_text",         "selector": "{stock_selector}", "var": "stock"},
@@ -38,7 +38,7 @@
   },
   {
     "name": "Copy Data from Web to Sheet",
-    "description": "Open website, grab multiple values, paste all into Google Sheet",
+    "description": "Buka website, ambil beberapa nilai, simpan semua ke Google Sheet",
     "steps": [
       {"type": "go_to_url",        "url": "{url}"},
       {"type": "get_text",         "selector": "{selector_1}", "var": "value1"},
@@ -47,12 +47,57 @@
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{value1}"},
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{value2}"},
       {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "C{row}", "value": "{value3}"},
-      {"type": "notify",           "message": "Data saved to sheet"}
+      {"type": "notify",           "message": "Data tersimpan ke sheet"}
+    ]
+  },
+  {
+    "name": "Login ke Website",
+    "description": "Buka website, isi form login dengan username dan password, submit",
+    "steps": [
+      {"type": "go_to_url",        "url": "{login_url}"},
+      {"type": "wait_for_element", "selector": "{username_field}"},
+      {"type": "click",            "selector": "{username_field}"},
+      {"type": "type",             "selector": "{username_field}", "text": "{username}"},
+      {"type": "click",            "selector": "{password_field}"},
+      {"type": "type",             "selector": "{password_field}", "text": "{password}"},
+      {"type": "click",            "selector": "{login_button}"},
+      {"type": "wait",             "seconds": "2"},
+      {"type": "screenshot",       "filename": "login_result.png"},
+      {"type": "notify",           "message": "Login selesai - cek screenshot"}
+    ]
+  },
+  {
+    "name": "Isi Form & Submit",
+    "description": "Buka form, isi beberapa field dari Google Sheet, klik submit",
+    "steps": [
+      {"type": "sheet_read_cell",  "sheet": "{sheet}", "cell": "A{row}", "var": "field1"},
+      {"type": "sheet_read_cell",  "sheet": "{sheet}", "cell": "B{row}", "var": "field2"},
+      {"type": "sheet_read_cell",  "sheet": "{sheet}", "cell": "C{row}", "var": "field3"},
+      {"type": "go_to_url",        "url": "{form_url}"},
+      {"type": "wait_for_element", "selector": "{input_1}"},
+      {"type": "type",             "selector": "{input_1}", "text": "{field1}"},
+      {"type": "type",             "selector": "{input_2}", "text": "{field2}"},
+      {"type": "type",             "selector": "{input_3}", "text": "{field3}"},
+      {"type": "click",            "selector": "{submit_button}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "D{row}", "value": "Submitted {current_time}"},
+      {"type": "notify",           "message": "Form berhasil disubmit"}
+    ]
+  },
+  {
+    "name": "Screenshot Jadwal Harian",
+    "description": "Buka URL, tunggu load, ambil screenshot, simpan ke sheet",
+    "steps": [
+      {"type": "go_to_url",        "url": "{url}"},
+      {"type": "wait",             "seconds": "2"},
+      {"type": "screenshot",       "filename": "daily_{current_date}.png"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{current_date}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "Screenshot diambil {current_time}"},
+      {"type": "notify",           "message": "Screenshot harian tersimpan"}
     ]
   },
   {
     "name": "Bulk Order Confirmation (Continuous)",
-    "description": "Continuously cross-check sheet orders vs website, confirm matches, flag mismatches. Loops every 60 seconds until stopped.",
+    "description": "Loop: baca order pending dari sheet, bandingkan dengan website, konfirmasi otomatis, tandai mismatch. Loop tiap 60 detik.",
     "continuous_mode": true,
     "continuous_interval": 60,
     "steps": [
@@ -66,10 +111,7 @@
         "total_column": "{total_column}",
         "var": "pending_rows"
       },
-      {
-        "type": "go_to_url",
-        "url": "{order_list_url}"
-      },
+      {"type": "go_to_url", "url": "{order_list_url}"},
       {
         "type": "web_get_order_list",
         "list_selector": "{order_row_selector}",
@@ -88,10 +130,7 @@
         "confirm_selector": "{confirm_button_selector}",
         "var": "validation_result"
       },
-      {
-        "type": "notify",
-        "message": "Bulk confirmation loop done: {validation_result}"
-      }
+      {"type": "notify", "message": "Bulk confirmation selesai: {validation_result}"}
     ]
   }
 ]

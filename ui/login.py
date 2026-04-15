@@ -1,7 +1,5 @@
-"""
-ui/login.py - Game-style (Point Blank) login window for Synthex by Yohn18.
-Theme: #0A0A0F background, #6C4AFF accent (purple), #4A9EFF secondary (blue).
-"""
+# -*- coding: utf-8 -*-
+"""ui/login.py - Premium login window for Synthex by Yohn18."""
 
 import json
 import os
@@ -15,7 +13,7 @@ from core.config import Config
 
 # ── Color palette ────────────────────────────────────────────────────────────
 BG      = "#0A0A0F"
-CARD    = "#12121A"
+PANEL_L = "#0D0D1A"
 ACCENT  = "#6C4AFF"
 ACCENT2 = "#4A9EFF"
 SUCCESS = "#00D4AA"
@@ -73,12 +71,12 @@ def _self_destruct():
 class LoginWindow:
     """Standalone login window. Call .show() to block until result."""
 
-    _W = 750
-    _H = 460
+    _W = 820
+    _H = 500
 
     def __init__(self, config: Config):
         self.config = config
-        self._result: dict | None = None
+        self._result = None
         self._spinner_running  = False
         self._spinner_idx      = 0
         self._show_pass        = False
@@ -91,9 +89,9 @@ class LoginWindow:
     def show(self) -> dict:
         self._root = tk.Tk()
         if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, 'synthex.ico')
+            icon_path = os.path.join(sys._MEIPASS, 'assets', 'synthex.ico')
         else:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'synthex.ico')
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'synthex.ico')
         if os.path.exists(icon_path):
             self._root.iconbitmap(icon_path)
         self._root.title("Synthex")
@@ -105,7 +103,7 @@ class LoginWindow:
         sh = self._root.winfo_screenheight()
         x  = (sw - self._W) // 2
         y  = (sh - self._H) // 2
-        self._root.geometry(f"{self._W}x{self._H}+{x}+{y}")
+        self._root.geometry("{W}x{H}+{x}+{y}".format(W=self._W, H=self._H, x=x, y=y))
         self._root.overrideredirect(False)
         self._root.lift()
         self._root.focus_force()
@@ -116,82 +114,116 @@ class LoginWindow:
     # ── UI construction ────────────────────────────────────────────────────
     def _build_ui(self):
         W, H = self._W, self._H
+        LEFT_W = int(W * 0.40)   # 328px
+        RIGHT_X = LEFT_W + 1
+        RIGHT_W = W - RIGHT_X
 
-        # ── Root canvas (scanlines + background) ──────────────────────────
+        # ── LEFT PANEL ────────────────────────────────────────────────────
+        lf = tk.Frame(self._root, bg=PANEL_L, width=LEFT_W, height=H)
+        lf.place(x=0, y=0)
+        lf.pack_propagate(False)
+
+        # Top accent stripe (double-color)
+        top_stripe = tk.Frame(lf, height=3, bg=PANEL_L)
+        top_stripe.place(x=0, y=0, width=LEFT_W)
+        tk.Frame(top_stripe, bg=ACCENT, height=3, width=LEFT_W // 2).place(x=0, y=0)
+        tk.Frame(top_stripe, bg=ACCENT2, height=3, width=LEFT_W // 2).place(x=LEFT_W // 2, y=0)
+
+        # Lightning emoji
+        tk.Label(lf, text="\u26a1", bg=PANEL_L, fg=ACCENT,
+                 font=("Segoe UI", 28)).place(relx=0.5, rely=0.22, anchor="center")
+
+        # SYNTHEX title
+        tk.Label(lf, text="SYNTHEX", bg=PANEL_L, fg=ACCENT,
+                 font=("Segoe UI", 36, "bold")).place(relx=0.5, rely=0.38, anchor="center")
+
+        # Subtitle
+        tk.Label(lf, text="AUTOMATION PLATFORM", bg=PANEL_L, fg=ACCENT2,
+                 font=("Segoe UI", 9, "bold")).place(relx=0.5, rely=0.50, anchor="center")
+
+        # Divider line
+        div_w = int(LEFT_W * 0.70)
+        tk.Frame(lf, bg=BORDER, height=1, width=div_w).place(
+            relx=0.5, rely=0.58, anchor="center")
+
+        # by Yohn18
+        tk.Label(lf, text="by Yohn18", bg=PANEL_L, fg=DIM,
+                 font=("Segoe UI", 9)).place(relx=0.5, rely=0.68, anchor="center")
+
+        # Version
+        tk.Label(lf, text="v{}".format(self.config.get("app.version", "1.0.0")),
+                 bg=PANEL_L, fg="#3A3A5A",
+                 font=("Segoe UI", 8)).place(relx=0.5, rely=0.76, anchor="center")
+
+        # Bottom accent stripe (double-color)
+        bot_stripe = tk.Frame(lf, height=3, bg=PANEL_L)
+        bot_stripe.place(x=0, y=H - 3, width=LEFT_W)
+        tk.Frame(bot_stripe, bg=ACCENT, height=3, width=LEFT_W // 2).place(x=0, y=0)
+        tk.Frame(bot_stripe, bg=ACCENT2, height=3, width=LEFT_W // 2).place(x=LEFT_W // 2, y=0)
+
+        # Vertical separator
+        tk.Frame(self._root, bg=BORDER, width=1, height=H).place(x=LEFT_W, y=0)
+        tk.Frame(self._root, bg="#1A1A2E", width=1, height=H).place(x=LEFT_W + 1, y=0)
+
+        # Corner bracket decorations
+        brk = 18
+        col = "#2A2A5A"
+        corners = [
+            (10, 10, 1, 1), (W - 10, 10, -1, 1),
+            (10, H - 10, 1, -1), (W - 10, H - 10, -1, -1)
+        ]
         self._bg_canvas = tk.Canvas(
             self._root, width=W, height=H,
             bg=BG, highlightthickness=0)
         self._bg_canvas.place(x=0, y=0)
-
-        # Draw scanlines once (static thin lines, we shift them via scroll)
-        self._scanline_ids = []
-        for y in range(0, H + 6, 6):
-            lid = self._bg_canvas.create_line(
-                0, y, W, y, fill="#0F0F1A", width=1)
-            self._scanline_ids.append(lid)
-
-        # Vertical separator glow
-        sep_x = int(W * 0.40)
-        self._bg_canvas.create_line(sep_x, 20, sep_x, H - 20,
-                                    fill=BORDER, width=1)
-        self._bg_canvas.create_line(sep_x + 1, 20, sep_x + 1, H - 20,
-                                    fill="#1A1A2E", width=1)
-
-        # Corner brackets decoration
-        brk = 18
-        col = "#2A2A5A"
-        for bx, by, dx, dy in [(10, 10, 1, 1), (W - 10, 10, -1, 1),
-                                (10, H - 10, 1, -1), (W - 10, H - 10, -1, -1)]:
+        # Only draw corner brackets (not over left panel)
+        for bx, by, dx, dy in corners:
             self._bg_canvas.create_line(bx, by, bx + brk * dx, by,
                                         fill=col, width=2)
             self._bg_canvas.create_line(bx, by, bx, by + brk * dy,
                                         fill=col, width=2)
 
-        # ── LEFT panel ────────────────────────────────────────────────────
-        lf = tk.Frame(self._root, bg=BG, width=sep_x, height=H)
-        lf.place(x=0, y=0)
+        # Scanline canvas on top of left panel
+        self._scan_canvas = tk.Canvas(
+            self._root, width=LEFT_W, height=H,
+            bg=PANEL_L, highlightthickness=0)
+        self._scan_canvas.place(x=0, y=0)
+        self._scanline_ids = []
+        for sy in range(0, H + 6, 6):
+            lid = self._scan_canvas.create_line(
+                0, sy, LEFT_W, sy, fill="#111128", width=1)
+            self._scanline_ids.append(lid)
+
+        # Re-draw left panel text on top of scanline canvas
+        tk.Label(self._scan_canvas, text="\u26a1", bg=PANEL_L, fg=ACCENT,
+                 font=("Segoe UI", 28)).place(relx=0.5, rely=0.22, anchor="center")
+        tk.Label(self._scan_canvas, text="SYNTHEX", bg=PANEL_L, fg=ACCENT,
+                 font=("Segoe UI", 36, "bold")).place(relx=0.5, rely=0.38, anchor="center")
+        tk.Label(self._scan_canvas, text="AUTOMATION PLATFORM", bg=PANEL_L, fg=ACCENT2,
+                 font=("Segoe UI", 9, "bold")).place(relx=0.5, rely=0.50, anchor="center")
+        tk.Frame(self._scan_canvas, bg=BORDER, height=1,
+                 width=div_w).place(relx=0.5, rely=0.58, anchor="center")
+        tk.Label(self._scan_canvas, text="by Yohn18", bg=PANEL_L, fg=DIM,
+                 font=("Segoe UI", 9)).place(relx=0.5, rely=0.68, anchor="center")
+        tk.Label(self._scan_canvas, text="v3.0", bg=PANEL_L, fg="#3A3A5A",
+                 font=("Segoe UI", 8)).place(relx=0.5, rely=0.76, anchor="center")
+
+        # ── RIGHT PANEL ───────────────────────────────────────────────────
+        rf = tk.Frame(self._root, bg=BG, width=RIGHT_W, height=H)
+        rf.place(x=RIGHT_X, y=0)
 
         # Top accent stripe
-        tk.Frame(lf, bg=ACCENT, height=3, width=sep_x - 20).place(x=10, y=0)
-
-        # Logo
-        tk.Label(lf, text="SYNTHEX", bg=BG, fg=ACCENT,
-                 font=("Segoe UI", 32, "bold")).place(
-                     relx=0.5, rely=0.32, anchor="center")
-        tk.Label(lf, text="AUTOMATION PLATFORM", bg=BG, fg=ACCENT2,
-                 font=("Segoe UI", 9, "bold")).place(
-                     relx=0.5, rely=0.47, anchor="center")
-
-        # Decorative line under subtitle
-        tk.Frame(lf, bg=BORDER, height=1, width=sep_x - 60).place(
-            x=30, rely=0.54, anchor="w")
-
-        tk.Label(lf, text="by Yohn18", bg=BG, fg=DIM,
-                 font=("Segoe UI", 9)).place(
-                     relx=0.5, rely=0.63, anchor="center")
-        tk.Label(lf, text="v3.0", bg=BG, fg="#3A3A5A",
-                 font=("Segoe UI", 8)).place(
-                     relx=0.5, rely=0.73, anchor="center")
-
-        # Bottom accent stripe
-        tk.Frame(lf, bg=ACCENT, height=3, width=sep_x - 20).place(
-            x=10, y=H - 3)
-
-        # ── RIGHT panel ───────────────────────────────────────────────────
-        rx = sep_x + 1
-        rw = W - rx
-        rf = tk.Frame(self._root, bg=BG, width=rw, height=H)
-        rf.place(x=rx, y=0)
+        tk.Frame(rf, bg=ACCENT, height=3, width=RIGHT_W).place(x=0, y=0)
 
         # "MASUK" header
         tk.Label(rf, text="MASUK", bg=BG, fg=TEXT,
-                 font=("Segoe UI", 16, "bold")).place(
+                 font=("Segoe UI", 18, "bold")).place(
                      relx=0.5, y=44, anchor="center")
         tk.Frame(rf, bg=ACCENT, height=2, width=80).place(
             relx=0.5, y=68, anchor="center")
 
-        inner_x  = 30
-        inner_w  = rw - 60
+        inner_x = 30
+        inner_w = RIGHT_W - 60
 
         # ── Email field ───────────────────────────────────────────────────
         tk.Label(rf, text="EMAIL", bg=BG, fg=DIM,
@@ -202,7 +234,7 @@ class LoginWindow:
         ef_inner = tk.Frame(ef_frame, bg=FIELD)
         ef_inner.pack(fill="both", expand=True)
 
-        tk.Label(ef_inner, text="✉", bg=FIELD, fg=DIM,
+        tk.Label(ef_inner, text="\u2709", bg=FIELD, fg=DIM,
                  font=("Segoe UI", 10), padx=8).pack(side="left")
         tk.Frame(ef_inner, bg=BORDER, width=1).pack(side="left", fill="y", pady=4)
 
@@ -225,21 +257,21 @@ class LoginWindow:
         pf_inner = tk.Frame(pf_frame, bg=FIELD)
         pf_inner.pack(fill="both", expand=True)
 
-        tk.Label(pf_inner, text="🔒", bg=FIELD, fg=DIM,
+        tk.Label(pf_inner, text="\U0001f512", bg=FIELD, fg=DIM,
                  font=("Segoe UI", 10), padx=8).pack(side="left")
         tk.Frame(pf_inner, bg=BORDER, width=1).pack(side="left", fill="y", pady=4)
 
         self._pass_var = tk.StringVar()
         self._pass_entry = tk.Entry(
             pf_inner, textvariable=self._pass_var,
-            show="●", bg=FIELD, fg=TEXT,
+            show="\u25cf", bg=FIELD, fg=TEXT,
             insertbackground=ACCENT,
             font=("Segoe UI", 10), relief="flat",
             bd=6, highlightthickness=0)
         self._pass_entry.pack(side="left", fill="both", expand=True)
 
         self._eye_btn = tk.Button(
-            pf_inner, text="👁", bg=FIELD, fg=DIM,
+            pf_inner, text="\U0001f441", bg=FIELD, fg=DIM,
             relief="flat", bd=0, cursor="hand2",
             font=("Segoe UI", 10), padx=8,
             command=self._toggle_pass,
@@ -273,7 +305,7 @@ class LoginWindow:
             command=self._do_login)
         self._login_btn.place(x=inner_x, y=264, width=inner_w, height=40)
 
-        # ── Progress bar (hidden until login) ─────────────────────────────
+        # ── Progress bar ──────────────────────────────────────────────────
         pb_bg = tk.Frame(rf, bg=BORDER)
         pb_bg.place(x=inner_x, y=308, width=inner_w, height=4)
         self._progress_canvas = tk.Canvas(
@@ -297,8 +329,8 @@ class LoginWindow:
             bg=BG, fg=RED, font=("Segoe UI", 8),
             wraplength=inner_w).place(relx=0.5, y=342, anchor="center")
 
-        # Copyright bottom-right
-        tk.Label(rf, text="© 2025 Synthex · All rights reserved",
+        # Copyright bottom
+        tk.Label(rf, text="\u00a9 2025 Synthex \u00b7 All rights reserved",
                  bg=BG, fg="#2A2A4A", font=("Segoe UI", 7)).place(
                      relx=0.5, y=H - 14, anchor="center")
 
@@ -316,12 +348,11 @@ class LoginWindow:
     def _animate_scanlines(self):
         """Slowly scroll scanline overlay downward."""
         try:
-            self._bg_canvas.move("all", 0, 1)
-            # When a line goes below H, wrap it to top
+            self._scan_canvas.move("all", 0, 1)
             for lid in self._scanline_ids:
-                coords = self._bg_canvas.coords(lid)
+                coords = self._scan_canvas.coords(lid)
                 if coords and coords[1] > self._H:
-                    self._bg_canvas.move(lid, 0, -self._H - 6)
+                    self._scan_canvas.move(lid, 0, -self._H - 6)
             self._root.after(120, self._animate_scanlines)
         except Exception:
             pass
@@ -337,16 +368,14 @@ class LoginWindow:
 
     def _finish_progress(self, success: bool):
         if not self._progress_running and not success:
-            # Already finished (e.g. called twice) — bail silently
             return
-        self._progress_running = False  # stop _animate_progress loop immediately
-        self._spinner_running  = False  # stop spinner too
+        self._progress_running = False
+        self._spinner_running  = False
         try:
             fill_color = SUCCESS if success else RED
             self._progress_canvas.itemconfigure(self._progress_rect, fill=fill_color)
             self._progress_canvas.coords(
                 self._progress_rect, 0, 0, self._progress_bar_w, 4)
-            # Reset bar after short delay
             self._root.after(800, lambda: self._progress_canvas.coords(
                 self._progress_rect, 0, 0, 0, 4))
             self._root.after(820, lambda: self._progress_canvas.itemconfigure(
@@ -365,16 +394,16 @@ class LoginWindow:
     # ── Logic (unchanged) ──────────────────────────────────────────────────
     def _toggle_pass(self):
         self._show_pass = not self._show_pass
-        self._pass_entry.configure(show="" if self._show_pass else "●")
+        self._pass_entry.configure(show="" if self._show_pass else "\u25cf")
 
     def _do_login(self):
         email    = self._email_var.get().strip()
         password = self._pass_var.get()
         if not email:
-            self._error_var.set("❌  Masukkan alamat email")
+            self._error_var.set("\u274c  Masukkan alamat email")
             return
         if not password:
-            self._error_var.set("❌  Masukkan password")
+            self._error_var.set("\u274c  Masukkan password")
             return
         if "@" not in email:
             email += "@gmail.com"
@@ -386,12 +415,10 @@ class LoginWindow:
         self._status_lbl.configure(fg=DIM)
         self._animate_spinner()
 
-        # Progress bar
         self._progress_val     = 0.0
         self._progress_running = True
         self._animate_progress()
 
-        # Safety timeout — kill progress bar if auth takes > 15 s
         self._root.after(
             15000,
             lambda: self._finish_progress(False) if self._progress_running else None)
@@ -412,7 +439,7 @@ class LoginWindow:
         if result.get("success"):
             _reset_attempts()
             self._finish_progress(True)
-            self._status_var.set("✅  Berhasil masuk!")
+            self._status_var.set("\u2705  Berhasil masuk!")
             self._status_lbl.configure(fg=SUCCESS)
             stay = self._stay_var.get()
             self.config.set("ui.stay_logged_in", stay)
@@ -438,10 +465,10 @@ class LoginWindow:
                 self._root.after(2000, self._trigger_self_destruct)
             elif count == 2:
                 self._error_var.set(
-                    "⚠️ Peringatan! 1 percobaan tersisa sebelum aplikasi dihapus!")
+                    "\u26a0\ufe0f Peringatan! 1 percobaan tersisa sebelum aplikasi dihapus!")
             else:
                 self._error_var.set(
-                    f"❌  {result.get('error', 'Email atau password salah.')}")
+                    "\u274c  {}".format(result.get('error', 'Email atau password salah.')))
 
     def _trigger_self_destruct(self):
         try:

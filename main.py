@@ -45,6 +45,119 @@ if __name__ == "__main__":
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
 
+    # ── 0. Version check ──────────────────────────────────────────────────────
+    local_ver = config.get("app.version", "1.0.0")
+    try:
+        from core.updater import check_version
+        ver = check_version(local_ver)
+        if ver["error"]:
+            logger.warning(ver["error"])
+        if not ver["ok"]:
+            import tkinter as tk
+            import webbrowser
+            _is_maint = ver.get("maintenance", False)
+            _wa_url   = "https://wa.me/6282228885859"
+            _title    = "Maintenance" if _is_maint else "Update Diperlukan"
+            _hdr_col  = "#E67E22" if _is_maint else "#6C4AFF"
+            _h        = 300 if _is_maint else 260
+            _r = tk.Tk()
+            _r.title(_title)
+            _r.configure(bg="#0A0A0F")
+            _r.resizable(False, False)
+            _r.update_idletasks()
+            _sw = _r.winfo_screenwidth()
+            _sh = _r.winfo_screenheight()
+            _r.geometry("460x{}+{}+{}".format(
+                _h, (_sw - 460) // 2, (_sh - _h) // 2))
+            # Header
+            _hdr = tk.Frame(_r, bg=_hdr_col, height=44)
+            _hdr.pack(fill="x")
+            _hdr.pack_propagate(False)
+            _icon = "  🔧  " if _is_maint else "  ⚡  "
+            tk.Label(_hdr, text=_icon + _title, bg=_hdr_col, fg="white",
+                     font=("Segoe UI", 12, "bold")).pack(side="left", pady=10)
+            # Body
+            _body = tk.Frame(_r, bg="#0A0A0F", padx=28, pady=18)
+            _body.pack(fill="both", expand=True)
+            if _is_maint:
+                tk.Label(_body,
+                         text="Aplikasi sedang dalam maintenance.",
+                         bg="#0A0A0F", fg="#C8C8E8",
+                         font=("Segoe UI", 11, "bold")).pack(anchor="w")
+                _msg = ver.get("maintenance_msg", "")
+                if _msg:
+                    tk.Label(_body, text=_msg,
+                             bg="#0A0A0F", fg="#6A6A8A",
+                             font=("Segoe UI", 9),
+                             wraplength=400, justify="left").pack(
+                                 anchor="w", pady=(8, 0))
+                tk.Label(_body,
+                         text="Hubungi admin untuk info lebih lanjut:",
+                         bg="#0A0A0F", fg="#6A6A8A",
+                         font=("Segoe UI", 9)).pack(anchor="w", pady=(12, 0))
+                tk.Label(_body, text="WhatsApp: +62 82228885859",
+                         bg="#0A0A0F", fg="#00D4AA",
+                         font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(4, 0))
+                _btn_row = tk.Frame(_body, bg="#0A0A0F")
+                _btn_row.pack(anchor="w", pady=(16, 0))
+                tk.Button(_btn_row, text="💬 Chat WhatsApp",
+                          bg="#25D366", fg="white",
+                          font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                          padx=16, pady=8, cursor="hand2",
+                          command=lambda: webbrowser.open(_wa_url)
+                          ).pack(side="left", padx=(0, 10))
+                tk.Button(_btn_row, text="Tutup",
+                          bg="#2A2A4A", fg="#C8C8E8",
+                          font=("Segoe UI", 9), relief="flat", bd=0,
+                          padx=12, pady=8, cursor="hand2",
+                          command=_r.destroy).pack(side="left")
+            else:
+                tk.Label(_body,
+                         text="Versi kamu ({}) sudah tidak didukung.".format(local_ver),
+                         bg="#0A0A0F", fg="#C8C8E8",
+                         font=("Segoe UI", 11, "bold")).pack(anchor="w")
+                tk.Label(_body,
+                         text="Versi minimum yang diperlukan: {}".format(ver["min_version"]),
+                         bg="#0A0A0F", fg="#6A6A8A",
+                         font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+                if ver.get("changelog"):
+                    tk.Label(_body, text="Yang baru: " + ver["changelog"],
+                             bg="#0A0A0F", fg="#00D4AA",
+                             font=("Segoe UI", 9),
+                             wraplength=400, justify="left").pack(
+                                 anchor="w", pady=(8, 0))
+                tk.Label(_body,
+                         text="Butuh bantuan? Hubungi: +62 82228885859",
+                         bg="#0A0A0F", fg="#6A6A8A",
+                         font=("Segoe UI", 8)).pack(anchor="w", pady=(8, 0))
+                _btn_row = tk.Frame(_body, bg="#0A0A0F")
+                _btn_row.pack(anchor="w", pady=(12, 0))
+                if ver.get("download_url"):
+                    tk.Button(_btn_row, text="Download Versi Terbaru",
+                              bg="#6C4AFF", fg="white",
+                              font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                              padx=16, pady=8, cursor="hand2",
+                              command=lambda: webbrowser.open(ver["download_url"])
+                              ).pack(side="left", padx=(0, 10))
+                tk.Button(_btn_row, text="💬 Chat WhatsApp",
+                          bg="#25D366", fg="white",
+                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          padx=12, pady=8, cursor="hand2",
+                          command=lambda: webbrowser.open(_wa_url)
+                          ).pack(side="left", padx=(0, 10))
+                tk.Button(_btn_row, text="Tutup",
+                          bg="#2A2A4A", fg="#C8C8E8",
+                          font=("Segoe UI", 9), relief="flat", bd=0,
+                          padx=12, pady=8, cursor="hand2",
+                          command=_r.destroy).pack(side="left")
+            _r.mainloop()
+            sys.exit(0)
+        elif ver["has_update"]:
+            logger.info("Update tersedia: {} -> {}".format(
+                local_ver, ver["latest"]))
+    except Exception as _e:
+        logger.warning("Version check error: {}".format(_e))
+
     # ── 1. Try to resume a saved session ─────────────────────────────────────
     auth_result = None
     if config.get("ui.stay_logged_in", False):
@@ -75,9 +188,11 @@ if __name__ == "__main__":
         sys.exit(1)
 
     # ── 4. Post-exit cleanup ──────────────────────────────────────────────────
-    # If stay_logged_in is off, delete the saved token so next launch requires login
-    if config.get("ui._clear_token_on_exit", False):
+    # Only clear token if user explicitly chose NOT to stay logged in
+    stay = config.get("ui.stay_logged_in", False)
+    if not stay and config.get("ui._clear_token_on_exit", False):
         from auth.firebase_auth import logout as _clear
         _clear()
-        config.set("ui._clear_token_on_exit", False)
-        config.save()
+    # Always reset the flag; token is kept when stay_logged_in is True
+    config.set("ui._clear_token_on_exit", False)
+    config.save()

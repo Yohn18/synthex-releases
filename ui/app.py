@@ -11,10 +11,17 @@ from core.logger import get_logger
 _ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_FILE = os.path.join(_ROOT, "data", "user_data.json")
 
-BG   = "#0A0A0F"; CARD = "#12121A"; SIDE = "#0D0D16"
-ACC  = "#6C63FF"; FG   = "#E0DFFF"; MUT  = "#555575"
-GRN  = "#4CAF88"; RED  = "#F06070"; YEL  = "#F0C060"
+BG   = "#111118"
+CARD = "#1A1A24"
+SIDE = "#0D0D12"
+ACC  = "#6C4AFF"   # purple accent
+FG   = "#E0DFFF"
+MUT  = "#555575"
+GRN  = "#4CAF88"
+RED  = "#F06070"
+YEL  = "#F0C060"
 PRP  = "#9D5CF6"
+BLUE = "#4A9EFF"
 
 # Step type icons (ASCII, no emoji)
 _STEP_ICONS = {
@@ -273,15 +280,17 @@ def _extract_sheet_id(url):
 
 class SynthexApp:
     NAV = [
-        ("Home",     "home"),
-        ("Web",      "web"),
-        ("Spy",      "spy"),
-        ("Record",   "record"),
-        ("Schedule", "schedule"),
-        ("Sheet",    "sheet"),
-        ("Rekening", "rekening"),
-        ("History",  "history"),
-        ("Settings", "settings"),
+        ("Home",      "home"),
+        ("Web",       "web"),
+        ("Spy",       "spy"),
+        ("Record",    "record"),
+        ("Schedule",  "schedule"),
+        ("Templates", "templates"),
+        ("Sheet",     "sheet"),
+        ("Rekening",  "rekening"),
+        ("History",   "history"),
+        ("Logs",      "logs"),
+        ("Settings",  "settings"),
     ]
 
     def __init__(self, config, engine=None):
@@ -363,9 +372,9 @@ class SynthexApp:
     def _splash(self):
         r = self._root = tk.Tk()
         if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, 'synthex.ico')
+            icon_path = os.path.join(sys._MEIPASS, 'assets', 'synthex.ico')
         else:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'synthex.ico')
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'synthex.ico')
         if os.path.exists(icon_path):
             r.iconbitmap(icon_path)
         r.title("SYNTHEX")
@@ -416,82 +425,137 @@ class SynthexApp:
             w.destroy()
         r = self._root
         r.title("Synthex  -  by Yohn18")
-        r.geometry("1100x680")
-        r.minsize(860, 560)
+        r.geometry("1180x720")
+        r.minsize(920, 600)
         r.resizable(True, True)
         r.configure(bg=BG)
         r.protocol("WM_DELETE_WINDOW", lambda: r.withdraw())
         _apply_styles(r)
 
-        top = tk.Frame(r, bg=SIDE, height=48)
+        # ── HEADER ────────────────────────────────────────────────────────────
+        top = tk.Frame(r, bg=SIDE, height=54)
         top.pack(fill="x")
         top.pack_propagate(False)
-        _lbl(top, "SYNTHEX", fg=ACC, bg=SIDE,
-             font=("Segoe UI", 14, "bold")).pack(side="left", padx=16)
-        _lbl(top, "by Yohn18", fg=MUT, bg=SIDE,
-             font=("Segoe UI", 9)).pack(side="left")
-        ttk.Button(top, text="Exit", style="Danger.TButton",
-                   command=self._logout).pack(side="right", padx=12, pady=8)
-        if self._email:
-            _lbl(top, self._email, fg=GRN, bg=SIDE,
-                 font=("Segoe UI", 9)).pack(side="right", padx=8)
 
+        # Left accent stripe
+        tk.Frame(top, bg=ACC, width=4).pack(side="left", fill="y")
+
+        tk.Label(top, text="\u26a1", bg=SIDE, fg=ACC,
+                 font=("Segoe UI", 15)).pack(side="left", padx=(12, 3), pady=14)
+        tk.Label(top, text="SYNTHEX", bg=SIDE, fg=ACC,
+                 font=("Segoe UI", 14, "bold")).pack(side="left")
+        tk.Label(top, text="by Yohn18", bg=SIDE, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(6, 0), pady=(18, 0))
+
+        # Right side
+        tk.Button(top, text="Exit", bg=RED, fg=FG,
+                  activebackground="#C04050", activeforeground=FG,
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=16, pady=6, cursor="hand2",
+                  command=self._logout).pack(side="right", padx=14, pady=12)
+        tk.Button(top, text=" ? ", bg=CARD, fg=ACC,
+                  activebackground=ACC, activeforeground=BG,
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=8, pady=6, cursor="hand2",
+                  command=self._show_help).pack(side="right", pady=12)
+        if self._email:
+            tk.Label(top, text=self._email, bg=SIDE, fg=GRN,
+                     font=("Segoe UI", 9)).pack(side="right", padx=10)
+
+        # ── BODY ──────────────────────────────────────────────────────────────
         body = tk.Frame(r, bg=BG)
         body.pack(fill="both", expand=True)
-        side = tk.Frame(body, bg=SIDE, width=170)
+
+        # ── SIDEBAR ───────────────────────────────────────────────────────────
+        side = tk.Frame(body, bg=SIDE, width=200)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
-        _lbl(side, "NAVIGATION", fg=MUT, bg=SIDE,
-             font=("Segoe UI", 7, "bold")).pack(
-            anchor="w", padx=16, pady=(16, 6))
+
+        # Sidebar top divider
+        tk.Frame(side, bg="#1A1A28", height=1).pack(fill="x")
+
+        tk.Label(side, text="NAVIGATION", bg=SIDE, fg=MUT,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
+
+        NAV_ICONS = {
+            "home":      "\U0001f3e0", "web":       "\U0001f310", "spy":      "\U0001f441",
+            "record":    "\u23fa",     "schedule":  "\U0001f4c5", "sheet":    "\U0001f4ca",
+            "rekening":  "\U0001f3e6", "history":   "\U0001f4cb", "settings": "\u2699\ufe0f",
+            "templates": "\U0001f4da", "logs":      "\U0001f5d2",
+        }
+        self._nav      = {}
+        self._nav_bars = {}
+
         for label, key in self.NAV:
+            icon = NAV_ICONS.get(key, "\u2022")
+            row = tk.Frame(side, bg=SIDE)
+            row.pack(fill="x")
+
+            bar = tk.Frame(row, bg=ACC, width=3)
+            bar.pack(side="left", fill="y")
+            bar.pack_forget()
+            self._nav_bars[key] = bar
+
             b = tk.Button(
-                side, text=label, anchor="w", bg=SIDE, fg=MUT,
-                activebackground=ACC, activeforeground=BG,
+                row,
+                text="  {}  {}".format(icon, label),
+                anchor="w", bg=SIDE, fg=MUT,
+                activebackground=CARD, activeforeground=FG,
                 font=("Segoe UI", 10), relief="flat", bd=0,
-                padx=16, pady=8, cursor="hand2",
+                padx=14, pady=9, cursor="hand2",
                 command=lambda k=key: self._show(k))
-            b.pack(fill="x")
+            b.pack(fill="x", side="left", expand=True)
             self._nav[key] = b
 
+        # Bottom hints
+        tk.Frame(side, bg="#1A1A28", height=1).pack(fill="x", side="bottom", pady=(0, 0))
+        self._sv = tk.StringVar(value="Ready.")
+        tk.Label(side, textvariable=self._sv, bg=SIDE, fg=MUT,
+                 font=("Segoe UI", 7), wraplength=180,
+                 justify="left").pack(side="bottom", anchor="w", padx=12, pady=(4, 4))
+        tk.Label(side, text="Ctrl+1=Play | Ctrl+3=Rec",
+                 bg=SIDE, fg=MUT, font=("Segoe UI", 7)).pack(
+                     side="bottom", anchor="w", padx=12, pady=(0, 2))
+
+        # ── CONTENT ───────────────────────────────────────────────────────────
         self._content = tk.Frame(body, bg=BG)
         self._content.pack(side="left", fill="both", expand=True)
 
-        bar = tk.Frame(r, bg=SIDE, height=26)
-        bar.pack(fill="x", side="bottom")
-        bar.pack_propagate(False)
-        self._sv = tk.StringVar(value="Ready.")
-        tk.Label(bar, textvariable=self._sv, fg=MUT, bg=SIDE,
-                 font=("Segoe UI", 8)).pack(side="left", padx=12)
-        _lbl(bar, "Ctrl+1=Play/Pause  Ctrl+3=Record/Stop",
-             fg=MUT, bg=SIDE, font=("Segoe UI", 7)).pack(side="left", padx=16)
-        self._cl = _lbl(bar, "", fg=MUT, bg=SIDE, font=("Segoe UI", 8))
-        self._cl.pack(side="right", padx=12)
+        # ── CLOCK (right side of header) ──────────────────────────────────────
+        self._cl = tk.Label(top, text="", fg=MUT, bg=SIDE, font=("Segoe UI", 8))
+        self._cl.pack(side="right", padx=6)
         self._tick()
 
         self._page_builders = {
-            "home":     self._pg_home,
-            "web":      self._pg_web,
-            "spy":      self._pg_spy,
-            "record":   self._pg_record,
-            "schedule": self._pg_schedule,
-            "sheet":    self._pg_sheet,
-            "rekening": self._pg_rekening,
-            "history":  self._pg_history,
-            "settings": self._pg_settings,
+            "home":      self._pg_home,
+            "web":       self._pg_web,
+            "spy":       self._pg_spy,
+            "record":    self._pg_record,
+            "schedule":  self._pg_schedule,
+            "templates": self._pg_templates,
+            "sheet":     self._pg_sheet,
+            "rekening":  self._pg_rekening,
+            "history":   self._pg_history,
+            "logs":      self._pg_logs,
+            "settings":  self._pg_settings,
         }
 
         self._show("home")
         sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
-        r.geometry("1100x680+{}+{}".format((sw-1100)//2, (sh-680)//2))
+        r.geometry("1180x720+{}+{}".format((sw-1180)//2, (sh-720)//2))
         self._root.after(400, self._maybe_show_onboarding)
 
     def _show(self, key):
         if self._cur in self._pages:
             self._pages[self._cur].pack_forget()
         for k, b in self._nav.items():
-            b.configure(bg=ACC if k == key else SIDE,
-                        fg=BG if k == key else MUT)
+            b.configure(bg=SIDE, fg=MUT,
+                        activebackground=CARD, activeforeground=FG)
+            self._nav_bars[k].pack_forget()
+        if key in self._nav:
+            self._nav[key].configure(bg=CARD, fg=FG,
+                                      activebackground=CARD, activeforeground=ACC)
+            self._nav_bars[key].pack(side="left", fill="y")
         if key not in self._pages:
             self._pages[key] = self._page_builders[key]()
         self._pages[key].pack(fill="both", expand=True)
@@ -599,6 +663,24 @@ class SynthexApp:
             _lbl(c, lbl, fg=MUT, bg=CARD, font=("Segoe UI", 8)).pack(anchor="w")
             _lbl(c, val, fg=clr, bg=CARD,
                  font=("Segoe UI", 12, "bold")).pack(anchor="w")
+
+        # ── Quick Action Bar ─────────────────────────────────────────────────
+        qa_bar = tk.Frame(f, bg=SIDE, padx=12, pady=8)
+        qa_bar.pack(fill="x", padx=20, pady=(6, 0))
+        _lbl(qa_bar, "QUICK ACTIONS", fg=MUT, bg=SIDE,
+             font=("Segoe UI", 7, "bold")).pack(side="left", padx=(0, 12))
+        for qa_label, qa_cmd, qa_color in [
+            ("+ New Macro",       lambda: self._show("schedule"),   ACC),
+            ("Start Recording",   self._start_simple_rec,            GRN),
+            ("Open Spy",          self._open_floating_spy,           BLUE),
+            ("Templates",         lambda: self._show("templates"),   PRP),
+            ("View Logs",         lambda: self._show("logs"),        MUT),
+        ]:
+            tk.Button(qa_bar, text=qa_label, bg=qa_color, fg=BG,
+                      font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                      padx=10, pady=4, cursor="hand2",
+                      activebackground=CARD, activeforeground=FG,
+                      command=qa_cmd).pack(side="left", padx=(0, 6))
 
         # My Tasks Today
         tasks_frame = _card(f, "My Tasks Today")
@@ -858,11 +940,11 @@ class SynthexApp:
         _lbl(sc, "SIMPLE RECORD", bg=CARD, fg=ACC,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
         _lbl(sc,
-             "Records clicks &\nkeystrokes by\nposition. Fast &\n"
-             "easy like\nOP AutoClicker",
+             "Rekam klik & ketikan\nberdasarkan posisi\nlayar. Cocok untuk\n"
+             "tugas berulang di\naplikasi manapun.",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        tk.Button(sc, text="Start Simple Rec",
+        tk.Button(sc, text="Buka Recorder",
                   bg=ACC, fg=BG, font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_simple_rec).pack(fill="x")
@@ -873,11 +955,11 @@ class SynthexApp:
         _lbl(ac, "SMART RECORD", bg=CARD, fg=GRN,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
         _lbl(ac,
-             "Records web element\nselectors. Works\neven if window moves\n"
-             "or resizes.\nNeeds Chrome open.",
+             "Rekam aksi di Chrome\nsecara cerdas - tetap\nbekerja meski\n"
+             "halaman bergerak.\nButuh Chrome terbuka.",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        tk.Button(ac, text="Start Smart Rec",
+        tk.Button(ac, text="Mulai Smart Rec",
                   bg=GRN, fg=BG, font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_smart_rec).pack(fill="x")
@@ -2395,261 +2477,180 @@ class SynthexApp:
     # ================================================================
 
     def _pg_rekening(self):
-        import urllib.request, urllib.parse
+        import threading as _threading
 
-        BANK_MAP = {
-            "BCA":"014","BRI":"002","BNI":"009","MANDIRI":"008","BSI":"451","BTN":"200",
-            "BLUEBCA":"501","DIGITALCA":"501","ROYAL":"501","JAGO":"542","SEABANK":"535",
-            "ALLO":"567","ALLOBANK":"567","CIMB":"022","DANAMON":"011","PERMATA":"013",
-            "PANIN":"019","OCBC":"028","MUAMALAT":"147","BTPN":"213","JENIUS":"213",
-            "BTPNSY":"547","DBS":"046","HSBC":"087","CITIBANK":"031","UOB":"023","TMRW":"023",
-            "MEGA":"426","MEGASY":"426","NOBU":"503","BUKOPIN":"441","WOKEE":"441",
-            "SINARMAS":"153","BJB":"110","COMMONWEALTH":"950","VICTORIA":"566",
-            "VICTORIAS":"405","LINEBANK":"484","NAGARI":"118","SUMBAR":"118","SUMUT":"117",
-            "JATIM":"114","JATENG":"113","DIY":"112","KALSEL":"122","KALBAR":"123",
-            "KALTIM":"124","KALTENG":"125","RIAUKEPRI":"119","SULSELBAR":"126",
-            "SULUTGO":"127","SULTENG":"134","SULTRA":"135","BPDBALI":"129","NTT":"130",
-            "NTBSY":"128","PAPUA":"132","MALUKU":"131","ACEHSY":"116","ANZ":"061",
-            "AMAR":"531","ARTHA":"037","DKI":"111","MASPION":"157","MAYAPADA":"097",
-            "MANTAP":"564","ICBC":"166","SHINHAN":"152","WOORI":"212","BENGKULU":"133",
-            "LAMPUNG":"121","JAMBI":"115","GANESHA":"161","BRIAGO":"494","MIZUHO":"048",
-            "MAYBANK":"016","IBK":"945","INA":"513","INDEX":"558","JAGOSY":"542",
-            "JASAJKT":"472","MUTIARA":"095","QNB":"167","RESONA":"047","YUDHA":"490",
-            "INDIAINDO":"146","CTBC":"949","CNB":"555","CAPITAL":"054","BNPPARIBAS":"057",
-            "BUMIBARTA":"076","MESTIKA":"151","MNC":"485","SUMITOMO":"045","PRIMA":"520",
-            "RABOBANK":"060","STANCHAR":"050","MITSUBISHI":"042","BPDbabel":"120",
-            "ACEH":"116",
-        }
-        EWALLET_LIST = {"DANA", "GOPAY", "OVO", "SHOPEEPAY", "LINKAJA", "ISAKU", "GOPAYDRIVER"}
-        API_URL = "https://apivalidasi.my.id/api/v3/validate"
-
-        # ── outer page frame ──────────────────────────────────────────
+        # ── outer page frame ──────────────────────────────────────────────────
         f = tk.Frame(self._content, bg=BG)
-        self._hdr(f, "Cek Rekening", "Bulk bank account checker — format: PROVIDER NOMOR per baris")
 
+        # ── HEADER ────────────────────────────────────────────────────────────
+        hdr_frame = tk.Frame(f, bg=BG)
+        hdr_frame.pack(fill="x", padx=24, pady=(18, 6))
+        tk.Label(hdr_frame, text="\U0001f3e6 Cek Rekening", bg=BG, fg=ACC,
+                 font=("Segoe UI", 16, "bold"), anchor="w").pack(anchor="w")
+        tk.Label(hdr_frame, text="Cek informasi pemilik rekening bank",
+                 bg=BG, fg=MUT, font=("Segoe UI", 9), anchor="w").pack(anchor="w")
+
+        # ── BODY: split layout ────────────────────────────────────────────────
         body = tk.Frame(f, bg=BG)
-        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+        body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
-        # ── LEFT: input panel ─────────────────────────────────────────
-        left = tk.Frame(body, bg=BG, width=320)
-        left.pack(side="left", fill="y", padx=(0, 12))
+        # ── LEFT: input (~420px) ──────────────────────────────────────────────
+        left = tk.Frame(body, bg=CARD, width=420, padx=16, pady=14)
+        left.pack(side="left", fill="y", padx=(0, 10))
         left.pack_propagate(False)
 
-        inp_card = _card(left, "Input Rekening")
-        inp_card.pack(fill="x")
+        # Top accent
+        tk.Frame(left, bg=ACC, height=3).pack(fill="x", pady=(0, 10))
 
-        _lbl(inp_card, "Format: PROVIDER NOMOR per baris",
-             fg=MUT, bg=CARD, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        tk.Label(left, text="Nomor Rekening (satu per baris):",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8, "bold"),
+                 anchor="w").pack(anchor="w", pady=(0, 4))
 
-        txt = tk.Text(inp_card, bg=CARD, fg=FG, insertbackground=FG,
-                      font=("Consolas", 10), relief="flat", bd=0,
-                      highlightthickness=1, highlightbackground=MUT,
-                      highlightcolor=ACC, height=16, wrap="none",
-                      selectbackground=ACC, selectforeground=BG)
-        txt.pack(fill="both", expand=True)
+        txt = scrolledtext.ScrolledText(
+            left, bg=BG, fg=FG, insertbackground=FG,
+            font=("Consolas", 10), relief="flat", bd=0,
+            height=12, wrap="none",
+            selectbackground=ACC, selectforeground=BG)
+        txt.pack(fill="x")
         txt.insert("1.0", "BCA 1234567890\nBNI 0987654321\nMANDIRI 1122334455")
 
-        # progress label
-        prog_var = tk.StringVar(value="")
-        prog_lbl = _lbl(inp_card, "", fg=MUT, bg=CARD, font=("Segoe UI", 8))
-        prog_lbl.configure(textvariable=prog_var)
-        prog_lbl.pack(anchor="w", pady=(6, 0))
+        # Button row
+        btn_row = tk.Frame(left, bg=CARD)
+        btn_row.pack(fill="x", pady=(10, 0))
 
-        btn_row = tk.Frame(inp_card, bg=CARD)
-        btn_row.pack(fill="x", pady=(8, 0))
-
-        stop_flag = {"stop": False}
+        stop_event = _threading.Event()
 
         def _do_stop():
-            stop_flag["stop"] = True
+            stop_event.set()
             stop_btn.configure(state="disabled")
 
         def _do_clear():
             txt.delete("1.0", tk.END)
-            for row in tree.get_children():
-                tree.delete(row)
-            prog_var.set("")
-            stat_var.set("")
+            for iid in tree.get_children():
+                tree.delete(iid)
 
         def _do_check():
-            raw = txt.get("1.0", tk.END).strip()
-            lines = [l.strip() for l in raw.splitlines() if l.strip()]
+            raw   = txt.get("1.0", tk.END).strip()
+            lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
             if not lines:
                 return
-            for row in tree.get_children():
-                tree.delete(row)
-            stop_flag["stop"] = False
+            for iid in tree.get_children():
+                tree.delete(iid)
+            stop_event.clear()
             run_btn.configure(state="disabled")
             stop_btn.configure(state="normal")
-            prog_var.set("Memproses 0 / {}...".format(len(lines)))
-            stat_var.set("")
 
             def _worker():
-                API_KEY = self.config.get("rekening_api_key", "").strip()
-                if not API_KEY:
-                    tree.after(0, lambda: tree.insert(
-                        "", "end",
-                        values=("-", "-", "-", "API Key belum diisi — isi di Settings"),
-                        tags=("err",)))
-                    tree.after(0, lambda: prog_var.set("Gagal: API Key belum diisi."))
-                    tree.after(0, lambda: (
-                        run_btn.configure(state="normal"),
-                        stop_btn.configure(state="disabled")))
-                    return
-
-                ok = fail = err = 0
-                for i, line in enumerate(lines):
-                    if stop_flag["stop"]:
+                for ln in lines:
+                    if stop_event.is_set():
                         break
-                    parts = line.split()
-                    if len(parts) < 2:
-                        tree.after(0, lambda ln=line: tree.insert(
-                            "", "end", values=(ln, "-", "-", "Format salah"),
-                            tags=("err",)))
-                        err += 1
-                        continue
-
-                    provider = " ".join(parts[:-1]).upper()
-                    nomor    = parts[-1]
-
-                    if provider in EWALLET_LIST:
-                        req_type = "ewallet"
-                        req_code = provider.lower()
-                    else:
-                        req_type = "bank"
-                        req_code = BANK_MAP.get(provider)
-
-                    if not req_code:
-                        tree.after(0, lambda p=provider, n=nomor: tree.insert(
-                            "", "end", values=(p, n, "-", "Provider tidak dikenal"),
-                            tags=("err",)))
-                        err += 1
-                        continue
-
-                    # insert pending row
                     iid = tree.insert("", "end",
-                                      values=(provider, nomor, "...", "Menunggu..."),
-                                      tags=("pend",))
+                                      values=("-", ln, "...", "Checking..."),
+                                      tags=("checking",))
+                    self._check_rekening_line(ln, iid, tree)
 
-                    try:
-                        import requests as _requests
-                        response = _requests.get(
-                            "https://apivalidasi.my.id/api/v3/validate",
-                            params={
-                                "type":          req_type,
-                                "code":          req_code,
-                                "accountNumber": nomor,
-                                "api_key":       API_KEY,
-                            },
-                            headers={
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                                "Accept":     "application/json",
-                                "Referer":    "https://apivalidasi.my.id/",
-                            },
-                            timeout=12,
-                        )
-                        data = response.json()
+                self._root.after(0, lambda: run_btn.configure(state="normal"))
+                self._root.after(0, lambda: stop_btn.configure(state="disabled"))
 
-                        name = (data.get("account_name")
-                                or data.get("data", {}).get("account_name")
-                                or data.get("name") or "")
-                        if name:
-                            ok += 1
-                            tree.after(0, lambda i=iid, p=provider, n=nomor, nm=name: (
-                                tree.item(i, values=(p, n, nm, "VALID"), tags=("ok",))))
-                        else:
-                            msg = data.get("message") or data.get("msg") or "Tidak ditemukan"
-                            fail += 1
-                            tree.after(0, lambda i=iid, p=provider, n=nomor, m=msg: (
-                                tree.item(i, values=(p, n, "-", m), tags=("fail",))))
-                    except _requests.exceptions.HTTPError as e:
-                        name = "HTTP {}: {}".format(e.response.status_code, str(e)[:80])
-                        err += 1
-                        tree.after(0, lambda i=iid, p=provider, n=nomor, m=name: (
-                            tree.item(i, values=(p, n, "-", m), tags=("err",))))
-                    except _requests.exceptions.ConnectionError as e:
-                        name = "Connection Error: {}".format(str(e)[:80])
-                        err += 1
-                        tree.after(0, lambda i=iid, p=provider, n=nomor, m=name: (
-                            tree.item(i, values=(p, n, "-", m), tags=("err",))))
-                    except _requests.exceptions.Timeout:
-                        name = "Timeout"
-                        err += 1
-                        tree.after(0, lambda i=iid, p=provider, n=nomor, m=name: (
-                            tree.item(i, values=(p, n, "-", m), tags=("err",))))
-                    except Exception as e:
-                        name = "Error: {}".format(str(e))
-                        err += 1
-                        tree.after(0, lambda i=iid, p=provider, n=nomor, m=name: (
-                            tree.item(i, values=(p, n, "-", m), tags=("err",))))
+            _threading.Thread(target=_worker, daemon=True).start()
 
-                    done = i + 1
-                    tree.after(0, lambda d=done, t=len(lines): prog_var.set(
-                        "Memproses {} / {}...".format(d, t)))
-
-                def _done():
-                    run_btn.configure(state="normal")
-                    stop_btn.configure(state="disabled")
-                    prog_var.set("Selesai: {} valid, {} gagal, {} error".format(ok, fail, err))
-                    stat_var.set("{} valid  |  {} gagal  |  {} error".format(ok, fail, err))
-
-                tree.after(0, _done)
-
-            threading.Thread(target=_worker, daemon=True).start()
-
-        run_btn = ttk.Button(btn_row, text="Cek Semua",
-                             style="Accent.TButton", command=_do_check)
+        run_btn = tk.Button(btn_row, text="Cek Semua",
+                            bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
+                            relief="flat", bd=0, padx=12, pady=6,
+                            cursor="hand2", command=_do_check)
         run_btn.pack(side="left", padx=(0, 6))
 
-        stop_btn = ttk.Button(btn_row, text="Stop", command=_do_stop,
-                              state="disabled")
+        stop_btn = tk.Button(btn_row, text="Stop",
+                             bg=CARD, fg=RED, font=("Segoe UI", 9),
+                             relief="flat", bd=0, padx=12, pady=6,
+                             cursor="hand2", command=_do_stop,
+                             state="disabled")
         stop_btn.pack(side="left", padx=(0, 6))
 
-        ttk.Button(btn_row, text="Clear", command=_do_clear).pack(side="left")
+        tk.Button(btn_row, text="Clear",
+                  bg=CARD, fg=MUT, font=("Segoe UI", 9),
+                  relief="flat", bd=0, padx=12, pady=6,
+                  cursor="hand2", command=_do_clear).pack(side="left")
 
-        # ── RIGHT: results panel ──────────────────────────────────────
+        # Hint
+        tk.Label(left, text="Double-klik baris untuk menyalin nama",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 7),
+                 anchor="w").pack(anchor="w", pady=(8, 0))
+
+        # ── RIGHT: results ────────────────────────────────────────────────────
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
 
-        res_card = _card(right, "Hasil")
-        res_card.pack(fill="both", expand=True)
+        res_hdr = tk.Frame(right, bg=BG)
+        res_hdr.pack(fill="x", pady=(0, 6))
+        tk.Label(res_hdr, text="Hasil Pengecekan", bg=BG, fg=FG,
+                 font=("Segoe UI", 11, "bold"), anchor="w").pack(anchor="w")
 
-        stat_var = tk.StringVar(value="")
-        stat_lbl = _lbl(res_card, "", fg=ACC, bg=CARD,
-                         font=("Segoe UI", 9, "bold"))
-        stat_lbl.configure(textvariable=stat_var)
-        stat_lbl.pack(anchor="w", pady=(0, 8))
+        tree_frame = tk.Frame(right, bg=CARD)
+        tree_frame.pack(fill="both", expand=True)
 
         cols = [
             ("provider", "Provider",     90),
-            ("nomor",    "Nomor",        130),
-            ("nama",     "Nama Pemilik", 200),
-            ("status",   "Status",       120),
+            ("nomor",    "Nomor",       130),
+            ("nama",     "Nama Pemilik",200),
+            ("status",   "Status",       90),
         ]
-        tree = _tree(res_card, cols)
+        tree = ttk.Treeview(tree_frame, columns=[c[0] for c in cols],
+                            show="headings", selectmode="browse")
+        for cid, head, w in cols:
+            tree.heading(cid, text=head)
+            tree.column(cid, width=w, anchor="w")
 
-        # colour tags
-        tree.tag_configure("ok",   foreground=GRN)
-        tree.tag_configure("fail", foreground=YEL)
-        tree.tag_configure("err",  foreground=RED)
-        tree.tag_configure("pend", foreground=MUT)
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        tree.pack(fill="both", expand=True)
 
-        # copy name on double-click
-        def _copy_name(event):
+        tree.tag_configure("ok",       foreground=GRN)
+        tree.tag_configure("error",    foreground=RED)
+        tree.tag_configure("checking", foreground=YEL)
+
+        def _copy_nama(event):
             sel = tree.selection()
             if not sel:
                 return
             vals = tree.item(sel[0], "values")
-            if vals and vals[2] not in ("-", "...", ""):
+            if vals and len(vals) > 2 and vals[2] not in ("-", "...", ""):
                 self._root.clipboard_clear()
                 self._root.clipboard_append(vals[2])
-                prog_var.set("Disalin: {}".format(vals[2]))
+                # brief flash
+                orig_text = vals[3] if len(vals) > 3 else ""
+                tree.item(sel[0], values=(vals[0], vals[1], vals[2], "Disalin!"))
+                self._root.after(1200, lambda: tree.item(
+                    sel[0], values=(vals[0], vals[1], vals[2], orig_text)))
 
-        tree.bind("<Double-1>", _copy_name)
-        _lbl(res_card, "Double-klik baris untuk menyalin nama.",
-             fg=MUT, bg=CARD, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
+        tree.bind("<Double-1>", _copy_nama)
 
         return f
+
+    def _check_rekening_line(self, nomor, iid, tree):
+        """Check a single rekening number; called from a worker thread."""
+        try:
+            from modules.rekening import check_rekening
+            raw   = nomor.strip()
+            parts = raw.split()
+            prov  = parts[0].upper() if len(parts) >= 2 else "BCA"
+            num   = parts[1]         if len(parts) >= 2 else parts[0]
+            result = check_rekening(prov, num)
+            nama   = result.get("name",   "-")
+            status = result.get("status", "Gagal")
+            tag    = "ok" if status == "Valid" else "error"
+        except Exception as e:
+            prov   = "?"
+            num    = nomor.strip()
+            nama   = "-"
+            status = "Error: {}".format(str(e)[:25])
+            tag    = "error"
+        try:
+            self._root.after(0, lambda: tree.item(
+                iid, values=(prov, num, nama, status), tags=(tag,)))
+        except Exception:
+            pass
 
     # ================================================================
     #  HISTORY PAGE
@@ -2838,6 +2839,9 @@ class SynthexApp:
 
         ttk.Button(rak, text="Save", style="Accent.TButton",
                    command=_save_rak_key).pack(anchor="w", pady=(8, 0))
+
+        # ---- Google Accounts card ------------------------------------
+        self._build_google_accounts_card(f)
 
         # ---- Account card ---------------------------------------------
         ac = _card(f, "Account")
@@ -3157,8 +3161,15 @@ class SynthexApp:
     # -- Simple Record --------------------------------------------------
 
     def _start_simple_rec(self):
-        """Begin simple recording with 3-second countdown."""
-        self._do_countdown(3, self._do_start_simple_rec)
+        """Open the recorder floating window. Recording only starts inside."""
+        if self._rec_toolbar_win:
+            try:
+                if self._rec_toolbar_win.winfo_exists():
+                    self._rec_toolbar_win.lift()
+                    return
+            except Exception:
+                pass
+        self._show_rec_toolbar()
 
     def _do_countdown(self, count, callback):
         """Show a full-screen-style countdown overlay, then call callback."""
@@ -3205,76 +3216,306 @@ class SynthexApp:
         self._show_rec_toolbar()
 
     def _show_rec_toolbar(self):
-        """Floating mini toolbar: [● REC 00:05] [PAUSE] [STOP]."""
+        """Floating recorder control panel - recording starts/stops from here."""
         import time as _time
+
         win = tk.Toplevel(self._root)
-        win.title("")
-        win.configure(bg=CARD)
+        win.title("Synthex Recorder")
+        win.configure(bg="#0D0D14")
         win.resizable(False, False)
         win.attributes("-topmost", True)
         win.overrideredirect(True)
+
+        W, H = 400, 310
         sw = self._root.winfo_screenwidth()
-        win.geometry("320x44+{}+10".format(sw // 2 - 160))
+        sh = self._root.winfo_screenheight()
+        win.geometry("{}x{}+{}+{}".format(W, H, sw // 2 - W // 2, 14))
         self._rec_toolbar_win = win
 
-        self._rec_timer_var = tk.StringVar(value="Recording... 0 steps")
-        self._rec_paused    = False
+        self._rec_paused   = False
+        self._rec_pause_var = tk.StringVar(value="JEDA")
 
-        tk.Label(win, textvariable=self._rec_timer_var,
-                 bg=RED, fg=BG, font=("Consolas", 10, "bold"),
-                 padx=10).pack(side="left", fill="y")
+        # ── Close / minimize defined first (used by header buttons) ─────────
+        _close_ref = [None]   # forward reference holder
 
-        self._rec_pause_var = tk.StringVar(value="PAUSE")
-        tk.Button(win, textvariable=self._rec_pause_var,
-                  bg=YEL, fg=BG, font=("Segoe UI", 9, "bold"),
-                  relief="flat", bd=0, padx=10,
-                  command=self._toggle_rec_pause).pack(side="left", fill="y",
-                                                       padx=2, pady=4)
-        tk.Button(win, text="STOP",
-                  bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
-                  relief="flat", bd=0, padx=10,
-                  command=self._stop_simple_rec).pack(side="left", fill="y",
-                                                      pady=4)
-
-        def _tick():
-            if not (win.winfo_exists() and self._rec):
-                return
-            if not self._rec_paused and self._simple_recorder:
-                n = len(self._simple_recorder.get_actions())
-                self._rec_timer_var.set("Recording... {} steps".format(n))
-            self._rec_timer_id = win.after(1000, _tick)
-
-        _tick()
-
-    def _toggle_rec_pause(self):
-        self._rec_paused = not self._rec_paused
-        self._rec_pause_var.set("RESUME" if self._rec_paused else "PAUSE")
-
-    def _stop_simple_rec(self):
-        """Stop simple recording and open step editor."""
-        self._rec = False
-        if self._rec_toolbar_win:
+        def _close_recorder():
+            if self._rec:
+                self._stop_simple_rec()
+            if self._rec_timer_id:
+                try:
+                    win.after_cancel(self._rec_timer_id)
+                except Exception:
+                    pass
+            self._rec_timer_id    = None
+            self._rec_toolbar_win = None
             try:
-                self._rec_toolbar_win.destroy()
+                win.destroy()
             except Exception:
                 pass
-            self._rec_toolbar_win = None
+
+        _close_ref[0] = _close_recorder
+
+        def _do_minimize():
+            win.withdraw()
+
+        # ── Drag support ─────────────────────────────────────────────────────
+        _drag = {"x": 0, "y": 0}
+        def _drag_start(e):
+            _drag["x"] = e.x_root - win.winfo_x()
+            _drag["y"] = e.y_root - win.winfo_y()
+        def _drag_move(e):
+            win.geometry("+{}+{}".format(
+                e.x_root - _drag["x"], e.y_root - _drag["y"]))
+
+        # ── Header ───────────────────────────────────────────────────────────
+        hdr = tk.Frame(win, bg=ACC, height=34, cursor="fleur")
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        hdr.bind("<ButtonPress-1>", _drag_start)
+        hdr.bind("<B1-Motion>",     _drag_move)
+
+        tk.Label(hdr, text="  SYNTHEX RECORDER", bg=ACC, fg="#FFFFFF",
+                 font=("Segoe UI", 10, "bold")).pack(side="left", pady=7)
+
+        tk.Button(hdr, text="X", bg=ACC, fg="#FFFFFF",
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=10, cursor="hand2",
+                  activebackground=RED, activeforeground="#FFFFFF",
+                  command=lambda: _close_ref[0]()).pack(side="right", fill="y")
+        tk.Button(hdr, text="—", bg=ACC, fg="#FFFFFF",
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=10, cursor="hand2",
+                  activebackground="#8870FF", activeforeground="#FFFFFF",
+                  command=_do_minimize).pack(side="right", fill="y")
+
+        # ── Status bar ───────────────────────────────────────────────────────
+        status_frame = tk.Frame(win, bg="#0D0D14", pady=8)
+        status_frame.pack(fill="x", padx=14)
+
+        dot_var   = tk.StringVar(value="●")
+        state_var = tk.StringVar(value="SIAP")
+        timer_var = tk.StringVar(value="00:00")
+        steps_var = tk.StringVar(value="0 langkah")
+
+        dot_lbl = tk.Label(status_frame, textvariable=dot_var,
+                           bg="#0D0D14", fg=MUT,
+                           font=("Segoe UI", 14))
+        dot_lbl.pack(side="left")
+        tk.Label(status_frame, textvariable=state_var,
+                 bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(6, 0))
+        tk.Label(status_frame, textvariable=timer_var,
+                 bg="#0D0D14", fg=MUT,
+                 font=("Consolas", 10)).pack(side="right", padx=(0, 4))
+        tk.Label(status_frame, textvariable=steps_var,
+                 bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="right", padx=(0, 10))
+
+        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x")
+
+        # ── Live preview ─────────────────────────────────────────────────────
+        preview_outer = tk.Frame(win, bg="#111118")
+        preview_outer.pack(fill="x", padx=12, pady=(8, 4))
+
+        tk.Label(preview_outer, text="Langkah terekam:",
+                 bg="#111118", fg=MUT,
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w", padx=4)
+
+        self._rec_preview_labels = []
+        for _ in range(5):
+            row = tk.Frame(preview_outer, bg="#111118")
+            row.pack(fill="x", padx=4, pady=1)
+            num_lbl = tk.Label(row, text="", bg="#111118", fg=MUT,
+                               font=("Consolas", 8), width=3, anchor="e")
+            num_lbl.pack(side="left")
+            txt_lbl = tk.Label(row, text="", bg="#111118", fg=FG,
+                               font=("Consolas", 8), anchor="w")
+            txt_lbl.pack(side="left", padx=(5, 0))
+            self._rec_preview_labels.append((num_lbl, txt_lbl))
+
+        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x", pady=(4, 0))
+
+        # ── Control buttons ───────────────────────────────────────────────────
+        ctrl = tk.Frame(win, bg="#0D0D14", pady=10)
+        ctrl.pack(fill="x", padx=12)
+
+        rec_btn_var = tk.StringVar(value="● REKAM")
+
+        def _fmt_action(a):
+            t = a.get("type", "")
+            if t == "click":
+                return "[klik] ({},{})".format(a.get("x","?"), a.get("y","?"))
+            if t == "move":
+                return "[gerak] ({},{})".format(a.get("x","?"), a.get("y","?"))
+            if t == "key_press":
+                return "[tombol] {}".format(str(a.get("key",""))[:18])
+            if t == "scroll":
+                return "[scroll] ({},{})".format(a.get("x","?"), a.get("y","?"))
+            return "[?] {}".format(t)
+
+        def _update_state_idle():
+            dot_var.set("●")
+            dot_lbl.configure(fg=MUT)
+            state_var.set("SIAP")
+            timer_var.set("00:00")
+            steps_var.set("0 langkah")
+            rec_btn_var.set("● REKAM")
+            rec_btn.configure(bg=RED, fg="#FFFFFF")
+            pause_btn.configure(state="disabled")
+            stop_btn.configure(state="disabled")
+            for nl, tl in self._rec_preview_labels:
+                nl.configure(text="")
+                tl.configure(text="")
+
+        def _start_recording():
+            self._do_countdown(3, _do_actual_record)
+
+        def _do_actual_record():
+            from modules.macro.simple_recorder import SimpleRecorder
+            self._simple_recorder = SimpleRecorder()
+            self._simple_recorder.start_recording()
+            self._rec           = True
+            self._rec_start_time = _time.time()
+            self._rec_paused    = False
+            self._sv.set("Merekam... lakukan aksi yang ingin diulang, lalu klik STOP.")
+            dot_var.set("●")
+            dot_lbl.configure(fg=RED)
+            state_var.set("MEREKAM")
+            rec_btn_var.set("MEREKAM...")
+            rec_btn.configure(bg="#2A2A3A", fg=MUT, state="disabled")
+            pause_btn.configure(state="normal")
+            stop_btn.configure(state="normal")
+            _tick()
+
+        def _toggle_recording():
+            if not self._rec:
+                _start_recording()
+            else:
+                _stop_recording()
+
+        def _stop_recording():
+            if self._rec_timer_id:
+                try:
+                    win.after_cancel(self._rec_timer_id)
+                except Exception:
+                    pass
+            self._stop_simple_rec()
+            _update_state_idle()
+
+        def _toggle_pause():
+            self._rec_paused = not self._rec_paused
+            if self._rec_paused:
+                self._rec_pause_var.set("LANJUT")
+                dot_var.set("||")
+                dot_lbl.configure(fg=YEL)
+                state_var.set("DIJEDA")
+                pause_btn.configure(text="▶ LANJUT", bg=GRN)
+                if self._simple_recorder:
+                    self._simple_recorder.pause_recording()
+            else:
+                self._rec_pause_var.set("JEDA")
+                dot_var.set("●")
+                dot_lbl.configure(fg=RED)
+                state_var.set("MEREKAM")
+                pause_btn.configure(text="|| JEDA", bg=YEL)
+                if self._simple_recorder:
+                    self._simple_recorder.resume_recording()
+
+        # Row 1: REC / STOP
+        rec_btn = tk.Button(ctrl, textvariable=rec_btn_var,
+                            bg=RED, fg="#FFFFFF",
+                            font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
+                            padx=18, pady=9, cursor="hand2",
+                            activebackground="#CC3050",
+                            command=_toggle_recording)
+        rec_btn.pack(side="left", padx=(0, 6))
+
+        stop_btn = tk.Button(ctrl, text="■ STOP",
+                             bg=CARD, fg=RED,
+                             font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                             padx=12, pady=9, cursor="hand2",
+                             state="disabled",
+                             command=_stop_recording)
+        stop_btn.pack(side="left", padx=(0, 6))
+
+        pause_btn = tk.Button(ctrl, text="|| JEDA",
+                              bg=YEL, fg=BG,
+                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                              padx=10, pady=9, cursor="hand2",
+                              state="disabled",
+                              command=_toggle_pause)
+        pause_btn.pack(side="left")
+
+        # Row 2: Play
+        play_row = tk.Frame(win, bg="#0D0D14")
+        play_row.pack(fill="x", padx=12, pady=(0, 10))
+
+        def _play_last():
+            if self._rec:
+                messagebox.showwarning("Recorder",
+                                       "Hentikan rekaman terlebih dahulu.",
+                                       parent=win)
+                return
+            self._play_selected_recording()
+
+        tk.Button(play_row, text="▶ MAINKAN",
+                  bg="#1A3A2A", fg=GRN,
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=14, pady=7, cursor="hand2",
+                  command=_play_last).pack(side="left")
+
+        tk.Label(play_row, text="  Mainkan rekaman yang dipilih",
+                 bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left")
+
+        # ── Tick ──────────────────────────────────────────────────────────────
+        def _tick():
+            if not win.winfo_exists():
+                return
+            if self._rec and not self._rec_paused and self._simple_recorder:
+                actions = self._simple_recorder.get_actions()
+                n       = len(actions)
+                elapsed = _time.time() - self._rec_start_time
+                timer_var.set(time.strftime("%M:%S", time.gmtime(elapsed)))
+                steps_var.set("{} langkah".format(n))
+                last5  = actions[-5:] if n >= 5 else actions
+                offset = max(0, n - 5)
+                for i, (nl, tl) in enumerate(self._rec_preview_labels):
+                    if i < len(last5):
+                        nl.configure(text="{}".format(offset + i + 1), fg=ACC)
+                        tl.configure(text=_fmt_action(last5[i]), fg=FG)
+                    else:
+                        nl.configure(text="")
+                        tl.configure(text="")
+            self._rec_timer_id = win.after(400, _tick)
+
+        win.protocol("WM_DELETE_WINDOW", lambda: _close_ref[0]())
+        _update_state_idle()
+
+    def _toggle_rec_pause(self):
+        # Legacy – pause logic now lives inside _show_rec_toolbar closure.
+        self._rec_paused = not self._rec_paused
+
+    def _stop_simple_rec(self):
+        """Stop simple recording; toolbar window manages its own lifecycle."""
+        self._rec = False
+        # Cancel the tick timer if running
         if self._rec_timer_id:
             try:
                 self._root.after_cancel(self._rec_timer_id)
             except Exception:
                 pass
+            self._rec_timer_id = None
 
         actions = []
         if self._simple_recorder:
             actions = self._simple_recorder.stop_recording()
-        self._sv.set("Recording stopped. {} actions captured.".format(
-            len(actions)))
+        self._sv.set("Rekaman dihentikan. {} aksi terekam.".format(len(actions)))
         if actions:
             self._show_simple_step_editor(actions)
         else:
             from tkinter import messagebox as _mb
-            _mb.showinfo("Simple Record", "No actions were recorded.",
+            _mb.showinfo("Simple Record", "Tidak ada aksi yang terekam.",
                          parent=self._root)
 
     def _show_simple_step_editor(self, actions, edit_idx=None):
@@ -3697,31 +3938,84 @@ class SynthexApp:
             if s:
                 steps.append(s)
 
+        # Friendly display names for step types
+        _TYPE_LABEL = {
+            "Open URL":        "Buka Website",
+            "Click":           "Klik Elemen",
+            "Type":            "Ketik Teks",
+            "Wait":            "Tunggu (detik)",
+            "Extract":         "Ambil Teks",
+            "Screenshot":      "Ambil Gambar",
+            "Click Element":   "Klik Elemen",
+            "Type Text":       "Ketik Teks",
+            "Extract Text":    "Ambil Teks",
+            "Take Screenshot": "Ambil Gambar",
+        }
+        _TYPE_HINT = {
+            "Open URL":        "Masukkan URL lengkap, contoh: https://google.com",
+            "Click":           "CSS selector atau XPath elemen yang diklik",
+            "Type":            "Format: SELECTOR | teks yang diketik",
+            "Wait":            "Durasi tunggu dalam detik, contoh: 2",
+            "Extract":         "CSS selector elemen yang teksnya diambil",
+            "Screenshot":      "Nama file (opsional), contoh: hasil.png",
+        }
+        _FRIENDLY_TYPES = [
+            "Buka Website", "Klik Elemen", "Ketik Teks",
+            "Tunggu (detik)", "Ambil Teks", "Ambil Gambar",
+        ]
+        _FRIENDLY_TO_ENG = {v: k for k, v in _TYPE_LABEL.items()
+                            if k in STEP_TYPES}
+        _ENG_TO_FRIENDLY = {k: v for k, v in _TYPE_LABEL.items()
+                            if k in STEP_TYPES}
+
+        def _friendly(t):
+            return _TYPE_LABEL.get(t, t)
+
         dlg = tk.Toplevel(self._root)
-        dlg.title("Recording Step Editor")
-        dlg.geometry("660x520")
+        dlg.title("Editor Langkah Rekaman")
+        dlg.geometry("700x560")
         dlg.configure(bg=BG)
         dlg.resizable(True, True)
         dlg.grab_set()
 
-        _lbl(dlg, "Edit Recording Steps",
-             font=("Segoe UI", 13, "bold"), bg=BG).pack(
-            anchor="w", padx=20, pady=(16, 2))
-        _lbl(dlg, "{} steps recorded".format(len(steps)),
-             fg=MUT, bg=BG, font=("Segoe UI", 9)).pack(
-            anchor="w", padx=20, pady=(0, 8))
+        # Header
+        hdr_f = tk.Frame(dlg, bg=BG, padx=20, pady=(16, 4))
+        hdr_f.pack(fill="x")
+        _lbl(hdr_f, "Editor Langkah Rekaman",
+             font=("Segoe UI", 13, "bold"), bg=BG).pack(anchor="w")
+        _lbl(hdr_f,
+             "{} langkah terekam   |   Klik baris untuk edit, lalu klik Perbarui".format(
+                 len(steps)),
+             fg=MUT, bg=BG, font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+
+        # Panduan cepat
+        guide = tk.Frame(dlg, bg="#1A2A1A", padx=12, pady=8)
+        guide.pack(fill="x", padx=20, pady=(0, 6))
+        tk.Label(guide, text="Cara pakai: ",
+                 bg="#1A2A1A", fg=GRN,
+                 font=("Segoe UI", 8, "bold")).pack(side="left")
+        tk.Label(guide,
+                 text="Pilih baris di tabel -> Edit tipe & nilai di bawah -> Klik [Perbarui]. "
+                      "Klik [+ Tambah] untuk langkah baru.",
+                 bg="#1A2A1A", fg=FG,
+                 font=("Segoe UI", 8), wraplength=580, justify="left").pack(
+            side="left", fill="x", expand=True)
 
         lf = tk.Frame(dlg, bg=CARD, padx=8, pady=8)
         lf.pack(fill="both", expand=True, padx=20, pady=(0, 6))
-        st = ttk.Treeview(lf, columns=("no","type","value"),
+
+        st = ttk.Treeview(lf, columns=("no", "type", "value"),
                           show="headings", selectmode="browse")
         st.heading("no",    text="#")
-        st.heading("type",  text="Action Type")
-        st.heading("value", text="Value / Selector")
+        st.heading("type",  text="Jenis Aksi")
+        st.heading("value", text="Nilai / Target")
         st.column("no",    width=36, anchor="center")
-        st.column("type",  width=110)
-        st.column("value", width=400)
-        st.pack(fill="both", expand=True)
+        st.column("type",  width=130)
+        st.column("value", width=420)
+        vsb = ttk.Scrollbar(lf, orient="vertical", command=st.yview)
+        st.configure(yscrollcommand=vsb.set)
+        st.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
 
         step_data = list(steps)
 
@@ -3729,35 +4023,56 @@ class SynthexApp:
             for row in st.get_children():
                 st.delete(row)
             for i, s in enumerate(step_data, 1):
-                st.insert("", "end", values=(i, s["type"], s.get("value","")))
+                st.insert("", "end",
+                          values=(i, _friendly(s["type"]), s.get("value", "")))
 
         refresh()
 
-        form     = tk.Frame(dlg, bg=BG)
+        # Edit form
+        form = tk.Frame(dlg, bg=CARD, padx=14, pady=10)
         form.pack(fill="x", padx=20, pady=(0, 4))
-        type_var = tk.StringVar(value=STEP_TYPES[0])
-        val_var  = tk.StringVar()
 
-        r1 = tk.Frame(form, bg=BG)
-        r1.pack(fill="x", pady=2)
-        _lbl(r1, "Type:", fg=MUT, bg=BG, width=8, anchor="w").pack(side="left")
-        ttk.Combobox(r1, textvariable=type_var, values=STEP_TYPES,
-                     state="readonly", width=16).pack(side="left", padx=(0,8))
-        r2 = tk.Frame(form, bg=BG)
-        r2.pack(fill="x", pady=2)
-        _lbl(r2, "Value:", fg=MUT, bg=BG, width=8, anchor="w").pack(side="left")
+        type_var = tk.StringVar(value=_FRIENDLY_TYPES[0])
+        val_var  = tk.StringVar()
+        hint_var = tk.StringVar(value="Pilih jenis aksi untuk melihat petunjuk")
+
+        r1 = tk.Frame(form, bg=CARD)
+        r1.pack(fill="x", pady=(0, 4))
+        _lbl(r1, "Jenis Aksi:", fg=MUT, bg=CARD, width=12, anchor="w").pack(side="left")
+        type_cb = ttk.Combobox(r1, textvariable=type_var,
+                               values=_FRIENDLY_TYPES,
+                               state="readonly", width=18)
+        type_cb.pack(side="left", padx=(0, 8))
+        hint_lbl = tk.Label(r1, textvariable=hint_var,
+                            bg=CARD, fg=MUT, font=("Segoe UI", 8),
+                            anchor="w")
+        hint_lbl.pack(side="left", fill="x", expand=True)
+
+        def _update_hint(*_):
+            eng = _FRIENDLY_TO_ENG.get(type_var.get(), type_var.get())
+            hint_var.set(_TYPE_HINT.get(eng, ""))
+        type_cb.bind("<<ComboboxSelected>>", _update_hint)
+
+        r2 = tk.Frame(form, bg=CARD)
+        r2.pack(fill="x")
+        _lbl(r2, "Nilai / Target:", fg=MUT, bg=CARD, width=12, anchor="w").pack(
+            side="left")
         ttk.Entry(r2, textvariable=val_var,
-                  font=("Segoe UI", 10)).pack(
-            side="left", fill="x", expand=True)
+                  font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True)
 
         def on_sel(event):
             s = st.selection()
             if s:
                 i = st.index(s[0])
                 if i < len(step_data):
-                    type_var.set(step_data[i]["type"])
-                    val_var.set(step_data[i].get("value",""))
+                    eng = step_data[i]["type"]
+                    type_var.set(_ENG_TO_FRIENDLY.get(eng, eng))
+                    val_var.set(step_data[i].get("value", ""))
+                    _update_hint()
         st.bind("<<TreeviewSelect>>", on_sel)
+
+        def _get_eng_type():
+            return _FRIENDLY_TO_ENG.get(type_var.get(), type_var.get())
 
         def upd():
             s = st.selection()
@@ -3765,11 +4080,11 @@ class SynthexApp:
                 return
             i = st.index(s[0])
             if i < len(step_data):
-                step_data[i] = {"type": type_var.get(), "value": val_var.get()}
+                step_data[i] = {"type": _get_eng_type(), "value": val_var.get()}
                 refresh()
 
         def add():
-            step_data.append({"type": type_var.get(), "value": val_var.get()})
+            step_data.append({"type": _get_eng_type(), "value": val_var.get()})
             refresh()
 
         def delete():
@@ -3787,7 +4102,7 @@ class SynthexApp:
                 return
             i = st.index(s[0])
             if i > 0:
-                step_data[i-1], step_data[i] = step_data[i], step_data[i-1]
+                step_data[i - 1], step_data[i] = step_data[i], step_data[i - 1]
                 refresh()
 
         def move_down():
@@ -3796,26 +4111,34 @@ class SynthexApp:
                 return
             i = st.index(s[0])
             if i < len(step_data) - 1:
-                step_data[i+1], step_data[i] = step_data[i], step_data[i+1]
+                step_data[i + 1], step_data[i] = step_data[i], step_data[i + 1]
                 refresh()
 
-        btn_row = tk.Frame(form, bg=BG)
-        btn_row.pack(fill="x", pady=(6, 0))
-        for txt, cmd in [("Update", upd), ("+ Add", add),
-                         ("Delete", delete), ("Up", move_up),
-                         ("Down",   move_down)]:
-            ttk.Button(btn_row, text=txt, command=cmd).pack(
-                side="left", padx=(0, 4))
+        btn_row = tk.Frame(form, bg=CARD)
+        btn_row.pack(fill="x", pady=(8, 0))
+        for txt, cmd, col in [
+            ("Perbarui",  upd,       ACC),
+            ("+ Tambah",  add,       GRN),
+            ("Hapus",     delete,    RED),
+            ("Naik",      move_up,   MUT),
+            ("Turun",     move_down, MUT),
+        ]:
+            tk.Button(btn_row, text=txt, bg=col if col != MUT else CARD,
+                      fg=BG if col != MUT else FG,
+                      font=("Segoe UI", 9), relief="flat", bd=0,
+                      padx=10, pady=5, cursor="hand2",
+                      command=cmd).pack(side="left", padx=(0, 4))
 
         def save_rec():
             name = simpledialog.askstring(
-                "Name Your Recording", "Recording name:", parent=dlg)
+                "Nama Rekaman",
+                "Beri nama rekaman ini\n(contoh: Login Admin, Isi Form Pesanan):",
+                parent=dlg)
             if not name:
                 return
             folder = (self._rec_folder_var.get()
                       if self._rec_folder_var else "General")
-            if edit_idx is not None and 0 <= edit_idx < len(
-                    self._ud.recordings):
+            if edit_idx is not None and 0 <= edit_idx < len(self._ud.recordings):
                 self._ud.recordings[edit_idx].update({
                     "steps":      list(step_data),
                     "step_count": len(step_data),
@@ -3835,15 +4158,15 @@ class SynthexApp:
             self._refresh_recordings_tree()
             dlg.destroy()
             self._sv.set(
-                "Recording '{}' saved ({} steps).".format(name, len(step_data)))
+                "Rekaman '{}' disimpan ({} langkah).".format(name, len(step_data)))
 
         sr = tk.Frame(dlg, bg=BG)
         sr.pack(fill="x", padx=20, pady=(0, 16))
-        tk.Button(sr, text="Save Recording", bg=ACC, fg=BG,
+        tk.Button(sr, text="Simpan Rekaman", bg=ACC, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=8, cursor="hand2",
                   command=save_rec).pack(side="left")
-        ttk.Button(sr, text="Cancel",
+        ttk.Button(sr, text="Batal",
                    command=dlg.destroy).pack(side="left", padx=(8, 0))
 
     def _play_selected_recording(self):
@@ -5050,18 +5373,815 @@ class SynthexApp:
         threading.Thread(target=_run, daemon=True).start()
 
     def _hk_record_toggle(self):
-        """Ctrl+3: Start or stop simple recording."""
+        """Ctrl+3: Open recorder window, or stop recording if active."""
         if self._rec:
             actions_count = 0
             if self._simple_recorder:
                 actions_count = len(self._simple_recorder.get_actions())
             self._stop_simple_rec()
             self._show_toast(
-                "Recording stopped - {} steps recorded".format(actions_count),
+                "Rekaman dihentikan - {} langkah terekam".format(actions_count),
                 kind="info")
         else:
-            self._show_toast("Recording started...", kind="info")
+            self._show_toast("Membuka Recorder...", kind="info")
             self._start_simple_rec()
+
+    # ================================================================
+    #  GOOGLE ACCOUNTS MANAGER  (in Settings)
+    # ================================================================
+
+    def _build_google_accounts_card(self, parent):
+        from modules.sheets import connector as _sc
+
+        card = _card(parent, "Google Accounts  (Sheets)")
+        card.pack(fill="x", padx=20, pady=(12, 0))
+
+        # Description
+        _lbl(card,
+             "Tambah beberapa akun Google (service account) untuk pakai di\n"
+             "beda spreadsheet atau beda Gmail.",
+             fg=MUT, bg=CARD, font=("Segoe UI", 9),
+             justify="left").pack(anchor="w", pady=(0, 10))
+
+        # Accounts list frame
+        list_frame = tk.Frame(card, bg=CARD)
+        list_frame.pack(fill="x", pady=(0, 8))
+
+        def _refresh_accounts():
+            for w in list_frame.winfo_children():
+                w.destroy()
+            accounts = _sc.list_accounts()
+            if not accounts:
+                _lbl(list_frame,
+                     "Belum ada akun Google terhubung.",
+                     fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+                return
+
+            # Header
+            hdr = tk.Frame(list_frame, bg=SIDE)
+            hdr.pack(fill="x", pady=(0, 2))
+            for txt, w in [("Nama", 110), ("Service Account Email", 280),
+                           ("Status", 70), ("Aksi", 120)]:
+                tk.Label(hdr, text=txt, bg=SIDE, fg=MUT,
+                         font=("Segoe UI", 8, "bold"),
+                         width=w // 8, anchor="w").pack(side="left", padx=4)
+
+            for acc in accounts:
+                row = tk.Frame(list_frame, bg=BG, pady=3)
+                row.pack(fill="x")
+
+                # Name
+                name_lbl = tk.Label(row, text=acc["name"], bg=BG, fg=FG,
+                                    font=("Segoe UI", 9, "bold"),
+                                    width=14, anchor="w")
+                name_lbl.pack(side="left", padx=(4, 0))
+
+                # Email (with copy button)
+                email_frame = tk.Frame(row, bg=BG)
+                email_frame.pack(side="left", padx=(4, 0))
+                email_txt = acc["email"] or "(invalid)"
+                tk.Label(email_frame, text=email_txt[:38],
+                         bg=BG, fg=GRN if acc["email"] else RED,
+                         font=("Consolas", 8), anchor="w").pack(side="left")
+                tk.Button(email_frame, text="copy", bg=BG, fg=MUT,
+                          font=("Segoe UI", 7), relief="flat", bd=0,
+                          cursor="hand2", padx=4,
+                          command=lambda e=acc["email"]: [
+                              self._root.clipboard_clear(),
+                              self._root.clipboard_append(e),
+                              self._sv.set("Email disalin: {}".format(e))
+                          ]).pack(side="left")
+
+                # Active badge
+                if acc["active"]:
+                    tk.Label(row, text=" AKTIF ", bg=GRN, fg=BG,
+                             font=("Segoe UI", 7, "bold"),
+                             padx=4).pack(side="left", padx=(8, 0))
+                else:
+                    tk.Button(row, text="Aktifkan", bg=CARD, fg=ACC,
+                              font=("Segoe UI", 8), relief="flat", bd=0,
+                              padx=6, pady=2, cursor="hand2",
+                              command=lambda n=acc["name"]: [
+                                  _sc.set_active_account(n),
+                                  _refresh_accounts(),
+                                  self._navigate("sheet"),
+                                  self._sv.set("Akun aktif: {}".format(n))
+                              ]).pack(side="left", padx=(8, 0))
+
+                # Delete
+                tk.Button(row, text="Hapus", bg=CARD, fg=RED,
+                          font=("Segoe UI", 8), relief="flat", bd=0,
+                          padx=6, pady=2, cursor="hand2",
+                          command=lambda n=acc["name"]: self._google_remove_account(
+                              n, _refresh_accounts)
+                          ).pack(side="right", padx=(0, 4))
+
+        _refresh_accounts()
+
+        # Action buttons
+        btn_row = tk.Frame(card, bg=CARD)
+        btn_row.pack(anchor="w", pady=(4, 0))
+        tk.Button(btn_row, text="+ Tambah Akun Google",
+                  bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=lambda: self._show_sheets_setup_guide(
+                      on_done=_refresh_accounts)
+                  ).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Panduan Setup",
+                  bg=CARD, fg=FG, font=("Segoe UI", 9),
+                  relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
+                  command=lambda: self._show_sheets_setup_guide()
+                  ).pack(side="left")
+
+    def _google_remove_account(self, name, refresh_cb):
+        from modules.sheets import connector as _sc
+        if not messagebox.askyesno(
+                "Hapus Akun",
+                "Hapus akun '{}'?\nSemua sheet yang pakai akun ini "
+                "perlu disetup ulang.".format(name),
+                parent=self._root):
+            return
+        _sc.remove_account(name)
+        refresh_cb()
+        self._sv.set("Akun '{}' dihapus.".format(name))
+
+    def _show_sheets_setup_guide(self, on_done=None):
+        """Step-by-step beginner wizard for Google Sheets setup."""
+        import webbrowser
+        from tkinter import filedialog
+        from modules.sheets import connector as _sc
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Setup Google Sheets — Panduan Langkah demi Langkah")
+        dlg.geometry("560x500")
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+
+        # ── Step definitions ──────────────────────────────────────────────
+        accs_now = _sc.list_accounts()
+        active_email_now = next((a["email"] for a in accs_now if a["active"]), "")
+
+        STEPS = [
+            {
+                "icon": "?", "color": ACC,
+                "title": "Selamat datang di panduan Google Sheets!",
+                "body": (
+                    "Panduan ini akan membantu kamu menghubungkan Google Sheets\n"
+                    "ke Synthex dalam 6 langkah mudah.\n\n"
+                    "Kamu hanya perlu:\n"
+                    "  - Akun Google (Gmail)\n"
+                    "  - Akses internet\n\n"
+                    "Tekan  Lanjut  untuk mulai."
+                ),
+            },
+            {
+                "icon": "1", "color": BLUE,
+                "title": "Buka Google Cloud Console",
+                "body": (
+                    "Google Cloud Console adalah tempat kamu membuat akun robot untuk Synthex.\n\n"
+                    "1. Klik tombol di bawah\n"
+                    "2. Login dengan Gmail yang ingin kamu pakai\n"
+                    "3. Kamu akan melihat halaman dashboard"
+                ),
+                "btn_label": "Buka Google Cloud Console",
+                "btn_cmd": lambda: webbrowser.open("https://console.cloud.google.com/"),
+            },
+            {
+                "icon": "2", "color": PRP,
+                "title": "Buat Project Baru",
+                "body": (
+                    "Project adalah wadah untuk pengaturan aplikasimu.\n\n"
+                    "1. Di pojok kiri atas, klik dropdown nama project\n"
+                    "2. Klik  New Project\n"
+                    "3. Isi nama: Synthex\n"
+                    "4. Klik  Create\n\n"
+                    "Tunggu sebentar sampai project selesai dibuat."
+                ),
+                "btn_label": "Langsung ke halaman buat project",
+                "btn_cmd": lambda: webbrowser.open(
+                    "https://console.cloud.google.com/projectcreate"),
+            },
+            {
+                "icon": "3", "color": GRN,
+                "title": "Aktifkan Google Sheets API",
+                "body": (
+                    "Kita perlu mengaktifkan izin untuk akses Google Sheets.\n\n"
+                    "1. Klik tombol di bawah\n"
+                    "2. Pastikan project Synthex sudah dipilih (cek pojok kiri atas)\n"
+                    "3. Klik tombol biru  Enable\n\n"
+                    "Selesai! API sudah aktif."
+                ),
+                "btn_label": "Aktifkan Google Sheets API",
+                "btn_cmd": lambda: webbrowser.open(
+                    "https://console.cloud.google.com/apis/library/sheets.googleapis.com"),
+            },
+            {
+                "icon": "4", "color": YEL,
+                "title": "Buat Service Account & Download Kunci",
+                "body": (
+                    "Service account adalah akun robot untuk Synthex (bukan akunmu sendiri).\n\n"
+                    "1. Klik tombol di bawah\n"
+                    "2. Klik  + Create Service Account\n"
+                    "3. Isi nama: synthex-bot  lalu klik Done\n"
+                    "4. Klik nama akun yang baru dibuat\n"
+                    "5. Buka tab  Keys  -> Add Key -> Create new key -> JSON\n"
+                    "6. File .json akan otomatis terdownload ke komputermu"
+                ),
+                "btn_label": "Buka halaman Service Accounts",
+                "btn_cmd": lambda: webbrowser.open(
+                    "https://console.cloud.google.com/iam-admin/serviceaccounts"),
+            },
+            {
+                "icon": "5", "color": ACC,
+                "title": "Upload File JSON ke Synthex",
+                "body": "Pilih file .json yang tadi didownload dari langkah sebelumnya:",
+                "is_upload": True,
+            },
+            {
+                "icon": "6", "color": GRN,
+                "title": "Share Spreadsheet ke Synthex",
+                "body": (
+                    "Langkah terakhir: beri izin Synthex untuk baca/tulis spreadsheetmu.\n\n"
+                    "1. Buka Google Spreadsheet yang ingin dipakai\n"
+                    "2. Klik tombol  Share  (pojok kanan atas)\n"
+                    "3. Tempel email service account di bawah ini\n"
+                    "4. Pilih akses  Editor\n"
+                    "5. Klik Send\n\n"
+                    "Selesai! Synthex sudah bisa mengakses spreadsheetmu."
+                ),
+                "is_share": True,
+            },
+        ]
+
+        # ── Header bar ────────────────────────────────────────────────────
+        hdr = tk.Frame(dlg, bg=ACC, height=46)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="  Panduan Setup Google Sheets", bg=ACC, fg=BG,
+                 font=("Segoe UI", 12, "bold")).pack(side="left", pady=12)
+        tk.Button(hdr, text="X", bg=ACC, fg=BG,
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=10, cursor="hand2",
+                  command=dlg.destroy).pack(side="right", padx=8, pady=10)
+
+        # ── Progress dots ─────────────────────────────────────────────────
+        dot_frame = tk.Frame(dlg, bg=BG, pady=8)
+        dot_frame.pack(fill="x", padx=20)
+        dot_labels = []
+        for i, s in enumerate(STEPS):
+            lbl = tk.Label(dot_frame, text=" ", bg=SIDE, width=4, height=1)
+            lbl.pack(side="left", padx=3)
+            dot_labels.append((lbl, s["color"]))
+
+        # ── Content area ──────────────────────────────────────────────────
+        content_frame = tk.Frame(dlg, bg=BG)
+        content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 8))
+
+        # ── Bottom nav ────────────────────────────────────────────────────
+        nav = tk.Frame(dlg, bg=CARD, pady=10)
+        nav.pack(fill="x", side="bottom")
+
+        btn_prev = tk.Button(nav, text="< Kembali", bg=SIDE, fg=FG,
+                             font=("Segoe UI", 9), relief="flat", bd=0,
+                             padx=14, pady=6, cursor="hand2")
+        btn_prev.pack(side="left", padx=16)
+
+        step_lbl = tk.Label(nav, text="", bg=CARD, fg=MUT,
+                            font=("Segoe UI", 9))
+        step_lbl.pack(side="left", expand=True)
+
+        btn_close = tk.Button(nav, text="Tutup", bg=SIDE, fg=FG,
+                              font=("Segoe UI", 9), relief="flat", bd=0,
+                              padx=14, pady=6, cursor="hand2",
+                              command=dlg.destroy)
+        btn_close.pack(side="right", padx=16)
+
+        btn_next = tk.Button(nav, text="Lanjut >", bg=ACC, fg=BG,
+                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                             padx=14, pady=6, cursor="hand2")
+        btn_next.pack(side="right", padx=(0, 8))
+
+        upload_status_var = tk.StringVar()
+        upload_name_var   = tk.StringVar(value="gmail_saya")
+
+        _cur = [0]
+
+        def _render(idx):
+            _cur[0] = idx
+            for w in content_frame.winfo_children():
+                w.destroy()
+            step  = STEPS[idx]
+            total = len(STEPS)
+
+            for i, (lbl, col) in enumerate(dot_labels):
+                lbl.configure(bg=col if i == idx else SIDE)
+
+            step_lbl.configure(text="Langkah {} dari {}".format(idx + 1, total))
+            btn_prev.configure(state="normal" if idx > 0 else "disabled")
+            is_last = idx == total - 1
+            btn_next.configure(
+                text="Selesai!" if is_last else "Lanjut >",
+                bg=GRN if is_last else ACC)
+
+            top_row = tk.Frame(content_frame, bg=BG)
+            top_row.pack(fill="x", pady=(8, 4))
+            tk.Label(top_row, text=step["icon"], bg=step["color"], fg=BG,
+                     font=("Segoe UI", 11, "bold"), width=3, pady=4,
+                     ).pack(side="left")
+            tk.Label(top_row, text="  " + step["title"], bg=BG, fg=FG,
+                     font=("Segoe UI", 11, "bold"), anchor="w",
+                     ).pack(side="left", fill="x", expand=True)
+
+            tk.Frame(content_frame, bg=SIDE, height=1).pack(fill="x", pady=(4, 10))
+
+            tk.Label(content_frame, text=step["body"], bg=BG, fg=MUT,
+                     font=("Segoe UI", 10), justify="left", anchor="nw",
+                     wraplength=500).pack(anchor="w", fill="x")
+
+            if step.get("btn_label"):
+                tk.Button(content_frame, text=step["btn_label"],
+                          bg=step["color"], fg=BG,
+                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          padx=14, pady=7, cursor="hand2",
+                          command=step["btn_cmd"]).pack(anchor="w", pady=(14, 0))
+
+            if step.get("is_upload"):
+                up_row = tk.Frame(content_frame, bg=BG)
+                up_row.pack(fill="x", pady=(12, 0))
+                tk.Label(up_row, text="Nama akun (bebas):", bg=BG, fg=MUT,
+                         font=("Segoe UI", 9)).pack(side="left")
+                tk.Entry(up_row, textvariable=upload_name_var,
+                         bg=CARD, fg=FG, insertbackground=ACC,
+                         font=("Segoe UI", 10), relief="flat",
+                         bd=0, highlightthickness=1,
+                         highlightbackground=SIDE, highlightcolor=ACC,
+                         width=18).pack(side="left", padx=(8, 0))
+
+                status_up = tk.Label(content_frame, textvariable=upload_status_var,
+                                     bg=BG, fg=GRN, font=("Segoe UI", 9),
+                                     wraplength=500, justify="left")
+
+                def _do_upload(s_lbl=status_up):
+                    path = filedialog.askopenfilename(
+                        parent=dlg,
+                        title="Pilih file credentials JSON",
+                        filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+                    if not path:
+                        return
+                    nm = upload_name_var.get().strip() or "default"
+                    ok, msg = _sc.add_account(nm, path)
+                    if ok:
+                        upload_status_var.set("Berhasil! Email: {}".format(msg))
+                        s_lbl.configure(fg=GRN)
+                        if on_done:
+                            on_done()
+                        nonlocal active_email_now
+                        acts = _sc.list_accounts()
+                        active_email_now = next(
+                            (a["email"] for a in acts if a["active"]), msg)
+                    else:
+                        upload_status_var.set("Gagal: {}".format(msg))
+                        s_lbl.configure(fg=RED)
+
+                tk.Button(content_frame, text="Pilih File credentials.json",
+                          bg=ACC, fg=BG, font=("Segoe UI", 10, "bold"),
+                          relief="flat", bd=0, padx=16, pady=8,
+                          cursor="hand2", command=_do_upload
+                          ).pack(anchor="w", pady=(10, 0))
+                status_up.pack(anchor="w", pady=(6, 0))
+
+            if step.get("is_share"):
+                email_show = active_email_now
+                if not email_show:
+                    acts = _sc.list_accounts()
+                    email_show = next((a["email"] for a in acts if a["active"]), "")
+
+                share_f = tk.Frame(content_frame, bg=CARD, padx=14, pady=12)
+                share_f.pack(fill="x", pady=(14, 0))
+                tk.Label(share_f,
+                         text="Email service account (salin & tempel ke Share):",
+                         bg=CARD, fg=YEL,
+                         font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                em_row = tk.Frame(share_f, bg=CARD)
+                em_row.pack(fill="x", pady=(6, 0))
+                disp = email_show or "(belum ada akun - selesaikan langkah 5 dulu)"
+                tk.Label(em_row, text=disp, bg=CARD, fg=GRN,
+                         font=("Consolas", 10, "bold")).pack(side="left")
+                if email_show:
+                    tk.Button(em_row, text="Salin",
+                              bg=ACC, fg=BG,
+                              font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                              padx=10, pady=3, cursor="hand2",
+                              command=lambda e=email_show: [
+                                  self._root.clipboard_clear(),
+                                  self._root.clipboard_append(e),
+                                  self._sv.set("Email disalin!")
+                              ]).pack(side="left", padx=(10, 0))
+
+                tk.Button(content_frame, text="Buka Google Sheets sekarang",
+                          bg=GRN, fg=BG,
+                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          padx=14, pady=7, cursor="hand2",
+                          command=lambda: webbrowser.open("https://sheets.google.com")
+                          ).pack(anchor="w", pady=(14, 0))
+
+        def _go(delta):
+            nxt = _cur[0] + delta
+            if 0 <= nxt < len(STEPS):
+                _render(nxt)
+            elif nxt >= len(STEPS):
+                dlg.destroy()
+
+        btn_prev.configure(command=lambda: _go(-1))
+        btn_next.configure(command=lambda: _go(+1))
+        _render(0)
+    # ================================================================
+    #  TEMPLATES PAGE
+    # ================================================================
+
+    def _pg_templates(self):
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Template Macros",
+                  "Pilih template siap pakai, kustomisasi, lalu simpan sebagai macro.")
+
+        templates = _load_templates()
+        if not templates:
+            _lbl(f, "Tidak ada template ditemukan.",
+                 fg=MUT, font=("Segoe UI", 10)).pack(padx=24, pady=20)
+            return f
+
+        # Scrollable canvas
+        canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
+        sb = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        inner = tk.Frame(canvas, bg=BG)
+        win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        inner.bind("<Configure>", lambda e: canvas.configure(
+            scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(
+            win_id, width=e.width))
+
+        # Step-type icons for step list
+        _TICONS = {
+            "go_to_url": "->", "click": "[*]", "type": "[T]",
+            "get_text": "<T", "get_number": "<#", "wait": "[~]",
+            "sheet_read_cell": "[R]", "sheet_write_cell": "[W]",
+            "sheet_find_row": "[F]", "sheet_append_row": "[+]",
+            "if_equals": "[=]", "if_contains": "[?]", "notify": "[!]",
+            "sheet_get_pending_rows": "[P]", "web_get_order_list": "[O]",
+            "validate_and_confirm_orders": "[V]",
+        }
+        _TCOLORS = {
+            "go_to_url": BLUE, "click": ACC, "type": GRN,
+            "get_text": YEL, "get_number": YEL, "wait": MUT,
+            "sheet_read_cell": GRN, "sheet_write_cell": GRN,
+            "sheet_find_row": GRN, "sheet_append_row": GRN,
+            "if_equals": PRP, "if_contains": PRP, "notify": RED,
+        }
+        _CARD_COLORS = [ACC, GRN, YEL, PRP, BLUE, RED]
+
+        for t_idx, tpl in enumerate(templates):
+            card_acc = _CARD_COLORS[t_idx % len(_CARD_COLORS)]
+
+            card = tk.Frame(inner, bg=CARD, padx=0, pady=0)
+            card.pack(fill="x", padx=20, pady=(0, 14))
+
+            # Color stripe on left
+            tk.Frame(card, bg=card_acc, width=5).pack(side="left", fill="y")
+
+            body = tk.Frame(card, bg=CARD, padx=16, pady=12)
+            body.pack(side="left", fill="both", expand=True)
+
+            # Header row
+            hrow = tk.Frame(body, bg=CARD)
+            hrow.pack(fill="x")
+            cont = tk.BooleanVar(value=tpl.get("continuous_mode", False))
+            _lbl(hrow, tpl.get("name", ""), bg=CARD, fg=FG,
+                 font=("Segoe UI", 12, "bold")).pack(side="left")
+            if cont.get():
+                tk.Label(hrow, text=" LOOP ", bg=YEL, fg=BG,
+                         font=("Segoe UI", 7, "bold"),
+                         padx=4).pack(side="left", padx=(8, 0))
+            steps_count = len(tpl.get("steps", []))
+            _lbl(hrow, "  {} steps".format(steps_count), fg=MUT, bg=CARD,
+                 font=("Segoe UI", 9)).pack(side="left")
+
+            _lbl(body, tpl.get("description", ""), fg=MUT, bg=CARD,
+                 font=("Segoe UI", 9), justify="left").pack(
+                anchor="w", pady=(4, 8))
+
+            # Step preview chips
+            chip_row = tk.Frame(body, bg=CARD)
+            chip_row.pack(fill="x", pady=(0, 10))
+            for step in tpl.get("steps", [])[:8]:
+                stype = step.get("type", "")
+                icon  = _TICONS.get(stype, "[?]")
+                clr   = _TCOLORS.get(stype, MUT)
+                chip  = tk.Frame(chip_row, bg=BG, padx=5, pady=2)
+                chip.pack(side="left", padx=(0, 4), pady=2)
+                tk.Label(chip, text=icon, bg=BG, fg=clr,
+                         font=("Consolas", 8)).pack()
+            if steps_count > 8:
+                tk.Label(chip_row, text="+{}".format(steps_count - 8),
+                         bg=BG, fg=MUT, font=("Consolas", 8),
+                         padx=4, pady=2).pack(side="left")
+
+            # Action buttons
+            btn_row = tk.Frame(body, bg=CARD)
+            btn_row.pack(anchor="w")
+            tk.Button(
+                btn_row, text="Load Template",
+                bg=card_acc, fg=BG,
+                font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                padx=14, pady=5, cursor="hand2",
+                command=lambda t=tpl: self._mb_open_with_template(t)
+            ).pack(side="left", padx=(0, 8))
+            tk.Button(
+                btn_row, text="Preview Steps",
+                bg=CARD, fg=FG,
+                font=("Segoe UI", 9), relief="flat", bd=0,
+                padx=10, pady=5, cursor="hand2",
+                command=lambda t=tpl: self._template_preview(t)
+            ).pack(side="left")
+
+        return f
+
+    def _template_preview(self, tpl):
+        """Show a popup with all steps of a template."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Preview: {}".format(tpl.get("name", "")))
+        dlg.geometry("560x480")
+        dlg.configure(bg=BG)
+        dlg.resizable(True, True)
+
+        _lbl(dlg, tpl.get("name", ""),
+             font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(16, 2))
+        _lbl(dlg, tpl.get("description", ""),
+             fg=MUT, font=("Segoe UI", 9)).pack(anchor="w", padx=20, pady=(0, 10))
+        tk.Frame(dlg, bg=SIDE, height=1).pack(fill="x", padx=20)
+
+        lf = tk.Frame(dlg, bg=CARD, padx=10, pady=10)
+        lf.pack(fill="both", expand=True, padx=20, pady=10)
+
+        st = ttk.Treeview(lf, columns=("no", "type", "detail"),
+                          show="headings", selectmode="browse")
+        st.heading("no",     text="#")
+        st.heading("type",   text="Type")
+        st.heading("detail", text="Detail")
+        st.column("no",     width=36,  anchor="center")
+        st.column("type",   width=160, anchor="w")
+        st.column("detail", width=310, anchor="w")
+        vsb = ttk.Scrollbar(lf, orient="vertical", command=st.yview)
+        st.configure(yscrollcommand=vsb.set)
+        st.pack(side="left", fill="both", expand=True)
+        vsb.pack(side="right", fill="y")
+
+        for i, step in enumerate(tpl.get("steps", []), 1):
+            st.insert("", "end", values=(i, step.get("type", ""), _step_label(step)))
+
+        btn_f = tk.Frame(dlg, bg=BG)
+        btn_f.pack(fill="x", padx=20, pady=(0, 16))
+        tk.Button(btn_f, text="Load this Template", bg=ACC, fg=BG,
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=14, pady=7, cursor="hand2",
+                  command=lambda: [dlg.destroy(),
+                                   self._mb_open_with_template(tpl)]).pack(side="left")
+        ttk.Button(btn_f, text="Close", command=dlg.destroy).pack(
+            side="left", padx=(10, 0))
+
+    # ================================================================
+    #  LOGS PAGE  (Live log viewer)
+    # ================================================================
+
+    def _pg_logs(self):
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Live Logs",
+                  "Semua event & error Synthex ditampilkan di sini secara real-time.")
+
+        # Toolbar
+        tb = tk.Frame(f, bg=BG)
+        tb.pack(fill="x", padx=20, pady=(0, 6))
+
+        level_var = tk.StringVar(value="ALL")
+        for lv in ("ALL", "INFO", "WARNING", "ERROR"):
+            tk.Radiobutton(tb, text=lv, variable=level_var, value=lv,
+                           bg=BG, fg=FG, selectcolor=CARD,
+                           activebackground=BG, activeforeground=ACC,
+                           font=("Segoe UI", 8),
+                           command=lambda: None).pack(side="left", padx=(0, 8))
+
+        tk.Button(tb, text="Clear", bg=CARD, fg=RED,
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                  padx=10, pady=3, cursor="hand2",
+                  command=lambda: [
+                      lw.configure(state="normal"),
+                      lw.delete("1.0", tk.END),
+                      lw.configure(state="disabled")
+                  ]).pack(side="right")
+        tk.Button(tb, text="Copy All", bg=CARD, fg=FG,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  padx=10, pady=3, cursor="hand2",
+                  command=lambda: [
+                      self._root.clipboard_clear(),
+                      self._root.clipboard_append(
+                          lw.get("1.0", tk.END))
+                  ]).pack(side="right", padx=(0, 6))
+
+        # Log widget
+        lf = tk.Frame(f, bg=CARD, padx=6, pady=6)
+        lf.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        lw = scrolledtext.ScrolledText(
+            lf, bg="#0A0A0F", fg=FG, insertbackground=FG,
+            font=("Consolas", 9), relief="flat", state="disabled",
+            wrap="word")
+        lw.pack(fill="both", expand=True)
+
+        for tag, clr in [("info",  FG), ("warn", YEL),
+                         ("error", RED), ("debug", MUT),
+                         ("ok",    GRN), ("fail", RED)]:
+            lw.tag_configure(tag, foreground=clr)
+
+        # Attach logger handler
+        handler = _TkLogHandler(lw)
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s  [%(name)-12s]  %(levelname)-7s  %(message)s",
+            "%H:%M:%S"))
+        logging.getLogger().addHandler(handler)
+
+        # Store ref so we can detach on page destroy
+        def _on_destroy(e, h=handler):
+            try:
+                logging.getLogger().removeHandler(h)
+            except Exception:
+                pass
+        f.bind("<Destroy>", _on_destroy)
+
+        # Guide hint
+        tk.Label(f, text="Logs dari semua modul (browser, sheets, scheduler, macro) muncul otomatis.",
+                 bg=BG, fg=MUT, font=("Segoe UI", 7)).pack(padx=20, pady=(0, 4))
+        return f
+
+    # ================================================================
+    #  HELP OVERLAY
+    # ================================================================
+
+    _HELP_TEXT = {
+        "home": (
+            "HOME  -  Panduan Cepat\n\n"
+            "Quick Actions bar di atas:\n"
+            "  + New Macro   -> buat macro baru di Schedule\n"
+            "  Start Recording  -> rekam klik/ketik sekarang\n"
+            "  Open Spy      -> lihat koordinat elemen browser\n"
+            "  Templates     -> macro siap pakai\n"
+            "  View Logs     -> pantau log real-time\n\n"
+            "My Tasks Today  : task terjadwal & status terakhir\n"
+            "Quick Run       : jalankan macro dengan 1 klik\n"
+            "Recent Activity : 5 log aktivitas terakhir"
+        ),
+        "record": (
+            "RECORD  -  Panduan\n\n"
+            "Simple Record:\n"
+            "  Rekam klik & ketik berdasarkan posisi layar.\n"
+            "  Cocok untuk aplikasi desktop atau game.\n"
+            "  Shortcut: Ctrl+3\n\n"
+            "Smart Record:\n"
+            "  Rekam selector elemen web (bukan posisi).\n"
+            "  Tahan posisi meski window dipindah/resize.\n"
+            "  Butuh Chrome yang sudah dibuka.\n\n"
+            "Live Preview Panel:\n"
+            "  Saat recording, panel melayang menampilkan\n"
+            "  6 langkah terakhir yang direkam secara real-time."
+        ),
+        "spy": (
+            "SPY MODE  -  Panduan\n\n"
+            "1. Klik 'Open Floating Spy'\n"
+            "2. Arahkan kursor ke elemen Chrome\n"
+            "3. Panel menampilkan:\n"
+            "     Screen coords (X, Y)\n"
+            "     Client coords (relatif ke window)\n"
+            "     Warna pixel + swatch\n"
+            "     Window title, class, handle\n"
+            "     Tag/ID/CSS/XPath element (tekan F8)\n\n"
+            "Simpan koordinat:\n"
+            "  Isi nama -> tekan SAVE / F8\n"
+            "  Tersimpan di data/spy_coords.json\n"
+            "  Double-click di list -> copy ke clipboard"
+        ),
+        "schedule": (
+            "SCHEDULE  -  Panduan Macro Builder\n\n"
+            "Step Types:\n"
+            "  -> go_to_url   : buka URL di Chrome\n"
+            "  [*] click      : klik elemen\n"
+            "  [T] type       : ketik teks ke field\n"
+            "  <T  get_text   : ambil teks -> simpan ke variabel\n"
+            "  [R] sheet_read : baca sel Google Sheet\n"
+            "  [W] sheet_write: tulis ke sel\n"
+            "  [=] if_equals  : kondisi / logika\n"
+            "  [!] notify     : kirim notifikasi\n\n"
+            "Tips:\n"
+            "  Gunakan {variable} untuk memakai nilai yang disimpan\n"
+            "  Test Run: jalankan 1 step per step untuk debugging\n"
+            "  Spy Mode: klik Use in Macro untuk insert selector otomatis"
+        ),
+        "templates": (
+            "TEMPLATES  -  Panduan\n\n"
+            "Template adalah macro yang sudah jadi.\n"
+            "Kamu tinggal mengganti placeholder:\n"
+            "  {url}           -> ganti dengan URL target\n"
+            "  {selector}      -> CSS selector elemen\n"
+            "  {sheet}         -> nama sheet yang terhubung\n"
+            "  {cell}          -> alamat sel, contoh: A1\n\n"
+            "Cara pakai:\n"
+            "  1. Klik 'Load Template'\n"
+            "  2. Macro Builder terbuka otomatis\n"
+            "  3. Ganti setiap placeholder dengan nilai asli\n"
+            "  4. Klik Save untuk menyimpan macro"
+        ),
+        "sheet": (
+            "GOOGLE SHEETS  -  Panduan\n\n"
+            "Setup sekali:\n"
+            "  1. Buat Service Account di Google Cloud Console\n"
+            "  2. Download credentials.json\n"
+            "  3. Share spreadsheet ke email service account\n"
+            "  4. Upload credentials.json ke Synthex\n\n"
+            "Quick Actions:\n"
+            "  Read Cell  : baca nilai 1 sel\n"
+            "  Write Cell : tulis nilai ke sel\n"
+            "  Append Row : tambah baris baru di bawah"
+        ),
+        "logs": (
+            "LOGS  -  Panduan\n\n"
+            "Semua modul Synthex menulis log di sini:\n"
+            "  [INFO]    aktivitas normal\n"
+            "  [WARNING] peringatan (tidak fatal)\n"
+            "  [ERROR]   error yang butuh perhatian\n\n"
+            "Tips debug:\n"
+            "  Jika macro gagal -> lihat ERROR di log\n"
+            "  Jika sheets gagal -> cari pesan 'gspread'\n"
+            "  Jika browser gagal -> cari pesan 'playwright'\n\n"
+            "Copy All -> salin semua log ke clipboard\n"
+            "Clear    -> bersihkan tampilan log"
+        ),
+    }
+
+    def _show_help(self):
+        """Show contextual help overlay for current page."""
+        page = self._cur
+        text = self._HELP_TEXT.get(page, (
+            "Synthex  -  Bantuan\n\n"
+            "Pilih halaman dari sidebar, lalu klik ? untuk panduan spesifik.\n\n"
+            "Shortcut:\n"
+            "  Ctrl+1   : Play recording terakhir\n"
+            "  Ctrl+3   : Mulai/Stop simple recording\n\n"
+            "Butuh bantuan lebih? Hubungi Yohn18."
+        ))
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Panduan - {}".format(page.capitalize()))
+        dlg.geometry("480x400")
+        dlg.configure(bg=BG)
+        dlg.resizable(True, True)
+        dlg.attributes("-topmost", True)
+
+        # Header
+        hdr = tk.Frame(dlg, bg=ACC, height=42)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="  Panduan: {}".format(page.upper()),
+                 bg=ACC, fg=BG, font=("Segoe UI", 11, "bold")).pack(
+            side="left", pady=10)
+        tk.Button(hdr, text="X", bg=ACC, fg=BG,
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=10, cursor="hand2",
+                  command=dlg.destroy).pack(side="right", pady=8, padx=8)
+
+        # Content
+        txt = scrolledtext.ScrolledText(
+            dlg, bg=CARD, fg=FG, font=("Segoe UI", 10),
+            relief="flat", wrap="word", padx=16, pady=12,
+            state="normal")
+        txt.pack(fill="both", expand=True, padx=10, pady=10)
+        txt.insert("1.0", text)
+        txt.configure(state="disabled")
+
+        # Tip: navigate to other helps
+        nav_f = tk.Frame(dlg, bg=BG)
+        nav_f.pack(fill="x", padx=10, pady=(0, 10))
+        _lbl(nav_f, "Panduan lain:", fg=MUT, bg=BG,
+             font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+        for pg in ("home", "record", "spy", "schedule", "templates", "sheet", "logs"):
+            if pg != page:
+                tk.Button(nav_f, text=pg, bg=CARD, fg=MUT,
+                          font=("Segoe UI", 7), relief="flat", bd=0,
+                          padx=6, pady=2, cursor="hand2",
+                          command=lambda p=pg, d=dlg: [
+                              d.destroy(), self._show("{}".format(p)),
+                              self._root.after(50, self._show_help)
+                          ]).pack(side="left", padx=(0, 3))
 
     def _quit(self):
         if self._tray:
