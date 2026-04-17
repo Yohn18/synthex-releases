@@ -3,11 +3,20 @@ warnings.filterwarnings("ignore")
 import os
 os.environ['PYTHONWARNINGS'] = 'ignore'
 
-# Suppress PyInstaller temp directory warning
 import sys
-if hasattr(sys, '_MEIPASS'):
-    import logging
-    logging.disable(logging.CRITICAL)
+
+# ── DPI awareness: must be set before any GUI/mouse/UIA init ─────────────────
+# Ensures pynput (recording), pyautogui (playback), UIA, and ctypes all share
+# the same coordinate space (physical pixels).  Without this, on HiDPI displays
+# the exe might run as DPI-unaware while hooks report physical coords → offset.
+import ctypes as _ctypes
+try:
+    _ctypes.windll.shcore.SetProcessDpiAwareness(2)   # per-monitor DPI aware v1
+except Exception:
+    try:
+        _ctypes.windll.user32.SetProcessDPIAware()    # legacy fallback
+    except Exception:
+        pass
 
 """
 Synthex - Automation Platform by Yohn18
@@ -30,6 +39,23 @@ from core.config import Config
 from core.logger import get_logger
 
 logger = get_logger("main")
+
+# ── Global crash hook: write all unhandled exceptions to log ─────────────────
+import threading as _threading
+
+def _excepthook(exc_type, exc_value, exc_tb):
+    import traceback as _tb
+    logger.critical("UNHANDLED EXCEPTION: %s", "".join(
+        _tb.format_exception(exc_type, exc_value, exc_tb)))
+
+def _thread_excepthook(args):
+    import traceback as _tb
+    logger.critical("UNHANDLED THREAD EXCEPTION in %s: %s",
+        getattr(args.thread, 'name', '?'),
+        "".join(_tb.format_exception(args.exc_type, args.exc_value, args.exc_traceback)))
+
+sys.excepthook = _excepthook
+_threading.excepthook = _thread_excepthook
 
 
 def handle_shutdown(sig, frame):

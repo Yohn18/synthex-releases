@@ -1,0 +1,284 @@
+"""
+modules/remote_control.py
+──────────────────────────
+ADB + scrcpy helper layer for the Remote page.
+
+Features
+────────
+  AdbManager   – wraps adb.exe; connect/disconnect/pair/list devices
+  ScrcpyManager – launch/stop scrcpy subprocess for phone mirroring
+  NotifReader  – parse `adb shell dumpsys notification` output
+"""
+
+import os
+import re
+import subprocess
+import threading
+import time
+from core.logger import get_logger
+
+logger = get_logger("remote_control")
+
+# ── Locate adb.exe ────────────────────────────────────────────────────────────
+_ADB_CANDIDATES = [
+    r"C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools\adb.exe",
+    r"C:\Program Files\Android\platform-tools\adb.exe",
+    r"C:\Program Files (x86)\Android\platform-tools\adb.exe",
+]
+
+def _find_adb() -> str:
+    """Return path to adb.exe, or '' if not found."""
+    # Check hardcoded candidates
+    for p in _ADB_CANDIDATES:
+        if os.path.isfile(p):
+            return p
+    # Check PATH
+    try:
+        result = subprocess.run(
+            ["where", "adb"], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            return result.stdout.strip().splitlines()[0]
+    except Exception:
+        pass
+    return ""
+
+def _find_scrcpy() -> str:
+    """Return path to scrcpy.exe, or '' if not found."""
+    # Check project tools/ folder first
+    import sys
+    base = (os.path.dirname(sys.executable)
+            if getattr(sys, "frozen", False)
+            else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    local = os.path.join(base, "tools", "scrcpy", "scrcpy.exe")
+    if os.path.isfile(local):
+        return local
+    local2 = os.path.join(base, "tools", "scrcpy.exe")
+    if os.path.isfile(local2):
+        return local2
+    # Check PATH
+    try:
+        result = subprocess.run(
+            ["where", "scrcpy"], capture_output=True, text=True, timeout=3)
+        if result.returncode == 0:
+            return result.stdout.strip().splitlines()[0]
+    except Exception:
+        pass
+    return ""
+
+
+class AdbManager:
+    """Thin wrapper around adb.exe."""
+
+    SCRCPY_DOWNLOAD_URL = (
+        "https://github.com/Genymobile/scrcpy/releases/latest"
+    )
+
+    def __init__(self):
+        self.adb = _find_adb()
+        self._lock = threading.Lock()
+
+    @property
+    def available(self) -> bool:
+        return bool(self.adb)
+
+    def _run(self, *args, timeout=8) -> tuple[int, str, str]:
+        """Run adb command, return (returncode, stdout, stderr)."""
+        if not self.adb:
+            return (-1, "", "adb tidak ditemukan")
+        try:
+            r = subprocess.run(
+                [self.adb] + list(args),
+                capture_output=True, text=True, timeout=timeout,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            return (r.returncode, r.stdout.strip(), r.stderr.strip())
+        except subprocess.TimeoutExpired:
+            return (-1, "", "Timeout")
+        except Exception as e:
+            return (-1, "", str(e))
+
+    def list_devices(self) -> list[dict]:
+        """Return list of connected devices as [{"serial":…, "state":…}]."""
+        code, out, _ = self._run("devices")
+        devices = []
+        for line in out.splitlines()[1:]:
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split()
+            if len(parts) >= 2:
+                devices.append({"serial": parts[0], "state": parts[1]})
+        return devices
+
+    def connect(self, ip: str, port: int = 5555) -> tuple[bool, str]:
+        """adb connect IP:PORT → (ok, message)"""
+        target = "{}:{}".format(ip.strip(), port)
+        code, out, err = self._run("connect", target, timeout=10)
+        msg = out or err
+        ok  = "connected" in msg.lower() or "already" in msg.lower()
+        return (ok, msg)
+
+    def disconnect(self, target: str = "") -> tuple[bool, str]:
+        """adb disconnect [target]"""
+        args = ["disconnect"] + ([target] if target else [])
+        code, out, err = self._run(*args)
+        return (code == 0, out or err)
+
+    def pair(self, ip: str, port: int, code: str) -> tuple[bool, str]:
+        """adb pair IP:PORT CODE  (Android 11+ wireless pairing)"""
+        target = "{}:{}".format(ip.strip(), port)
+        rc, out, err = self._run("pair", target, code, timeout=15)
+        msg = out or err
+        ok  = "successfully" in msg.lower() or rc == 0
+        return (ok, msg)
+
+    def tcpip(self, port: int = 5555) -> tuple[bool, str]:
+        """adb tcpip PORT — switch device to TCP mode (requires USB first)."""
+        rc, out, err = self._run("tcpip", str(port))
+        return (rc == 0, out or err)
+
+    def get_device_ip(self) -> str:
+        """Try to read phone's WLAN IP from adb."""
+        _, out, _ = self._run("shell", "ip", "route")
+        # look for 'src <IP>'
+        m = re.search(r'src\s+([\d.]+)', out)
+        if m:
+            return m.group(1)
+        _, out2, _ = self._run("shell", "ip", "addr", "show", "wlan0")
+        m2 = re.search(r'inet\s+([\d.]+)/', out2)
+        if m2:
+            return m2.group(1)
+        return ""
+
+
+class NotifReader:
+    """Read active Android notifications via adb."""
+
+    def __init__(self, adb_manager: AdbManager):
+        self._adb = adb_manager
+
+    def fetch(self) -> list[dict]:
+        """
+        Return list of notification dicts:
+          {"app": str, "title": str, "text": str, "time": str}
+        """
+        if not self._adb.available:
+            return []
+        _, out, _ = self._adb._run(
+            "shell", "dumpsys", "notification", "--noredact", timeout=10)
+        return self._parse(out)
+
+    @staticmethod
+    def _parse(raw: str) -> list[dict]:
+        notifs = []
+        current: dict | None = None
+        for line in raw.splitlines():
+            s = line.strip()
+            # New notification block
+            m = re.match(r'NotificationRecord\(.*?pkg=([^\s,]+)', s)
+            if m:
+                if current:
+                    notifs.append(current)
+                current = {"app": m.group(1), "title": "", "text": "", "time": ""}
+                continue
+            if current is None:
+                continue
+            # Title
+            if s.startswith("android.title=") or "extras.title=" in s:
+                current["title"] = s.split("=", 1)[-1].strip().strip('"')
+            # Text
+            elif s.startswith("android.text=") or "extras.text=" in s:
+                current["text"] = s.split("=", 1)[-1].strip().strip('"')
+            # Time
+            elif s.startswith("when="):
+                current["time"] = s.split("=", 1)[-1].strip()
+
+        if current:
+            notifs.append(current)
+        # Filter out empty / system noise
+        return [n for n in notifs if n["app"] and (n["title"] or n["text"])][-30:]
+
+
+class ScrcpyManager:
+    """Launch and stop scrcpy for phone mirroring + control."""
+
+    def __init__(self, adb_manager: AdbManager):
+        self._adb   = adb_manager
+        self._proc  = None
+        self._lock  = threading.Lock()
+        self.path   = _find_scrcpy()
+
+    @property
+    def available(self) -> bool:
+        return bool(self.path)
+
+    @property
+    def running(self) -> bool:
+        with self._lock:
+            return self._proc is not None and self._proc.poll() is None
+
+    def start(self, serial: str = "",
+              max_size: int = 1024,
+              bitrate: str = "8M",
+              stay_awake: bool = True,
+              show_touches: bool = False,
+              always_on_top: bool = True,
+              no_audio: bool = False) -> tuple[bool, str]:
+        """
+        Launch scrcpy subprocess.
+        Returns (ok, message).
+        """
+        if not self.path:
+            return (False, "scrcpy tidak ditemukan. Download di:\n"
+                    + AdbManager.SCRCPY_DOWNLOAD_URL)
+        if self.running:
+            return (False, "scrcpy sudah berjalan.")
+
+        cmd = [self.path,
+               "--max-size", str(max_size),
+               "--video-bit-rate", bitrate,
+               "--window-title", "Synthex Mirror"]
+        if serial:
+            cmd += ["--serial", serial]
+        if stay_awake:
+            cmd.append("--stay-awake")
+        if show_touches:
+            cmd.append("--show-touches")
+        if always_on_top:
+            cmd.append("--always-on-top")
+        if no_audio:
+            cmd.append("--no-audio")
+
+        try:
+            with self._lock:
+                self._proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    creationflags=(subprocess.CREATE_NO_WINDOW
+                                   if os.name == "nt" else 0))
+            logger.info("scrcpy started: %s", " ".join(cmd))
+            return (True, "Mirror dimulai.")
+        except Exception as e:
+            logger.error("scrcpy start error: %s", e)
+            return (False, str(e))
+
+    def stop(self):
+        with self._lock:
+            if self._proc and self._proc.poll() is None:
+                try:
+                    self._proc.terminate()
+                    self._proc.wait(timeout=3)
+                except Exception:
+                    try:
+                        self._proc.kill()
+                    except Exception:
+                        pass
+            self._proc = None
+        logger.info("scrcpy stopped.")
+
+    def poll(self) -> bool:
+        """Check if scrcpy process is still alive."""
+        with self._lock:
+            if self._proc is None:
+                return False
+            return self._proc.poll() is None

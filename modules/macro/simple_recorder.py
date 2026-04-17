@@ -211,8 +211,9 @@ class SimpleRecorder:
     # ------------------------------------------------------------------
 
     def start_recording(self):
-        """Start listening for mouse and keyboard events."""
-        from pynput import mouse, keyboard
+        """Start listening for mouse events. Keyboard events are routed from
+        the app-level keyboard listener to avoid two-listener crash on Windows."""
+        from pynput import mouse
 
         self._events     = []
         self._actions    = []
@@ -225,11 +226,8 @@ class SimpleRecorder:
             on_click=self._on_click,
             on_scroll=self._on_scroll,
         )
-        self._keyboard_listener = keyboard.Listener(
-            on_press=self._on_key_press,
-        )
+        self._keyboard_listener = None  # managed by app-level listener
         self._mouse_listener.start()
-        self._keyboard_listener.start()
 
     def stop_recording(self):
         """Stop recording. Returns cleaned action list."""
@@ -239,11 +237,7 @@ class SimpleRecorder:
                 self._mouse_listener.stop()
             except Exception:
                 pass
-        if self._keyboard_listener:
-            try:
-                self._keyboard_listener.stop()
-            except Exception:
-                pass
+        # keyboard_listener is None (managed by app-level listener)
         self._flush_pending_text()
         self.logger.info(
             "Simple recording stopped. {} actions.".format(len(self._events)))
@@ -424,20 +418,10 @@ class SimpleRecorder:
                 if atype == "click":
                     btn = action.get("button", "left")
                     cx, cy = action["x"], action["y"]
-
-                    # ── Hybrid UIA lookup ───────────────────────────────────
-                    uia_fp = action.get("uia")
-                    if uia_fp:
-                        found = _uia_find_center(uia_fp)
-                        if found:
-                            cx, cy = found
-                            self.logger.debug(
-                                "UIA resolved click → ({}, {})".format(cx, cy))
-                        else:
-                            self.logger.debug(
-                                "UIA lookup failed, using coords ({}, {})".format(
-                                    action["x"], action["y"]))
-                    # ────────────────────────────────────────────────────────
+                    # UIA coordinate override is disabled — always use the
+                    # exact coordinates captured during recording.  UIA lookup
+                    # can match same-named elements in other apps and redirect
+                    # clicks to wrong positions.
 
                     if silent_mode and silent_click_fn:
                         silent_click_fn(cx, cy, btn)
@@ -446,12 +430,17 @@ class SimpleRecorder:
 
                 elif atype == "type":
                     text = action.get("text", "")
+                    pasted = False
                     try:
                         import pyperclip
                         pyperclip.copy(text)
                         pyautogui.hotkey("ctrl", "v")
-                        time.sleep(0.12)
+                        time.sleep(0.15)
+                        pasted = True
                     except Exception:
+                        pass
+                    if not pasted:
+                        # pyperclip unavailable or failed — fall back to typewrite
                         safe = text.encode("ascii", "ignore").decode("ascii")
                         if safe:
                             pyautogui.typewrite(safe, interval=0.05)

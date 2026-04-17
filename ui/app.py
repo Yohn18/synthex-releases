@@ -11,17 +11,19 @@ from core.logger import get_logger
 _ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_FILE = os.path.join(_ROOT, "data", "user_data.json")
 
-BG   = "#111118"
-CARD = "#1A1A24"
-SIDE = "#0D0D12"
-ACC  = "#6C4AFF"   # purple accent
-FG   = "#E0DFFF"
-MUT  = "#555575"
-GRN  = "#4CAF88"
-RED  = "#F06070"
-YEL  = "#F0C060"
-PRP  = "#9D5CF6"
-BLUE = "#4A9EFF"
+BG    = "#111118"
+CARD  = "#1A1A24"
+CARD2 = "#1A1A28"   # darker card / input background
+SIDE  = "#0D0D12"
+ACC   = "#6C4AFF"   # purple accent
+ACC2  = "#8880FF"   # lighter accent
+FG    = "#E0DFFF"
+MUT   = "#555575"
+GRN   = "#4CAF88"
+RED   = "#F06070"
+YEL   = "#F0C060"
+PRP   = "#9D5CF6"
+BLUE  = "#4A9EFF"
 
 # Step type icons (ASCII, no emoji)
 _STEP_ICONS = {
@@ -288,7 +290,8 @@ class SynthexApp:
         ("Templates",     "templates"),
         ("Sheet",         "sheet"),
         ("Rekening",      "rekening"),
-        ("Monitor Harga", "monitor"),
+        ("Dashboard Update", "monitor"),
+        ("Remote",        "remote"),
         ("History",       "history"),
         ("Logs",          "logs"),
         ("Settings",      "settings"),
@@ -317,7 +320,11 @@ class SynthexApp:
         self._rec_toolbar_win = None       # floating mini toolbar window
         self._rec_start_time  = 0.0        # wall time when recording started
         self._rec_timer_id    = None       # after() id for toolbar timer
-        self._step_editor_open = False     # True while smart record editor is open
+        self._step_editor_open       = False  # True while smart record editor is open
+        self._simple_step_editor_win = None   # ref ke window step editor simple rec
+        self._rec_toggle_fn          = None   # set saat toolbar dibuka
+        self._rec_pause_fn           = None   # set saat toolbar dibuka
+        self._rec_unlimited          = False  # mode unlimited repeat
 
         # Spy panel state
         self._spy_active        = False
@@ -337,8 +344,14 @@ class SynthexApp:
         self._playback_pause        = threading.Event()
         self._playback_running      = False   # True while a playback thread is active
         self._recordings_tree       = None
+        self._rec_count_lbl         = None
         self._rec_folder_var        = None
         self._last_selected_rec_idx = None    # tracks last selection for Ctrl+1
+        # Barcode remote control
+        # Remote control (ADB / scrcpy)
+        self._adb             = None   # AdbManager instance
+        self._scrcpy          = None   # ScrcpyManager instance
+        self._rem_poll_id     = None   # after() id for scrcpy status poll
 
         # Macro builder state
         self._mb_steps      = []      # list of step dicts
@@ -431,7 +444,7 @@ class SynthexApp:
         r.minsize(920, 600)
         r.resizable(True, True)
         r.configure(bg=BG)
-        r.protocol("WM_DELETE_WINDOW", lambda: r.withdraw())
+        r.protocol("WM_DELETE_WINDOW", self._quit)
         _apply_styles(r)
 
         # ── HEADER ────────────────────────────────────────────────────────────
@@ -484,6 +497,7 @@ class SynthexApp:
             "record":    "\u23fa",     "schedule":  "\U0001f4c5", "sheet":    "\U0001f4ca",
             "rekening":  "\U0001f3e6", "history":   "\U0001f4cb", "settings": "\u2699\ufe0f",
             "templates": "\U0001f4da", "logs":      "\U0001f5d2", "monitor":  "\U0001f4b9",
+            "remote":    "\U0001f4f1",
         }
         self._nav      = {}
         self._nav_bars = {}
@@ -509,15 +523,11 @@ class SynthexApp:
             b.pack(fill="x", side="left", expand=True)
             self._nav[key] = b
 
-        # Bottom hints
-        tk.Frame(side, bg="#1A1A28", height=1).pack(fill="x", side="bottom", pady=(0, 0))
-        self._sv = tk.StringVar(value="Ready.")
+        # Bottom status bar
+        self._sv = tk.StringVar(value="")
         tk.Label(side, textvariable=self._sv, bg=SIDE, fg=MUT,
                  font=("Segoe UI", 7), wraplength=180,
                  justify="left").pack(side="bottom", anchor="w", padx=12, pady=(4, 4))
-        tk.Label(side, text="Ctrl+1=Play | Ctrl+3=Rec",
-                 bg=SIDE, fg=MUT, font=("Segoe UI", 7)).pack(
-                     side="bottom", anchor="w", padx=12, pady=(0, 2))
 
         # ── CONTENT ───────────────────────────────────────────────────────────
         self._content = tk.Frame(body, bg=BG)
@@ -538,6 +548,7 @@ class SynthexApp:
             "sheet":     self._pg_sheet,
             "rekening":  self._pg_rekening,
             "monitor":   self._pg_monitor,
+            "remote":    self._pg_remote,
             "history":   self._pg_history,
             "logs":      self._pg_logs,
             "settings":  self._pg_settings,
@@ -981,15 +992,32 @@ class SynthexApp:
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_smart_rec).pack(fill="x")
 
-        # Recordings list
-        lc = _card(f, "Recordings")
+        # ── Daftar Rekaman Tersimpan ──────────────────────────────────────────
+        lc = tk.Frame(f, bg=CARD, padx=0, pady=0)
         lc.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        self._recordings_tree = _tree(lc, [
-            ("name",     "Name",      140),
-            ("type",     "Type",       58),
-            ("steps",    "Steps",      50),
-            ("last",     "Last Run",  130),
-            ("duration", "Duration",   72),
+
+        # Card header row (title + counter badge)
+        lc_hdr = tk.Frame(lc, bg=CARD, padx=14, pady=10)
+        lc_hdr.pack(fill="x")
+        tk.Label(lc_hdr, text="Daftar Rekaman Tersimpan",
+                 bg=CARD, fg=FG,
+                 font=("Segoe UI", 10, "bold")).pack(side="left")
+        self._rec_count_lbl = tk.Label(lc_hdr, text="",
+                 bg=ACC, fg="white",
+                 font=("Segoe UI", 8, "bold"),
+                 padx=7, pady=1)
+        self._rec_count_lbl.pack(side="left", padx=(8, 0))
+
+        # Treeview inside a padded inner frame
+        tree_frame = tk.Frame(lc, bg=CARD, padx=14, pady=0)
+        tree_frame.pack(fill="both", expand=True)
+
+        self._recordings_tree = _tree(tree_frame, [
+            ("name",     "Nama Rekaman",  200),
+            ("type",     "Tipe",           70),
+            ("steps",    "Langkah",        64),
+            ("last",     "Terakhir Run",  148),
+            ("duration", "Durasi",         72),
         ])
         self._recordings_tree.tag_configure("simple_tag", foreground=ACC)
         self._recordings_tree.tag_configure("smart_tag",  foreground=GRN)
@@ -998,16 +1026,52 @@ class SynthexApp:
         self._recordings_tree.bind(
             "<<TreeviewSelect>>", lambda e: self._on_rec_tree_select())
 
-        act_row = tk.Frame(lc, bg=CARD)
-        act_row.pack(fill="x", pady=(6, 0))
-        ttk.Button(act_row, text="Play",
-                   command=self._play_selected_recording).pack(
+        # Right-click context menu
+        _ctx = tk.Menu(self._recordings_tree, tearoff=0,
+                       bg=CARD2, fg=FG, activebackground=ACC,
+                       activeforeground="white", relief="flat", bd=0)
+        _ctx.add_command(label="Play",        command=self._play_selected_recording)
+        _ctx.add_command(label="Edit Steps",  command=self._edit_selected_recording)
+        _ctx.add_separator()
+        _ctx.add_command(label="Naik",        command=self._move_rec_up)
+        _ctx.add_command(label="Turun",       command=self._move_rec_down)
+        _ctx.add_separator()
+        _ctx.add_command(label="Hapus",       command=self._delete_selected_recording)
+
+        def _show_ctx(e):
+            row = self._recordings_tree.identify_row(e.y)
+            if row:
+                self._recordings_tree.selection_set(row)
+                try:
+                    _ctx.tk_popup(e.x_root, e.y_root)
+                finally:
+                    _ctx.grab_release()
+
+        self._recordings_tree.bind("<Button-3>", _show_ctx)
+
+        # Action button row
+        act_row = tk.Frame(lc, bg="#14141E", padx=14, pady=8)
+        act_row.pack(fill="x")
+
+        _BTN = dict(font=("Segoe UI", 9), relief="flat", bd=0,
+                    padx=14, pady=6, cursor="hand2")
+        tk.Button(act_row, text="  Play", bg=GRN, fg="white",
+                  command=self._play_selected_recording, **_BTN).pack(
             side="left", padx=(0, 4))
-        ttk.Button(act_row, text="Edit Steps",
-                   command=self._edit_selected_recording).pack(
+        tk.Button(act_row, text="  Edit", bg=ACC, fg="white",
+                  command=self._edit_selected_recording, **_BTN).pack(
             side="left", padx=(0, 4))
-        ttk.Button(act_row, text="Delete", style="Danger.TButton",
-                   command=self._delete_selected_recording).pack(side="left")
+        tk.Button(act_row, text="  Hapus", bg=RED, fg="white",
+                  command=self._delete_selected_recording, **_BTN).pack(
+            side="left", padx=(0, 4))
+        # divider
+        tk.Frame(act_row, bg=MUT, width=1, height=22).pack(
+            side="left", padx=(6, 10))
+        tk.Button(act_row, text="Naik", bg=CARD2, fg=FG,
+                  command=self._move_rec_up, **_BTN).pack(
+            side="left", padx=(0, 4))
+        tk.Button(act_row, text="Turun", bg=CARD2, fg=FG,
+                  command=self._move_rec_down, **_BTN).pack(side="left")
 
         self._rec_folder_var = tk.StringVar(value="General")
         self._refresh_recordings_tree()
@@ -2681,11 +2745,11 @@ class SynthexApp:
     # ================================================================
 
     def _pg_monitor(self):
-        """Halaman Monitor Harga — ambil tabel web, tulis ke Google Sheet."""
+        """Halaman Dashboard Update — ambil tabel web, tulis ke Google Sheet."""
         from modules.price_monitor import PriceMonitor
 
         f = tk.Frame(self._content, bg=BG)
-        self._hdr(f, "Monitor Harga")
+        self._hdr(f, "Dashboard Update")
 
         # State: satu instance PriceMonitor per session
         if not hasattr(self, "_price_monitor"):
@@ -2904,11 +2968,11 @@ class SynthexApp:
             """Read config vars and create/reconfigure PriceMonitor."""
             url = v_url.get().strip()
             if not url:
-                messagebox.showwarning("Monitor Harga",
+                messagebox.showwarning("Dashboard Update",
                                        "URL wajib diisi.", parent=self._root)
                 return None
             if not url.startswith(("http://", "https://")):
-                messagebox.showwarning("Monitor Harga",
+                messagebox.showwarning("Dashboard Update",
                                        "URL harus dimulai dengan http:// atau https://",
                                        parent=self._root)
                 return None
@@ -3000,6 +3064,447 @@ class SynthexApp:
             self._price_monitor._on_status = _on_status
             self._price_monitor._on_data   = _on_data
             _log("Monitor sudah berjalan (dilanjutkan dari sesi sebelumnya).")
+
+        return f
+
+    # ================================================================
+    #  REMOTE PAGE  (ADB Mirror via scrcpy)
+    # ================================================================
+
+    def _pg_remote(self):
+        import threading as _thr
+        import os as _os
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Mirror HP",
+                  "\"Your phone, your screen — anywhere you work.\"")
+
+        _FB = dict(relief="flat", bd=0, cursor="hand2")
+
+        # ── scrollable body ──────────────────────────────────────────────────
+        sb = ttk.Scrollbar(f, orient="vertical")
+        sb.pack(side="right", fill="y")
+        cv = tk.Canvas(f, bg=BG, highlightthickness=0,
+                       yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        sb.config(command=cv.yview)
+        body = tk.Frame(cv, bg=BG)
+        _wid = cv.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>",
+                  lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>",
+                lambda e: cv.itemconfig(_wid, width=e.width))
+
+        def _sec(title, accent=ACC):
+            w = tk.Frame(body, bg=CARD)
+            w.pack(fill="x", padx=20, pady=(0, 12))
+            h = tk.Frame(w, bg=accent, padx=14, pady=8)
+            h.pack(fill="x")
+            tk.Label(h, text=title, bg=accent, fg="white",
+                     font=("Segoe UI", 10, "bold")).pack(side="left")
+            b = tk.Frame(w, bg=CARD, padx=14, pady=10)
+            b.pack(fill="x")
+            return b
+
+        # ── TOP SPACER ──────────────────────────────────────────────────────
+        tk.Frame(body, bg=BG, height=8).pack()
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 1 — Koneksi HP
+        # ═══════════════════════════════════════════════════════
+        conn = _sec("Koneksi HP", accent="#2A1050")
+
+        # status dot + label + combobox
+        st = tk.Frame(conn, bg=CARD)
+        st.pack(fill="x", pady=(0, 8))
+        dot = tk.Label(st, text="\u25cf", bg=CARD, fg=MUT,
+                       font=("Segoe UI", 13))
+        dot.pack(side="left")
+        status_var = tk.StringVar(value="Menginisialisasi...")
+        tk.Label(st, textvariable=status_var, bg=CARD, fg=FG,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 14))
+        dev_var   = tk.StringVar(value="")
+        dev_combo = ttk.Combobox(st, textvariable=dev_var,
+                                 state="readonly", width=24)
+        dev_combo.pack(side="left", padx=(0, 8))
+        msg_var = tk.StringVar(value="")
+        tk.Label(conn, textvariable=msg_var, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8), wraplength=560,
+                 justify="left").pack(anchor="w", pady=(0, 4))
+
+        def _refresh_devs():
+            if self._adb is None:
+                return
+            try:
+                devs = self._adb.list_devices()
+                vals = [d["serial"] for d in devs if d["state"] == "device"]
+                dev_combo["values"] = vals
+                if vals:
+                    dev_combo.set(vals[0])
+                    status_var.set("{} perangkat".format(len(vals)))
+                    dot.configure(fg=GRN)
+                else:
+                    dev_combo.set("")
+                    status_var.set("Tidak ada perangkat")
+                    dot.configure(fg=MUT)
+            except Exception:
+                pass
+
+        tk.Button(st, text="Refresh", bg=CARD2, fg=FG,
+                  font=("Segoe UI", 8), padx=8, pady=3,
+                  command=lambda: _thr.Thread(
+                      target=_refresh_devs, daemon=True).start(),
+                  **_FB).pack(side="left")
+
+        # IP + Port row
+        ip_row = tk.Frame(conn, bg=CARD)
+        ip_row.pack(fill="x", pady=(0, 6))
+        tk.Label(ip_row, text="IP HP:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        ip_var = tk.StringVar(value=self.config.get("remote.last_ip", ""))
+        tk.Entry(ip_row, textvariable=ip_var,
+                 bg=CARD2, fg=FG, insertbackground=FG,
+                 relief="flat", font=("Segoe UI", 10),
+                 width=18, bd=4).pack(side="left", padx=(6, 4))
+        tk.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        port_var = tk.StringVar(value="5555")
+        tk.Entry(ip_row, textvariable=port_var,
+                 bg=CARD2, fg=FG, insertbackground=FG,
+                 relief="flat", font=("Segoe UI", 10),
+                 width=6, bd=4).pack(side="left", padx=(4, 10))
+
+        def _connect_bg():
+            ip = ip_var.get().strip()
+            if not ip:
+                msg_var.set("Masukkan IP address HP.")
+                return
+            try:
+                port = int(port_var.get().strip())
+            except ValueError:
+                port = 5555
+            if self._root:
+                self._root.after(0, lambda: msg_var.set(
+                    "Menghubungkan ke {}:{}...".format(ip, port)))
+            if self._adb is None:
+                return
+            ok, msg = self._adb.connect(ip, port)
+            if ok:
+                self.config.set("remote.last_ip", ip)
+                self.config.save()
+            if self._root:
+                self._root.after(0, lambda: msg_var.set(msg))
+            _refresh_devs()
+
+        def _disconnect_bg():
+            if self._adb:
+                ok, msg = self._adb.disconnect(dev_var.get())
+                if self._root:
+                    self._root.after(0, lambda: msg_var.set(msg))
+            _refresh_devs()
+
+        tk.Button(ip_row, text="Hubungkan", bg=ACC, fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  command=lambda: _thr.Thread(
+                      target=_connect_bg, daemon=True).start(),
+                  **_FB).pack(side="left", padx=(0, 6))
+        tk.Button(ip_row, text="Putuskan", bg=CARD2, fg=FG,
+                  font=("Segoe UI", 9), padx=10, pady=5,
+                  command=lambda: _thr.Thread(
+                      target=_disconnect_bg, daemon=True).start(),
+                  **_FB).pack(side="left")
+
+        # USB one-time setup
+        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(8, 8))
+        tk.Label(conn,
+                 text="Setup sekali via USB — colok HP, klik tombol, "
+                      "cabut USB, lalu hubungkan via WiFi:",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8),
+                 wraplength=560, justify="left").pack(
+            anchor="w", pady=(0, 6))
+
+        def _usb_setup_bg():
+            if self._root:
+                self._root.after(0, lambda: msg_var.set(
+                    "Menjalankan adb tcpip 5555..."))
+            if self._adb is None:
+                return
+            ok, m = self._adb.tcpip(5555)
+            if not ok:
+                if self._root:
+                    self._root.after(0, lambda: msg_var.set("Gagal: " + m))
+                return
+            import time as _t; _t.sleep(1)
+            ip = self._adb.get_device_ip()
+            if ip:
+                if self._root:
+                    self._root.after(0, lambda: ip_var.set(ip))
+                    self._root.after(0, lambda: msg_var.set(
+                        "Berhasil! IP: {}  — cabut USB, klik Hubungkan".format(ip)))
+                self.config.set("remote.last_ip", ip)
+                self.config.save()
+            else:
+                if self._root:
+                    self._root.after(0, lambda: msg_var.set(
+                        "tcpip OK, IP tidak terdeteksi — isi manual."))
+            _refresh_devs()
+
+        usb_row = tk.Frame(conn, bg=CARD)
+        usb_row.pack(anchor="w")
+        tk.Button(usb_row, text="Setup Wireless via USB",
+                  bg="#3A1060", fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  command=lambda: _thr.Thread(
+                      target=_usb_setup_bg, daemon=True).start(),
+                  **_FB).pack(side="left", padx=(0, 10))
+        tk.Label(usb_row, text="Butuh USB Debugging aktif di HP",
+                 bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left")
+
+        # ═══════════════════════════════════════════════════════
+        # SECTION 2 — Pengaturan Mirror
+        # ═══════════════════════════════════════════════════════
+        mir = _sec("Pengaturan Mirror", accent="#0A2A18")
+
+        # Row 1: Resolusi Bitrate FPS Orientasi
+        row1 = tk.Frame(mir, bg=CARD)
+        row1.pack(fill="x", pady=(0, 8))
+
+        def _lbl_cb(parent, lbl, var, vals, w=8):
+            tk.Label(parent, text=lbl, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 9)).pack(side="left")
+            ttk.Combobox(parent, textvariable=var, values=vals,
+                         state="readonly", width=w).pack(
+                side="left", padx=(4, 14))
+
+        res_var = tk.StringVar(value="1024")
+        br_var  = tk.StringVar(value="8M")
+        fps_var = tk.StringVar(value="60")
+        ori_var = tk.StringVar(value="Auto")
+        _lbl_cb(row1, "Resolusi:", res_var,
+                ["480", "720", "1024", "1280", "1920"], w=6)
+        _lbl_cb(row1, "Bitrate:",  br_var,
+                ["2M", "4M", "8M", "16M", "32M"],      w=5)
+        _lbl_cb(row1, "FPS:",      fps_var,
+                ["24", "30", "45", "60"],               w=4)
+        _lbl_cb(row1, "Orientasi:", ori_var,
+                ["Auto", "Portrait", "Landscape"],      w=9)
+
+        # Row 2: checkboxes
+        row2 = tk.Frame(mir, bg=CARD)
+        row2.pack(fill="x", pady=(0, 10))
+        stay_var  = tk.BooleanVar(value=True)
+        touch_var = tk.BooleanVar(value=False)
+        top_var   = tk.BooleanVar(value=True)
+        full_var  = tk.BooleanVar(value=False)
+        audio_var = tk.BooleanVar(value=False)
+        bord_var  = tk.BooleanVar(value=True)
+        for _txt, _v in [
+            ("Stay Awake",    stay_var),
+            ("Show Touches",  touch_var),
+            ("Always On Top", top_var),
+            ("Fullscreen",    full_var),
+            ("No Audio",      audio_var),
+            ("Window Border", bord_var),
+        ]:
+            tk.Checkbutton(row2, text=_txt, variable=_v,
+                           bg=CARD, fg=FG, selectcolor=CARD2,
+                           activebackground=CARD, activeforeground=FG,
+                           font=("Segoe UI", 9)).pack(
+                side="left", padx=(0, 12))
+
+        # scrcpy status bar
+        sbar = tk.Frame(mir, bg="#0E0E1C", padx=10, pady=7)
+        sbar.pack(fill="x", pady=(0, 10))
+        scrcpy_sv  = tk.StringVar(value="scrcpy: memeriksa...")
+        scrcpy_lbl = tk.Label(sbar, textvariable=scrcpy_sv,
+                              bg="#0E0E1C", fg=MUT,
+                              font=("Segoe UI", 8))
+        scrcpy_lbl.pack(side="left", fill="x", expand=True)
+        dl_sv = tk.StringVar(value="")
+        tk.Label(sbar, textvariable=dl_sv, bg="#0E0E1C", fg=YEL,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(6, 0))
+
+        def _upd_scrcpy():
+            if self._scrcpy and self._scrcpy.available:
+                scrcpy_sv.set("scrcpy: ditemukan")
+                scrcpy_lbl.configure(fg=GRN)
+            else:
+                scrcpy_sv.set("scrcpy: belum ada — klik Download")
+                scrcpy_lbl.configure(fg=YEL)
+
+        def _download_scrcpy():
+            dl_sv.set("Mengunduh...")
+
+            def _do():
+                import urllib.request as _ur
+                import zipfile as _zf
+                import json as _js
+                import os as _o
+                import sys as _sy
+                base = (_o.path.dirname(_sy.executable)
+                        if getattr(_sy, "frozen", False)
+                        else _o.path.dirname(
+                            _o.path.dirname(_o.path.abspath(__file__))))
+                tdir = _o.path.join(base, "tools", "scrcpy")
+                _o.makedirs(tdir, exist_ok=True)
+                try:
+                    req = _ur.Request(
+                        "https://api.github.com/repos/Genymobile/scrcpy"
+                        "/releases/latest",
+                        headers={"User-Agent": "Synthex"})
+                    with _ur.urlopen(req, timeout=15) as r:
+                        info = _js.loads(r.read())
+                    asset = next(
+                        (a for a in info.get("assets", [])
+                         if "win64" in a["name"]
+                         and a["name"].endswith(".zip")), None)
+                    if not asset:
+                        if self._root:
+                            self._root.after(
+                                0, lambda: dl_sv.set("Asset tidak ditemukan."))
+                        return
+                    url  = asset["browser_download_url"]
+                    name = asset["name"]
+                    size = asset.get("size", 0)
+                    if self._root:
+                        self._root.after(0, lambda: dl_sv.set(
+                            "Mengunduh {:.0f} MB...".format(
+                                size / 1024 / 1024)))
+                    zpath = _o.path.join(tdir, name)
+                    _ur.urlretrieve(url, zpath)
+                    if self._root:
+                        self._root.after(0, lambda: dl_sv.set(
+                            "Mengekstrak..."))
+                    with _zf.ZipFile(zpath, "r") as z:
+                        for m in z.namelist():
+                            parts = m.split("/", 1)
+                            tgt = parts[1] if len(parts) > 1 else parts[0]
+                            if not tgt:
+                                continue
+                            dest = _o.path.join(tdir, tgt)
+                            if m.endswith("/"):
+                                _o.makedirs(dest, exist_ok=True)
+                            else:
+                                _o.makedirs(_o.path.dirname(dest),
+                                            exist_ok=True)
+                                with z.open(m) as src, \
+                                     open(dest, "wb") as out:
+                                    out.write(src.read())
+                    _o.remove(zpath)
+                    from modules.remote_control import _find_scrcpy
+                    if self._scrcpy:
+                        self._scrcpy.path = _find_scrcpy()
+                    if self._root:
+                        self._root.after(0, _upd_scrcpy)
+                        self._root.after(
+                            0, lambda: dl_sv.set("Selesai!"))
+                except Exception as ex:
+                    _msg = str(ex)[:60]
+                    if self._root:
+                        self._root.after(
+                            0, lambda: dl_sv.set("Gagal: " + _msg))
+
+            _thr.Thread(target=_do, daemon=True).start()
+
+        tk.Button(sbar, text="Download scrcpy otomatis",
+                  bg="#2A1050", fg="white",
+                  font=("Segoe UI", 8, "bold"),
+                  padx=10, pady=4,
+                  command=_download_scrcpy, **_FB).pack(side="right")
+
+        # Mirror start / stop buttons
+        ctrl = tk.Frame(mir, bg=CARD)
+        ctrl.pack(fill="x")
+        mir_sv = tk.StringVar(value="")
+        tk.Label(mir, textvariable=mir_sv, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
+
+        start_btn = tk.Button(ctrl, text="  Mulai Mirror",
+                              bg=GRN, fg="white",
+                              font=("Segoe UI", 12, "bold"),
+                              padx=22, pady=10, **_FB)
+        start_btn.pack(side="left", padx=(0, 10))
+        stop_btn = tk.Button(ctrl, text="  Stop",
+                             bg=RED, fg="white",
+                             font=("Segoe UI", 12, "bold"),
+                             padx=18, pady=10,
+                             state="disabled", **_FB)
+        stop_btn.pack(side="left")
+
+        def _start_mirror():
+            if self._scrcpy is None or not self._scrcpy.available:
+                mir_sv.set("scrcpy belum ada — klik Download dulu.")
+                return
+            rot_map = {"Auto": None, "Portrait": 0, "Landscape": 1}
+            rot = rot_map.get(ori_var.get())
+            if rot is not None and hasattr(self._scrcpy, '_extra_args'):
+                pass  # orientation handled via start() override below
+            serial = dev_var.get()
+            ok, msg = self._scrcpy.start(
+                serial=serial,
+                max_size=int(res_var.get()),
+                bitrate=br_var.get(),
+                stay_awake=stay_var.get(),
+                show_touches=touch_var.get(),
+                always_on_top=top_var.get(),
+                no_audio=audio_var.get(),
+            )
+            mir_sv.set(msg)
+            if ok:
+                start_btn.configure(state="disabled")
+                stop_btn.configure(state="normal")
+                _poll_mirror()
+
+        def _stop_mirror():
+            if self._scrcpy:
+                self._scrcpy.stop()
+            start_btn.configure(state="normal")
+            stop_btn.configure(state="disabled")
+            mir_sv.set("Mirror dihentikan.")
+            if self._rem_poll_id:
+                try:
+                    self._root.after_cancel(self._rem_poll_id)
+                except Exception:
+                    pass
+                self._rem_poll_id = None
+
+        def _poll_mirror():
+            if self._scrcpy is None or not self._scrcpy.running:
+                try:
+                    start_btn.configure(state="normal")
+                    stop_btn.configure(state="disabled")
+                    mir_sv.set("Mirror selesai.")
+                except Exception:
+                    pass
+                return
+            self._rem_poll_id = self._root.after(800, _poll_mirror)
+
+        start_btn.configure(command=_start_mirror)
+        stop_btn.configure(command=_stop_mirror)
+        if self._scrcpy and self._scrcpy.running:
+            start_btn.configure(state="disabled")
+            stop_btn.configure(state="normal")
+            _poll_mirror()
+
+        # ── Init ADB in background (no lag) ────────────────────────────────
+        def _init_adb():
+            from modules.remote_control import AdbManager, ScrcpyManager
+            if self._adb is None:
+                self._adb    = AdbManager()
+                self._scrcpy = ScrcpyManager(self._adb)
+            # Update UI on main thread
+            def _after():
+                if self._adb.available:
+                    _refresh_devs()
+                else:
+                    status_var.set("adb tidak ditemukan")
+                    dot.configure(fg=RED)
+                _upd_scrcpy()
+            if self._root:
+                self._root.after(0, _after)
+
+        _thr.Thread(target=_init_adb, daemon=True).start()
 
         return f
 
@@ -3571,11 +4076,15 @@ class SynthexApp:
         win.attributes("-topmost", True)
         win.overrideredirect(True)
 
-        W, H = 400, 310
+        W, H = 292, 120
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
-        win.geometry("{}x{}+{}+{}".format(W, H, sw // 2 - W // 2, 14))
-        self._rec_toolbar_win = win
+        # Default position: top-right corner
+        win.geometry("{}x{}+{}+{}".format(W, H, sw - W - 12, 12))
+        self._rec_toolbar_win  = win
+        self._rec_toggle_fn    = None   # diisi setelah fungsi didefinisikan
+        self._rec_pause_fn     = None   # diisi setelah fungsi didefinisikan
+        self._rec_unlimited    = False  # mode unlimited repeat
 
         self._rec_paused   = False
         self._rec_pause_var = tk.StringVar(value="JEDA")
@@ -3584,6 +4093,14 @@ class SynthexApp:
         _close_ref = [None]   # forward reference holder
 
         def _close_recorder():
+            # Tutup step editor dulu kalau masih terbuka
+            if self._simple_step_editor_win:
+                try:
+                    self._simple_step_editor_win.grab_release()
+                    self._simple_step_editor_win.destroy()
+                except Exception:
+                    pass
+                self._simple_step_editor_win = None
             if self._rec:
                 self._stop_simple_rec()
             if self._rec_timer_id:
@@ -3612,80 +4129,51 @@ class SynthexApp:
             win.geometry("+{}+{}".format(
                 e.x_root - _drag["x"], e.y_root - _drag["y"]))
 
-        # ── Header ───────────────────────────────────────────────────────────
-        hdr = tk.Frame(win, bg=ACC, height=34, cursor="fleur")
+        # ── Header (compact 22px) ────────────────────────────────────────────
+        hdr = tk.Frame(win, bg=ACC, height=22, cursor="fleur")
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         hdr.bind("<ButtonPress-1>", _drag_start)
         hdr.bind("<B1-Motion>",     _drag_move)
 
-        tk.Label(hdr, text="  SYNTHEX RECORDER", bg=ACC, fg="#FFFFFF",
-                 font=("Segoe UI", 10, "bold")).pack(side="left", pady=7)
-
-        tk.Button(hdr, text="X", bg=ACC, fg="#FFFFFF",
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
-                  padx=10, cursor="hand2",
+        tk.Label(hdr, text="  SYNTHEX REC", bg=ACC, fg="#FFFFFF",
+                 font=("Segoe UI", 8, "bold")).pack(side="left", pady=3)
+        tk.Button(hdr, text="x", bg=ACC, fg="#FFFFFF",
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                  padx=7, cursor="hand2",
                   activebackground=RED, activeforeground="#FFFFFF",
                   command=lambda: _close_ref[0]()).pack(side="right", fill="y")
         tk.Button(hdr, text="—", bg=ACC, fg="#FFFFFF",
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
-                  padx=10, cursor="hand2",
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                  padx=7, cursor="hand2",
                   activebackground="#8870FF", activeforeground="#FFFFFF",
                   command=_do_minimize).pack(side="right", fill="y")
 
-        # ── Status bar ───────────────────────────────────────────────────────
-        status_frame = tk.Frame(win, bg="#0D0D14", pady=8)
-        status_frame.pack(fill="x", padx=14)
-
+        # ── Status bar (1 compact line) ──────────────────────────────────────
         dot_var   = tk.StringVar(value="●")
         state_var = tk.StringVar(value="SIAP")
         timer_var = tk.StringVar(value="00:00")
-        steps_var = tk.StringVar(value="0 langkah")
+        steps_var = tk.StringVar(value="0 steps")
 
-        dot_lbl = tk.Label(status_frame, textvariable=dot_var,
-                           bg="#0D0D14", fg=MUT,
-                           font=("Segoe UI", 14))
+        st = tk.Frame(win, bg="#0D0D14")
+        st.pack(fill="x", padx=8, pady=(4, 2))
+
+        dot_lbl = tk.Label(st, textvariable=dot_var, bg="#0D0D14", fg=MUT,
+                           font=("Segoe UI", 10))
         dot_lbl.pack(side="left")
-        tk.Label(status_frame, textvariable=state_var,
-                 bg="#0D0D14", fg=FG,
-                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(6, 0))
-        tk.Label(status_frame, textvariable=timer_var,
-                 bg="#0D0D14", fg=MUT,
-                 font=("Consolas", 10)).pack(side="right", padx=(0, 4))
-        tk.Label(status_frame, textvariable=steps_var,
-                 bg="#0D0D14", fg=MUT,
-                 font=("Segoe UI", 9)).pack(side="right", padx=(0, 10))
+        tk.Label(st, textvariable=state_var, bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=(4, 0))
+        tk.Label(st, textvariable=timer_var, bg="#0D0D14", fg=MUT,
+                 font=("Consolas", 8)).pack(side="right", padx=(0, 2))
+        tk.Label(st, textvariable=steps_var, bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="right", padx=(0, 6))
 
-        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x")
+        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x", pady=(2, 0))
 
-        # ── Live preview ─────────────────────────────────────────────────────
-        preview_outer = tk.Frame(win, bg="#111118")
-        preview_outer.pack(fill="x", padx=12, pady=(8, 4))
-
-        tk.Label(preview_outer, text="Langkah terekam:",
-                 bg="#111118", fg=MUT,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w", padx=4)
-
+        # No live preview — keep empty list for compatibility
         self._rec_preview_labels = []
-        for _ in range(5):
-            row = tk.Frame(preview_outer, bg="#111118")
-            row.pack(fill="x", padx=4, pady=1)
-            num_lbl = tk.Label(row, text="", bg="#111118", fg=MUT,
-                               font=("Consolas", 8), width=3, anchor="e")
-            num_lbl.pack(side="left")
-            txt_lbl = tk.Label(row, text="", bg="#111118", fg=FG,
-                               font=("Consolas", 8), anchor="w")
-            txt_lbl.pack(side="left", padx=(5, 0))
-            self._rec_preview_labels.append((num_lbl, txt_lbl))
 
-        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x", pady=(4, 0))
-
-        # ── Control buttons ───────────────────────────────────────────────────
-        ctrl = tk.Frame(win, bg="#0D0D14", pady=10)
-        ctrl.pack(fill="x", padx=12)
-
-        rec_btn_var = tk.StringVar(value="● REKAM")
-
+        # ── Helper format action ──────────────────────────────────────────────
         def _fmt_action(a):
             t = a.get("type", "")
             if t == "click":
@@ -3693,8 +4181,7 @@ class SynthexApp:
                 return "[klik{}] ({},{})".format(
                     "-kanan" if btn == "right" else "", a.get("x","?"), a.get("y","?"))
             if t == "type":
-                txt = str(a.get("text", ""))
-                return "[ketik] \"{}\"".format(txt[:22])
+                return "[ketik] \"{}\"".format(str(a.get("text",""))[:22])
             if t in ("key", "key_press"):
                 return "[tombol] {}".format(str(a.get("key",""))[:18])
             if t == "scroll":
@@ -3704,39 +4191,53 @@ class SynthexApp:
                 return "[gerak] ({},{})".format(a.get("x","?"), a.get("y","?"))
             return "[{}]".format(t)
 
+        # ── Logic functions ───────────────────────────────────────────────────
         def _update_state_idle():
             dot_var.set("●")
             dot_lbl.configure(fg=MUT)
             state_var.set("SIAP")
             timer_var.set("00:00")
             steps_var.set("0 langkah")
-            rec_btn_var.set("● REKAM")
-            rec_btn.configure(bg=RED, fg="#FFFFFF", state="normal")
-            pause_btn.configure(state="disabled")
-            stop_btn.configure(state="disabled")
+            btn_rec.configure(text="⏺", bg=RED, fg="#FFFFFF", state="normal")
+            btn_pause.configure(text="⏸", bg=CARD2, fg=MUT, state="disabled")
             for nl, tl in self._rec_preview_labels:
                 nl.configure(text="")
                 tl.configure(text="")
 
-        def _start_recording():
-            self._do_countdown(3, _do_actual_record)
-
         def _do_actual_record():
-            from modules.macro.simple_recorder import SimpleRecorder
-            self._simple_recorder = SimpleRecorder()
-            self._simple_recorder.start_recording()
-            self._rec           = True
-            self._rec_start_time = _time.time()
-            self._rec_paused    = False
-            self._sv.set("Merekam... lakukan aksi yang ingin diulang, lalu klik STOP.")
-            dot_var.set("●")
-            dot_lbl.configure(fg=RED)
-            state_var.set("MEREKAM")
-            rec_btn_var.set("MEREKAM...")
-            rec_btn.configure(bg="#2A2A3A", fg=MUT, state="disabled")
-            pause_btn.configure(state="normal")
-            stop_btn.configure(state="normal")
-            _tick()
+            self.logger.info("REC: _do_actual_record START")
+            try:
+                from modules.macro.simple_recorder import SimpleRecorder
+                self.logger.info("REC: creating SimpleRecorder")
+                self._simple_recorder = SimpleRecorder()
+                self.logger.info("REC: calling start_recording")
+                self._simple_recorder.start_recording()
+                self.logger.info("REC: start_recording OK, setting rec=True")
+                self._rec            = True
+                self._rec_start_time = _time.time()
+                self._rec_paused     = False
+                self._sv.set("Merekam... lakukan aksi yang ingin diulang, lalu tekan CTRL+3.")
+                dot_var.set("●")
+                dot_lbl.configure(fg=RED)
+                state_var.set("MEREKAM")
+                btn_rec.configure(text="⏹", bg="#2A1A1A", fg=RED, state="normal")
+                btn_pause.configure(text="⏸", bg=YEL, fg=BG, state="normal")
+                self.logger.info("REC: UI updated, calling _tick")
+                _tick()
+                self.logger.info("REC: _do_actual_record COMPLETE")
+            except Exception as _e:
+                self.logger.error("Recording start error: %s", _e, exc_info=True)
+                _update_state_idle()
+
+        def _start_recording():
+            _do_actual_record()   # langsung mulai tanpa countdown (OP Auto Clicker style)
+
+        def _stop_recording():
+            if self._rec_timer_id:
+                try: win.after_cancel(self._rec_timer_id)
+                except Exception: pass
+            self._stop_simple_rec()
+            _update_state_idle()
 
         def _toggle_recording():
             if not self._rec:
@@ -3744,123 +4245,97 @@ class SynthexApp:
             else:
                 _stop_recording()
 
-        def _stop_recording():
-            if self._rec_timer_id:
-                try:
-                    win.after_cancel(self._rec_timer_id)
-                except Exception:
-                    pass
-            self._stop_simple_rec()
-            _update_state_idle()
-
         def _toggle_pause():
+            if not self._rec:
+                return
             self._rec_paused = not self._rec_paused
             if self._rec_paused:
-                self._rec_pause_var.set("LANJUT")
-                dot_var.set("||")
+                dot_var.set("⏸")
                 dot_lbl.configure(fg=YEL)
                 state_var.set("DIJEDA")
-                pause_btn.configure(text="▶ LANJUT", bg=GRN)
+                btn_pause.configure(text="▶", bg=GRN, fg=BG)
                 if self._simple_recorder:
                     self._simple_recorder.pause_recording()
             else:
-                self._rec_pause_var.set("JEDA")
                 dot_var.set("●")
                 dot_lbl.configure(fg=RED)
                 state_var.set("MEREKAM")
-                pause_btn.configure(text="|| JEDA", bg=YEL)
+                btn_pause.configure(text="⏸", bg=YEL, fg=BG)
                 if self._simple_recorder:
                     self._simple_recorder.resume_recording()
 
-        # Row 1: REC / STOP
-        rec_btn = tk.Button(ctrl, textvariable=rec_btn_var,
-                            bg=RED, fg="#FFFFFF",
-                            font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
-                            padx=18, pady=9, cursor="hand2",
-                            activebackground="#CC3050",
-                            command=_toggle_recording)
-        rec_btn.pack(side="left", padx=(0, 6))
-
-        stop_btn = tk.Button(ctrl, text="■ STOP",
-                             bg=CARD, fg=RED,
-                             font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
-                             padx=12, pady=9, cursor="hand2",
-                             state="disabled",
-                             command=_stop_recording)
-        stop_btn.pack(side="left", padx=(0, 6))
-
-        pause_btn = tk.Button(ctrl, text="|| JEDA",
-                              bg=YEL, fg=BG,
-                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                              padx=10, pady=9, cursor="hand2",
-                              state="disabled",
-                              command=_toggle_pause)
-        pause_btn.pack(side="left")
-
-        # Row 2: Play + Speed + Repeat
-        play_row = tk.Frame(win, bg="#0D0D14")
-        play_row.pack(fill="x", padx=12, pady=(0, 4))
-
-        _toolbar_speed_var  = tk.StringVar(value="1.0")
-        _toolbar_repeat_var = tk.IntVar(value=1)
+        def _toggle_unlimited():
+            self._rec_unlimited = not self._rec_unlimited
+            if self._rec_unlimited:
+                btn_unlim.configure(bg=ACC, fg="#FFFFFF")
+            else:
+                btn_unlim.configure(bg=CARD2, fg=MUT)
 
         def _play_last():
             if self._rec:
-                messagebox.showwarning("Recorder",
-                                       "Hentikan rekaman terlebih dahulu.",
-                                       parent=win)
                 return
             if not self._recordings_tree:
-                messagebox.showinfo("Play",
-                                    "Buka tab Rekaman lalu pilih rekaman.",
-                                    parent=win)
                 return
             sel = self._recordings_tree.selection()
             if not sel:
-                messagebox.showinfo("Play",
-                                    "Pilih rekaman dari daftar di tab Rekaman.",
-                                    parent=win)
                 return
             idx = self._recordings_tree.index(sel[0])
             if idx >= len(self._ud.recordings):
                 return
+            # Move to bottom-right corner before playback so it doesn't block
+            try:
+                win.geometry("+{}+{}".format(sw - W - 12, sh - H - 50))
+            except Exception:
+                pass
             import copy as _copy
             rec = _copy.deepcopy(self._ud.recordings[idx])
-            try:
-                rec["speed"]  = float(_toolbar_speed_var.get())
-            except Exception:
-                pass
-            try:
-                rec["repeat"] = max(1, int(_toolbar_repeat_var.get()))
-            except Exception:
-                pass
+            rec["repeat"] = 999999 if self._rec_unlimited else 1
             if rec.get("rec_type", "smart") == "simple":
                 self._play_simple_recording(rec, idx)
             else:
                 self._play_selected_recording()
 
-        tk.Button(play_row, text="▶ MAINKAN",
-                  bg="#1A3A2A", fg=GRN,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                  padx=14, pady=7, cursor="hand2",
-                  command=_play_last).pack(side="left")
+        # Store references for hotkey access — set AFTER all UI is built below
+        # (set at bottom of this function)
 
-        tk.Label(play_row, text="  Speed:",
-                 bg="#0D0D14", fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="left")
-        ttk.Combobox(play_row, textvariable=_toolbar_speed_var,
-                     values=["0.5", "1.0", "1.5", "2.0"],
-                     state="readonly", width=4).pack(side="left", padx=(2, 8))
-        tk.Label(play_row, text="Ulang:",
-                 bg="#0D0D14", fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="left")
-        tk.Spinbox(play_row, from_=1, to=9999, width=4,
-                   textvariable=_toolbar_repeat_var,
-                   bg="#1A1A28", fg=FG, insertbackground=FG,
-                   relief="flat").pack(side="left", padx=(2, 0))
-        tk.Label(play_row, text="x",
-                 bg="#0D0D14", fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(2, 0))
+        # ── 4 equal buttons in single horizontal row ──────────────────────────
+        ICON_F = ("Segoe UI Emoji", 15)
+
+        btn_row = tk.Frame(win, bg="#0D0D14", height=52)
+        btn_row.pack(fill="x", padx=8, pady=(6, 8))
+        btn_row.pack_propagate(False)
+
+        btn_rec = tk.Button(btn_row, text="⏺",
+                            bg=RED, fg="#FFFFFF", font=ICON_F,
+                            relief="flat", bd=0, cursor="hand2",
+                            activebackground="#CC3050",
+                            command=_toggle_recording)
+        btn_rec.pack(side="left", fill="both", expand=True, padx=(0, 3))
+
+        btn_pause = tk.Button(btn_row, text="⏸",
+                              bg=CARD2, fg=MUT, font=ICON_F,
+                              relief="flat", bd=0, cursor="hand2",
+                              state="disabled", activebackground=CARD,
+                              command=_toggle_pause)
+        btn_pause.pack(side="left", fill="both", expand=True, padx=(0, 3))
+
+        btn_play = tk.Button(btn_row, text="▶",
+                             bg="#1A3A2A", fg=GRN, font=ICON_F,
+                             relief="flat", bd=0, cursor="hand2",
+                             activebackground="#254D38",
+                             command=_play_last)
+        btn_play.pack(side="left", fill="both", expand=True, padx=(0, 3))
+
+        btn_unlim = tk.Button(btn_row, text="∞",
+                              bg=CARD2, fg=MUT, font=ICON_F,
+                              relief="flat", bd=0, cursor="hand2",
+                              activebackground=CARD,
+                              command=_toggle_unlimited)
+        btn_unlim.pack(side="left", fill="both", expand=True)
+
+        # Set hotkey references AFTER all widgets are created
+        self._rec_toggle_fn = _toggle_recording
+        self._rec_pause_fn  = _toggle_pause
 
         # ── Tick ──────────────────────────────────────────────────────────────
         def _tick():
@@ -3871,17 +4346,8 @@ class SynthexApp:
                 n       = len(actions)
                 elapsed = _time.time() - self._rec_start_time
                 timer_var.set(time.strftime("%M:%S", time.gmtime(elapsed)))
-                steps_var.set("{} langkah".format(n))
-                last5  = actions[-5:] if n >= 5 else actions
-                offset = max(0, n - 5)
-                for i, (nl, tl) in enumerate(self._rec_preview_labels):
-                    if i < len(last5):
-                        nl.configure(text="{}".format(offset + i + 1), fg=ACC)
-                        tl.configure(text=_fmt_action(last5[i]), fg=FG)
-                    else:
-                        nl.configure(text="")
-                        tl.configure(text="")
-            if self._rec:   # Hanya reschedule selama masih recording
+                steps_var.set("{} steps".format(n))
+            if self._rec:
                 self._rec_timer_id = win.after(400, _tick)
 
         win.protocol("WM_DELETE_WINDOW", lambda: _close_ref[0]())
@@ -3906,7 +4372,12 @@ class SynthexApp:
         if self._simple_recorder:
             actions = self._simple_recorder.stop_recording()
         self._sv.set("Rekaman dihentikan. {} aksi terekam.".format(len(actions)))
+
         if actions:
+            # Minimize toolbar before opening step editor
+            if self._rec_toolbar_win:
+                try: self._rec_toolbar_win.withdraw()
+                except Exception: pass
             self._show_simple_step_editor(actions)
         else:
             from tkinter import messagebox as _mb
@@ -3914,14 +4385,17 @@ class SynthexApp:
                          parent=self._root)
 
     def _show_simple_step_editor(self, actions, edit_idx=None):
-        """Show editable list of simple recorded actions with full step editing."""
+        """Macro Step Editor — full-featured redesign with undo/redo, drag-reorder,
+        multi-select, copy/paste, inline editing, filter, and bulk delay."""
+        import copy
         import uuid as _uuid
 
         if not actions and edit_idx is None:
-            messagebox.showinfo("Rekaman Kosong",
-                                "Tidak ada langkah yang terekam.\n"
-                                "Coba rekam ulang — pastikan melakukan klik atau ketikan.",
-                                parent=self._root)
+            messagebox.showinfo(
+                "Rekaman Kosong",
+                "Tidak ada langkah yang terekam.\n"
+                "Coba rekam ulang — pastikan melakukan klik atau ketikan.",
+                parent=self._root)
             return
 
         # Existing recording metadata (if editing)
@@ -3929,301 +4403,780 @@ class SynthexApp:
                     if edit_idx is not None and 0 <= edit_idx < len(self._ud.recordings)
                     else None)
 
+        # ------------------------------------------------------------------ #
+        #  Window setup                                                        #
+        # ------------------------------------------------------------------ #
         dlg = tk.Toplevel(self._root)
-        dlg.title("Simple Recording Editor")
-        dlg.geometry("740x640")
+        dlg.title("Macro Step Editor")
+        dlg.geometry("980x700")
         dlg.configure(bg=BG)
         dlg.resizable(True, True)
         dlg.grab_set()
+        self._simple_step_editor_win = dlg
 
-        _lbl(dlg, "Simple Recording Editor",
-             font=("Segoe UI", 13, "bold"), bg=BG).pack(
-            anchor="w", padx=20, pady=(16, 2))
+        def _on_editor_close():
+            self._simple_step_editor_win = None
+            try:
+                dlg.grab_release()
+            except Exception:
+                pass
+            dlg.destroy()
+            # Restore recorder toolbar after step editor closes
+            if self._rec_toolbar_win:
+                try:
+                    self._rec_toolbar_win.deiconify()
+                    self._rec_toolbar_win.lift()
+                except Exception:
+                    pass
 
-        # -- Recording metadata: Name, Description, Folder --
-        meta = tk.Frame(dlg, bg=CARD, padx=12, pady=10)
-        meta.pack(fill="x", padx=20, pady=(0, 8))
+        dlg.protocol("WM_DELETE_WINDOW", _on_editor_close)
 
-        r_name = tk.Frame(meta, bg=CARD)
-        r_name.pack(fill="x", pady=2)
-        _lbl(r_name, "Name:", fg=MUT, bg=CARD, width=9, anchor="w").pack(side="left")
+        # ------------------------------------------------------------------ #
+        #  State                                                               #
+        # ------------------------------------------------------------------ #
+        step_data   = list(actions)           # list of dicts (mutable)
+        _history    = [copy.deepcopy(step_data)]
+        _redo_stack = []
+        _clipboard  = []
+        _filter_map = []                      # visible-index → original-index
+        _filter_var = tk.StringVar(value="Semua")
+
+        def _push_undo():
+            _history.append(copy.deepcopy(step_data))
+            if len(_history) > 50:
+                _history.pop(0)
+            _redo_stack.clear()
+
+        def _undo():
+            if len(_history) > 1:
+                _redo_stack.append(_history.pop())
+                step_data.clear()
+                step_data.extend(copy.deepcopy(_history[-1]))
+                _refresh_tree()
+
+        def _redo():
+            if _redo_stack:
+                snap = _redo_stack.pop()
+                _history.append(snap)
+                step_data.clear()
+                step_data.extend(copy.deepcopy(snap))
+                _refresh_tree()
+
+        # ------------------------------------------------------------------ #
+        #  Top bar: Name / Description / Folder                               #
+        # ------------------------------------------------------------------ #
+        top_bar = tk.Frame(dlg, bg=CARD, padx=12, pady=8)
+        top_bar.pack(fill="x", padx=0, pady=0)
+
+        # Single compact row
+        _lbl(top_bar, "Nama:", fg=MUT, bg=CARD,
+             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         name_var = tk.StringVar(
             value=existing.get("name", "") if existing else "")
-        tk.Entry(r_name, textvariable=name_var, bg=BG, fg=FG,
+        tk.Entry(top_bar, textvariable=name_var, bg=BG, fg=FG,
                  insertbackground=FG, font=("Segoe UI", 10),
-                 relief="flat", bd=0, width=24).pack(
-            side="left", padx=(0, 16), ipady=4)
-        _lbl(r_name, "Description:", fg=MUT, bg=CARD, width=12,
-             anchor="w").pack(side="left")
+                 relief="flat", bd=0, width=22).pack(
+            side="left", padx=(0, 14), ipady=4)
+
+        _lbl(top_bar, "Deskripsi:", fg=MUT, bg=CARD,
+             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         desc_var = tk.StringVar(
             value=existing.get("description", "") if existing else "")
-        tk.Entry(r_name, textvariable=desc_var, bg=BG, fg=FG,
+        tk.Entry(top_bar, textvariable=desc_var, bg=BG, fg=FG,
                  insertbackground=FG, font=("Segoe UI", 10),
-                 relief="flat", bd=0).pack(
-            side="left", fill="x", expand=True, ipady=4)
+                 relief="flat", bd=0, width=28).pack(
+            side="left", padx=(0, 14), ipady=4)
 
-        r_folder = tk.Frame(meta, bg=CARD)
-        r_folder.pack(fill="x", pady=2)
-        _lbl(r_folder, "Folder:", fg=MUT, bg=CARD, width=9,
-             anchor="w").pack(side="left")
-        folders = sorted({r.get("folder", "General")
-                          for r in self._ud.recordings} | {"General", "Work", "Personal"})
+        _lbl(top_bar, "Folder:", fg=MUT, bg=CARD,
+             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+        folders = sorted(
+            {r.get("folder", "General") for r in self._ud.recordings}
+            | {"General", "Work", "Personal"})
         folder_var = tk.StringVar(
             value=existing.get("folder", "General") if existing else "General")
-        ttk.Combobox(r_folder, textvariable=folder_var, values=folders,
-                     width=20).pack(side="left")
+        ttk.Combobox(top_bar, textvariable=folder_var, values=folders,
+                     width=14).pack(side="left")
 
-        # -- Steps treeview --
-        step_data = list(actions)
+        # Filter combobox on the right side of top bar
+        _lbl(top_bar, "  Filter:", fg=MUT, bg=CARD,
+             font=("Segoe UI", 9)).pack(side="left", padx=(18, 4))
+        filter_cb = ttk.Combobox(top_bar, textvariable=_filter_var,
+                                 values=["Semua", "click", "type", "key", "scroll"],
+                                 state="readonly", width=8)
+        filter_cb.pack(side="left")
 
-        lf = tk.Frame(dlg, bg=CARD, padx=8, pady=8)
-        lf.pack(fill="both", expand=True, padx=20, pady=(0, 4))
+        # ------------------------------------------------------------------ #
+        #  Toolbar row                                                         #
+        # ------------------------------------------------------------------ #
+        toolbar = tk.Frame(dlg, bg=SIDE, padx=8, pady=5)
+        toolbar.pack(fill="x")
 
-        st = ttk.Treeview(lf, columns=("no", "type", "details", "delay"),
-                          show="headings", selectmode="browse")
-        st.heading("no",      text="#")
-        st.heading("type",    text="Type")
-        st.heading("details", text="Details")
-        st.heading("delay",   text="Delay(s)")
-        st.column("no",      width=36,  anchor="center")
-        st.column("type",    width=78,  anchor="w")
-        st.column("details", width=380, anchor="w")
-        st.column("delay",   width=72,  anchor="center")
-        vsb = ttk.Scrollbar(lf, orient="vertical", command=st.yview)
+        def _tb_btn(parent, text, cmd, fg_col=FG, width=None):
+            kw = {"width": width} if width else {}
+            b = tk.Button(parent, text=text, command=cmd,
+                          bg=CARD, fg=fg_col, relief="flat", bd=0,
+                          font=("Segoe UI", 9), padx=8, pady=3,
+                          activebackground=ACC, activeforeground=BG,
+                          cursor="hand2", **kw)
+            b.pack(side="left", padx=2)
+            return b
+
+        def _tb_sep():
+            tk.Label(toolbar, text="|", bg=SIDE, fg=MUT,
+                     font=("Segoe UI", 10)).pack(side="left", padx=4)
+
+        # Add button with dropdown menu
+        add_menu = tk.Menu(dlg, tearoff=0, bg=CARD, fg=FG,
+                           activebackground=ACC, activeforeground=BG,
+                           relief="flat", bd=0)
+
+        def _add_step(stype):
+            _push_undo()
+            defaults = {
+                "click":  {"type": "click",  "x": 0, "y": 0,
+                           "button": "left", "delay": 0.5},
+                "type":   {"type": "type",   "text": "",      "delay": 0.3},
+                "key":    {"type": "key",    "key": "enter",  "delay": 0.3},
+                "scroll": {"type": "scroll", "x": 0, "y": 0,
+                           "amount": 3,     "delay": 0.3},
+            }
+            new_step = copy.deepcopy(defaults.get(stype, {"type": stype, "delay": 0.3}))
+            sel = st.selection()
+            if sel:
+                vis_idx = st.index(sel[-1])
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                insert_at = orig_idx + 1
+            else:
+                insert_at = len(step_data)
+            step_data.insert(insert_at, new_step)
+            _refresh_tree(keep_sel=insert_at)
+
+        for _t in ["click", "type", "key", "scroll"]:
+            add_menu.add_command(
+                label=_t.capitalize(),
+                command=lambda t=_t: _add_step(t))
+
+        add_btn = tk.Button(toolbar, text="+ Tambah",
+                            bg=ACC, fg=BG, relief="flat", bd=0,
+                            font=("Segoe UI", 9, "bold"), padx=10, pady=3,
+                            activebackground=PRP, activeforeground=BG,
+                            cursor="hand2")
+        add_btn.pack(side="left", padx=2)
+
+        def _show_add_menu(e=None):
+            add_btn.update_idletasks()
+            x = add_btn.winfo_rootx()
+            y = add_btn.winfo_rooty() + add_btn.winfo_height()
+            add_menu.post(x, y)
+
+        add_btn.configure(command=_show_add_menu)
+
+        def _duplicate_step():
+            sel = st.selection()
+            if not sel:
+                return
+            _push_undo()
+            vis_idx = st.index(sel[-1])
+            orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+            dup = copy.deepcopy(step_data[orig_idx])
+            step_data.insert(orig_idx + 1, dup)
+            _refresh_tree(keep_sel=orig_idx + 1)
+
+        def _delete_step():
+            sel = st.selection()
+            if not sel:
+                return
+            _push_undo()
+            # Collect original indices (multi-select), delete highest first
+            orig_indices = sorted(
+                {(_filter_map[st.index(item)] if _filter_map else st.index(item))
+                 for item in sel},
+                reverse=True)
+            for oi in orig_indices:
+                if 0 <= oi < len(step_data):
+                    del step_data[oi]
+            new_sel = max(0, min(orig_indices[-1], len(step_data) - 1)) \
+                if step_data else None
+            _refresh_tree(keep_sel=new_sel)
+
+        def _move_up():
+            sel = st.selection()
+            if not sel:
+                return
+            vis_idx = st.index(sel[0])
+            orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+            if orig_idx > 0:
+                _push_undo()
+                step_data[orig_idx - 1], step_data[orig_idx] = \
+                    step_data[orig_idx], step_data[orig_idx - 1]
+                _refresh_tree(keep_sel=orig_idx - 1)
+
+        def _move_down():
+            sel = st.selection()
+            if not sel:
+                return
+            vis_idx = st.index(sel[0])
+            orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+            if orig_idx < len(step_data) - 1:
+                _push_undo()
+                step_data[orig_idx + 1], step_data[orig_idx] = \
+                    step_data[orig_idx], step_data[orig_idx + 1]
+                _refresh_tree(keep_sel=orig_idx + 1)
+
+        def _copy_step():
+            sel = st.selection()
+            if not sel:
+                return
+            _clipboard.clear()
+            for item in sel:
+                vis_idx = st.index(item)
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                if 0 <= orig_idx < len(step_data):
+                    _clipboard.append(copy.deepcopy(step_data[orig_idx]))
+
+        def _paste_step():
+            if not _clipboard:
+                return
+            _push_undo()
+            sel = st.selection()
+            if sel:
+                vis_idx = st.index(sel[-1])
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                insert_at = orig_idx + 1
+            else:
+                insert_at = len(step_data)
+            for i, s in enumerate(_clipboard):
+                step_data.insert(insert_at + i, copy.deepcopy(s))
+            _refresh_tree(keep_sel=insert_at + len(_clipboard) - 1)
+
+        _tb_btn(toolbar, "Duplikat", _duplicate_step)
+        _tb_btn(toolbar, "Hapus",    _delete_step,   fg_col=RED)
+        _tb_btn(toolbar, "  Up",     _move_up)
+        _tb_btn(toolbar, "  Down",   _move_down)
+
+        _tb_sep()
+
+        _tb_btn(toolbar, "Undo", _undo)
+        _tb_btn(toolbar, "Redo", _redo)
+
+        _tb_sep()
+
+        # Bulk delay
+        _lbl(toolbar, "Bulk Delay:", fg=MUT, bg=SIDE,
+             font=("Segoe UI", 9)).pack(side="left", padx=(4, 2))
+        bulk_delay_var = tk.IntVar(value=500)
+        tk.Spinbox(toolbar, from_=0, to=30000, increment=50, width=6,
+                   textvariable=bulk_delay_var,
+                   bg=CARD, fg=FG, insertbackground=FG,
+                   relief="flat", font=("Segoe UI", 9)).pack(
+            side="left", padx=(0, 4), ipady=2)
+
+        def _apply_bulk_delay():
+            sel = st.selection()
+            if not sel:
+                return
+            _push_undo()
+            try:
+                ms = int(bulk_delay_var.get())
+            except (ValueError, tk.TclError):
+                ms = 0
+            d = round(ms / 1000.0, 3)
+            for item in sel:
+                vis_idx = st.index(item)
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                if 0 <= orig_idx < len(step_data):
+                    step_data[orig_idx]["delay"] = d
+            first_vis = st.index(sel[0])
+            first_orig = _filter_map[first_vis] if _filter_map else first_vis
+            _refresh_tree(keep_sel=first_orig)
+
+        _tb_btn(toolbar, "Terapkan", _apply_bulk_delay, fg_col=YEL)
+
+        _tb_sep()
+
+        # Right-aligned counters
+        step_count_lbl = tk.Label(toolbar, text="0 langkah",
+                                  bg=SIDE, fg=MUT, font=("Segoe UI", 9))
+        step_count_lbl.pack(side="right", padx=(4, 8))
+        total_dur_lbl = tk.Label(toolbar, text="Total: 0.0s",
+                                 bg=SIDE, fg=MUT, font=("Segoe UI", 9))
+        total_dur_lbl.pack(side="right", padx=(4, 4))
+
+        # ------------------------------------------------------------------ #
+        #  Main area: treeview (65%) + right edit panel (35%)                 #
+        # ------------------------------------------------------------------ #
+        main_area = tk.Frame(dlg, bg=BG)
+        main_area.pack(fill="both", expand=True, padx=0, pady=0)
+
+        # --- LEFT: Treeview ------------------------------------------------ #
+        left_frame = tk.Frame(main_area, bg=CARD)
+        left_frame.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+
+        st = ttk.Treeview(
+            left_frame,
+            columns=("no", "type", "x", "y", "delay", "bar"),
+            show="headings",
+            selectmode="extended")
+
+        st.heading("no",    text="#")
+        st.heading("type",  text="Type")
+        st.heading("x",     text="X")
+        st.heading("y",     text="Y")
+        st.heading("delay", text="Delay(ms)")
+        st.heading("bar",   text="░")
+
+        st.column("no",    width=34,  anchor="center", stretch=False)
+        st.column("type",  width=110, anchor="w",      stretch=False)
+        st.column("x",     width=60,  anchor="center", stretch=False)
+        st.column("y",     width=60,  anchor="center", stretch=False)
+        st.column("delay", width=80,  anchor="center", stretch=False)
+        st.column("bar",   width=100, anchor="w",      stretch=True)
+
+        # Type color tags
+        st.tag_configure("click",  foreground="#FF7080")
+        st.tag_configure("type",   foreground="#70C870")
+        st.tag_configure("key",    foreground="#7090FF")
+        st.tag_configure("scroll", foreground="#F0C060")
+
+        vsb = ttk.Scrollbar(left_frame, orient="vertical", command=st.yview)
         st.configure(yscrollcommand=vsb.set)
-        st.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
+        st.pack(side="left", fill="both", expand=True)
+
+        # --- RIGHT: Edit panel --------------------------------------------- #
+        right_frame = tk.Frame(main_area, bg=CARD, width=310)
+        right_frame.pack(side="right", fill="y", padx=(4, 8), pady=8)
+        right_frame.pack_propagate(False)
+
+        edit_header = tk.Label(right_frame, text="Pilih langkah untuk diedit",
+                               bg=CARD, fg=MUT,
+                               font=("Segoe UI", 10, "bold"), anchor="w")
+        edit_header.pack(fill="x", padx=10, pady=(10, 6))
+
+        edit_fields = tk.Frame(right_frame, bg=CARD)
+        edit_fields.pack(fill="both", expand=True, padx=8)
+
+        # Shared edit-panel variables
+        _ep_type   = tk.StringVar(value="click")
+        _ep_delay  = tk.IntVar(value=500)
+        _ep_x      = tk.IntVar(value=0)
+        _ep_y      = tk.IntVar(value=0)
+        _ep_button = tk.StringVar(value="left")
+        _ep_text   = tk.StringVar(value="")
+        _ep_amount = tk.IntVar(value=3)
+        _ep_key    = tk.StringVar(value="")
+
+        _edit_widgets = {}   # name → widget reference for later use
+
+        def _ep_lbl(parent, text):
+            return tk.Label(parent, text=text, bg=CARD, fg=MUT,
+                            font=("Segoe UI", 9), anchor="w")
+
+        def _build_edit_panel(atype="click"):
+            for w in edit_fields.winfo_children():
+                w.destroy()
+            _edit_widgets.clear()
+
+            # Type row
+            r0 = tk.Frame(edit_fields, bg=CARD)
+            r0.pack(fill="x", pady=(4, 2))
+            _ep_lbl(r0, "Tipe:").pack(anchor="w")
+            type_cb = ttk.Combobox(r0, textvariable=_ep_type,
+                                   values=["click", "type", "scroll", "key"],
+                                   state="readonly", width=14)
+            type_cb.pack(fill="x", pady=(2, 0))
+            type_cb.bind("<<ComboboxSelected>>",
+                         lambda e: _build_edit_panel(_ep_type.get()))
+            _edit_widgets["type_cb"] = type_cb
+
+            # Delay row
+            r1 = tk.Frame(edit_fields, bg=CARD)
+            r1.pack(fill="x", pady=(6, 2))
+            _ep_lbl(r1, "Delay (ms):").pack(anchor="w")
+            delay_sp = tk.Spinbox(r1, from_=0, to=30000, increment=50,
+                                  textvariable=_ep_delay, width=10,
+                                  bg=BG, fg=FG, insertbackground=FG,
+                                  relief="flat", font=("Segoe UI", 9))
+            delay_sp.pack(fill="x", pady=(2, 0), ipady=3)
+            _edit_widgets["delay_sp"] = delay_sp
+
+            # Type-specific fields
+            if atype == "click":
+                for lbl_t, var, name in [("X:", _ep_x, "x_sp"),
+                                          ("Y:", _ep_y, "y_sp")]:
+                    rf = tk.Frame(edit_fields, bg=CARD)
+                    rf.pack(fill="x", pady=(4, 2))
+                    _ep_lbl(rf, lbl_t).pack(anchor="w")
+                    sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
+                                    width=10, bg=BG, fg=FG,
+                                    insertbackground=FG, relief="flat",
+                                    font=("Segoe UI", 9))
+                    sp.pack(fill="x", pady=(2, 0), ipady=3)
+                    _edit_widgets[name] = sp
+                rb = tk.Frame(edit_fields, bg=CARD)
+                rb.pack(fill="x", pady=(4, 2))
+                _ep_lbl(rb, "Button:").pack(anchor="w")
+                btn_cb = ttk.Combobox(rb, textvariable=_ep_button,
+                                      values=["left", "right", "middle"],
+                                      state="readonly", width=10)
+                btn_cb.pack(fill="x", pady=(2, 0))
+                _edit_widgets["btn_cb"] = btn_cb
+
+            elif atype == "type":
+                rt = tk.Frame(edit_fields, bg=CARD)
+                rt.pack(fill="x", pady=(4, 2))
+                _ep_lbl(rt, "Teks:").pack(anchor="w")
+                txt_e = tk.Entry(rt, textvariable=_ep_text,
+                                 bg=BG, fg=FG, insertbackground=FG,
+                                 font=("Segoe UI", 9), relief="flat", bd=0)
+                txt_e.pack(fill="x", pady=(2, 0), ipady=4)
+                _edit_widgets["txt_e"] = txt_e
+
+            elif atype == "scroll":
+                for lbl_t, var, name in [("X:", _ep_x, "sx_sp"),
+                                          ("Y:", _ep_y, "sy_sp")]:
+                    rf = tk.Frame(edit_fields, bg=CARD)
+                    rf.pack(fill="x", pady=(4, 2))
+                    _ep_lbl(rf, lbl_t).pack(anchor="w")
+                    sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
+                                    width=10, bg=BG, fg=FG,
+                                    insertbackground=FG, relief="flat",
+                                    font=("Segoe UI", 9))
+                    sp.pack(fill="x", pady=(2, 0), ipady=3)
+                    _edit_widgets[name] = sp
+                ra = tk.Frame(edit_fields, bg=CARD)
+                ra.pack(fill="x", pady=(4, 2))
+                _ep_lbl(ra, "Jumlah:").pack(anchor="w")
+                amt_sp = tk.Spinbox(ra, from_=-100, to=100, textvariable=_ep_amount,
+                                    width=10, bg=BG, fg=FG,
+                                    insertbackground=FG, relief="flat",
+                                    font=("Segoe UI", 9))
+                amt_sp.pack(fill="x", pady=(2, 0), ipady=3)
+                _edit_widgets["amt_sp"] = amt_sp
+
+            elif atype == "key":
+                rk = tk.Frame(edit_fields, bg=CARD)
+                rk.pack(fill="x", pady=(4, 2))
+                _ep_lbl(rk, "Key:").pack(anchor="w")
+                key_e = tk.Entry(rk, textvariable=_ep_key,
+                                 bg=BG, fg=FG, insertbackground=FG,
+                                 font=("Segoe UI", 9), relief="flat", bd=0)
+                key_e.pack(fill="x", pady=(2, 0), ipady=4)
+                _ep_lbl(rk, "mis. enter, ctrl, f5").pack(anchor="w")
+                _edit_widgets["key_e"] = key_e
+
+            # Test Step + Apply buttons
+            btn_sep = tk.Frame(edit_fields, bg=MUT, height=1)
+            btn_sep.pack(fill="x", pady=(14, 6))
+
+            def _test_one_step():
+                sel = st.selection()
+                if not sel:
+                    return
+                vis_idx = st.index(sel[0])
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                if 0 <= orig_idx < len(step_data):
+                    tmp = {
+                        "name":   "Test Step",
+                        "steps":  [step_data[orig_idx]],
+                        "speed":  1.0,
+                        "repeat": 1,
+                        "silent_mode": False,
+                    }
+                    self._play_simple_recording(tmp, -1)
+
+            tk.Button(edit_fields, text="Test Step",
+                      bg=CARD, fg=BLUE, relief="flat", bd=0,
+                      font=("Segoe UI", 9), padx=8, pady=4,
+                      activebackground=BLUE, activeforeground=BG,
+                      cursor="hand2",
+                      command=_test_one_step).pack(fill="x", pady=(0, 4))
+
+            def _apply_edit():
+                sel = st.selection()
+                if not sel:
+                    return
+                _push_undo()
+                vis_idx = st.index(sel[0])
+                orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+                if orig_idx >= len(step_data):
+                    return
+                atp = _ep_type.get()
+                try:
+                    d = round(int(_ep_delay.get()) / 1000.0, 3)
+                except (ValueError, tk.TclError):
+                    d = 0.0
+                act = {"type": atp, "delay": d}
+                if atp == "click":
+                    try:
+                        act["x"] = int(_ep_x.get())
+                        act["y"] = int(_ep_y.get())
+                    except (ValueError, tk.TclError):
+                        act["x"] = act["y"] = 0
+                    act["button"] = _ep_button.get()
+                elif atp == "type":
+                    act["text"] = _ep_text.get()
+                elif atp == "scroll":
+                    try:
+                        act["x"] = int(_ep_x.get())
+                        act["y"] = int(_ep_y.get())
+                        act["amount"] = int(_ep_amount.get())
+                    except (ValueError, tk.TclError):
+                        act["x"] = act["y"] = act["amount"] = 0
+                elif atp == "key":
+                    act["key"] = _ep_key.get()
+                step_data[orig_idx] = act
+                _refresh_tree(keep_sel=orig_idx)
+
+            tk.Button(edit_fields, text="Terapkan",
+                      bg=GRN, fg=BG, relief="flat", bd=0,
+                      font=("Segoe UI", 9, "bold"), padx=8, pady=4,
+                      activebackground="#3A9F70", activeforeground=BG,
+                      cursor="hand2",
+                      command=_apply_edit).pack(fill="x")
+
+        _build_edit_panel("click")
+
+        # ------------------------------------------------------------------ #
+        #  Refresh / populate tree                                             #
+        # ------------------------------------------------------------------ #
+        def _refresh_total():
+            total_s = sum(a.get("delay", 0) for a in step_data)
+            if total_s < 60:
+                txt = "{:.1f}s".format(total_s)
+            else:
+                m = int(total_s) // 60
+                s = int(total_s) % 60
+                txt = "{}m {}s".format(m, s)
+            total_dur_lbl.configure(text="Total: {}".format(txt))
 
         def _refresh_tree(keep_sel=None):
+            # Compute filter
+            filt = _filter_var.get()
+            _filter_map.clear()
+            for i, a in enumerate(step_data):
+                if filt == "Semua" or a.get("type", "") == filt:
+                    _filter_map.append(i)
+
             for row in st.get_children():
                 st.delete(row)
-            from modules.macro.simple_recorder import SimpleRecorder as _SR
-            for i, a in enumerate(step_data, 1):
-                st.insert("", "end", values=(
-                    i, a.get("type", ""),
-                    _SR._action_desc(a),
-                    "{:.2f}".format(a.get("delay", 0))))
-            if keep_sel is not None and 0 <= keep_sel < len(step_data):
-                ch = st.get_children()
-                if keep_sel < len(ch):
-                    st.selection_set(ch[keep_sel])
-                    st.see(ch[keep_sel])
 
+            for vis_i, orig_i in enumerate(_filter_map):
+                a = step_data[orig_i]
+                atype    = a.get("type", "")
+                x_val    = a.get("x", "-") if atype in ("click", "scroll") else "-"
+                y_val    = a.get("y", "-") if atype in ("click", "scroll") else "-"
+                delay_s  = a.get("delay", 0)
+                delay_ms = int(round(delay_s * 1000))
+                filled   = min(10, int(delay_s * 10))
+                empty    = max(0, 10 - filled)
+                bar      = "\u2593" * filled + "\u2591" * empty
+                tag      = atype if atype in ("click", "type", "key", "scroll") else ""
+                st.insert("", "end",
+                          values=(orig_i + 1, atype, x_val, y_val, delay_ms, bar),
+                          tags=(tag,) if tag else ())
+
+            step_count_lbl.configure(
+                text="{} langkah".format(len(step_data)))
+            _refresh_total()
+
+            if keep_sel is not None:
+                # Map original index back to visible index
+                try:
+                    vis = _filter_map.index(keep_sel)
+                    ch = st.get_children()
+                    if vis < len(ch):
+                        st.selection_set(ch[vis])
+                        st.see(ch[vis])
+                except ValueError:
+                    pass
+
+        filter_cb.bind("<<ComboboxSelected>>", lambda e: _refresh_tree())
         _refresh_tree()
 
-        # -- Dynamic step editor --
-        edit_outer = tk.Frame(dlg, bg=BG)
-        edit_outer.pack(fill="x", padx=20, pady=(0, 2))
+        # ------------------------------------------------------------------ #
+        #  Drag-to-reorder                                                     #
+        # ------------------------------------------------------------------ #
+        _drag = {"src": None, "src_idx": None}
 
-        fields_frame = tk.Frame(edit_outer, bg=BG)
-        fields_frame.pack(fill="x")
+        def _on_drag_start(e):
+            item = st.identify_row(e.y)
+            if item:
+                _drag["src"] = item
+                _drag["src_idx"] = st.index(item)
+                st.configure(cursor="fleur")
 
-        # Shared step-field variables
-        _sv_type   = tk.StringVar(value="click")
-        _sv_delay  = tk.DoubleVar(value=0.5)
-        _sv_x      = tk.IntVar(value=0)
-        _sv_y      = tk.IntVar(value=0)
-        _sv_button = tk.StringVar(value="left")
-        _sv_text   = tk.StringVar(value="")
-        _sv_amount = tk.IntVar(value=0)
-        _sv_key    = tk.StringVar(value="")
+        def _on_drag_motion(e):
+            tgt = st.identify_row(e.y)
+            if tgt and _drag["src"] and tgt != _drag["src"]:
+                tgt_vis = st.index(tgt)
+                src_vis = _drag["src_idx"]
+                if src_vis != tgt_vis and src_vis is not None:
+                    src_orig = _filter_map[src_vis] if _filter_map else src_vis
+                    tgt_orig = _filter_map[tgt_vis] if _filter_map else tgt_vis
+                    _push_undo()
+                    step_data.insert(tgt_orig, step_data.pop(src_orig))
+                    _drag["src_idx"] = tgt_vis
+                    _refresh_tree(keep_sel=tgt_orig)
 
-        def _build_fields(atype):
-            for w in fields_frame.winfo_children():
-                w.destroy()
-            row0 = tk.Frame(fields_frame, bg=BG)
-            row0.pack(fill="x", pady=2)
-            _lbl(row0, "Type:", fg=MUT, bg=BG, width=8, anchor="w").pack(side="left")
-            cb = ttk.Combobox(row0, textvariable=_sv_type,
-                              values=["click", "type", "scroll", "key"],
-                              state="readonly", width=10)
-            cb.pack(side="left", padx=(0, 16))
-            cb.bind("<<ComboboxSelected>>",
-                    lambda e: _build_fields(_sv_type.get()))
-            _lbl(row0, "Delay(s):", fg=MUT, bg=BG,
-                 width=9, anchor="w").pack(side="left")
-            tk.Spinbox(row0, from_=0.0, to=30.0, increment=0.1, width=7,
-                       textvariable=_sv_delay,
-                       bg=CARD, fg=FG, insertbackground=FG,
-                       relief="flat").pack(side="left")
+        def _on_drag_end(e):
+            _drag["src"] = None
+            st.configure(cursor="")
 
-            row1 = tk.Frame(fields_frame, bg=BG)
-            row1.pack(fill="x", pady=2)
-            if atype == "click":
-                for lbl_txt, var, w in [("X:", _sv_x, 6), ("Y:", _sv_y, 6)]:
-                    _lbl(row1, lbl_txt, fg=MUT, bg=BG,
-                         width=3, anchor="w").pack(side="left")
-                    tk.Spinbox(row1, from_=-9999, to=9999, width=w,
-                               textvariable=var,
-                               bg=CARD, fg=FG, insertbackground=FG,
-                               relief="flat").pack(side="left", padx=(0, 8))
-                _lbl(row1, "Button:", fg=MUT, bg=BG,
-                     width=7, anchor="w").pack(side="left")
-                ttk.Combobox(row1, textvariable=_sv_button,
-                             values=["left", "right", "middle"],
-                             state="readonly", width=8).pack(side="left")
-            elif atype == "type":
-                _lbl(row1, "Text:", fg=MUT, bg=BG,
-                     width=6, anchor="w").pack(side="left")
-                tk.Entry(row1, textvariable=_sv_text, bg=CARD, fg=FG,
-                         insertbackground=FG, font=("Segoe UI", 10),
-                         relief="flat", bd=0).pack(
-                    side="left", fill="x", expand=True, ipady=4)
-            elif atype == "scroll":
-                for lbl_txt, var, w in [("X:", _sv_x, 6), ("Y:", _sv_y, 6)]:
-                    _lbl(row1, lbl_txt, fg=MUT, bg=BG,
-                         width=3, anchor="w").pack(side="left")
-                    tk.Spinbox(row1, from_=-9999, to=9999, width=w,
-                               textvariable=var,
-                               bg=CARD, fg=FG, insertbackground=FG,
-                               relief="flat").pack(side="left", padx=(0, 8))
-                _lbl(row1, "Amount:", fg=MUT, bg=BG,
-                     width=7, anchor="w").pack(side="left")
-                tk.Spinbox(row1, from_=-100, to=100, width=5,
-                           textvariable=_sv_amount,
-                           bg=CARD, fg=FG, insertbackground=FG,
-                           relief="flat").pack(side="left")
-            elif atype == "key":
-                _lbl(row1, "Key:", fg=MUT, bg=BG,
-                     width=6, anchor="w").pack(side="left")
-                tk.Entry(row1, textvariable=_sv_key, bg=CARD, fg=FG,
-                         insertbackground=FG, font=("Segoe UI", 10),
-                         relief="flat", bd=0, width=20).pack(
-                    side="left", ipady=4)
+        st.bind("<ButtonPress-1>",  _on_drag_start)
+        st.bind("<B1-Motion>",      _on_drag_motion)
+        st.bind("<ButtonRelease-1>", _on_drag_end)
 
-        _build_fields("click")
-
-        def _on_step_sel(event):
-            s = st.selection()
-            if not s:
+        # ------------------------------------------------------------------ #
+        #  Double-click on delay cell → inline edit popup                     #
+        # ------------------------------------------------------------------ #
+        def _on_dbl_click(e):
+            region = st.identify_region(e.x, e.y)
+            col    = st.identify_column(e.x)
+            item   = st.identify_row(e.y)
+            if region != "cell" or col != "#5" or not item:
                 return
-            i = st.index(s[0])
-            if i >= len(step_data):
+            vis_idx  = st.index(item)
+            orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+            if orig_idx >= len(step_data):
                 return
-            a = step_data[i]
+
+            # Small popup entry
+            x0, y0, x1, y1 = st.bbox(item, "#5")
+            popup = tk.Toplevel(dlg)
+            popup.overrideredirect(True)
+            popup.geometry("{}x{}+{}+{}".format(
+                x1 - x0, y1 - y0,
+                st.winfo_rootx() + x0,
+                st.winfo_rooty() + y0))
+            popup.configure(bg=ACC)
+
+            cur_ms = int(round(step_data[orig_idx].get("delay", 0) * 1000))
+            popup_var = tk.StringVar(value=str(cur_ms))
+            popup_e = tk.Entry(popup, textvariable=popup_var,
+                               bg=BG, fg=FG, insertbackground=FG,
+                               font=("Segoe UI", 9), relief="flat",
+                               justify="center")
+            popup_e.pack(fill="both", expand=True, padx=1, pady=1)
+            popup_e.select_range(0, "end")
+            popup_e.focus_set()
+
+            def _commit(e=None):
+                try:
+                    ms = int(popup_var.get())
+                    _push_undo()
+                    step_data[orig_idx]["delay"] = round(ms / 1000.0, 3)
+                    _refresh_tree(keep_sel=orig_idx)
+                except ValueError:
+                    pass
+                popup.destroy()
+
+            popup_e.bind("<Return>",  _commit)
+            popup_e.bind("<Escape>",  lambda e: popup.destroy())
+            popup_e.bind("<FocusOut>", lambda e: popup.destroy())
+
+        st.bind("<Double-ButtonPress-1>", _on_dbl_click)
+
+        # ------------------------------------------------------------------ #
+        #  Treeview selection → populate edit panel                           #
+        # ------------------------------------------------------------------ #
+        def _on_step_sel(event=None):
+            sel = st.selection()
+            if not sel:
+                edit_header.configure(text="Pilih langkah untuk diedit", fg=MUT)
+                return
+            vis_idx  = st.index(sel[0])
+            orig_idx = _filter_map[vis_idx] if _filter_map else vis_idx
+            if orig_idx >= len(step_data):
+                return
+            a     = step_data[orig_idx]
             atype = a.get("type", "click")
-            _sv_type.set(atype)
-            _sv_delay.set(round(a.get("delay", 0), 3))
+            edit_header.configure(
+                text="Edit Step #{} ({})".format(orig_idx + 1, atype), fg=ACC)
+            _ep_type.set(atype)
+            _ep_delay.set(int(round(a.get("delay", 0) * 1000)))
             if atype in ("click", "scroll"):
-                _sv_x.set(a.get("x", 0))
-                _sv_y.set(a.get("y", 0))
+                _ep_x.set(a.get("x", 0))
+                _ep_y.set(a.get("y", 0))
             if atype == "click":
-                _sv_button.set(a.get("button", "left"))
+                _ep_button.set(a.get("button", "left"))
             elif atype == "type":
-                _sv_text.set(a.get("text", ""))
+                _ep_text.set(a.get("text", ""))
             elif atype == "scroll":
-                _sv_amount.set(a.get("amount", 0))
+                _ep_amount.set(a.get("amount", 3))
             elif atype == "key":
-                _sv_key.set(a.get("key", ""))
-            _build_fields(atype)
+                _ep_key.set(a.get("key", ""))
+            _build_edit_panel(atype)
 
         st.bind("<<TreeviewSelect>>", _on_step_sel)
 
-        def _update_step():
-            s = st.selection()
-            if not s:
-                return
-            i = st.index(s[0])
-            if i >= len(step_data):
-                return
-            atype = _sv_type.get()
-            try:
-                d = float(_sv_delay.get())
-            except (ValueError, tk.TclError):
-                d = 0.0
-            act = {"type": atype, "delay": round(d, 3)}
-            if atype == "click":
-                try:
-                    act["x"] = int(_sv_x.get())
-                    act["y"] = int(_sv_y.get())
-                except (ValueError, tk.TclError):
-                    act["x"] = act["y"] = 0
-                act["button"] = _sv_button.get()
-            elif atype == "type":
-                act["text"] = _sv_text.get()
-            elif atype == "scroll":
-                try:
-                    act["x"] = int(_sv_x.get())
-                    act["y"] = int(_sv_y.get())
-                    act["amount"] = int(_sv_amount.get())
-                except (ValueError, tk.TclError):
-                    act["x"] = act["y"] = act["amount"] = 0
-            elif atype == "key":
-                act["key"] = _sv_key.get()
-            step_data[i] = act
-            _refresh_tree(keep_sel=i)
+        # ------------------------------------------------------------------ #
+        #  Bottom bar: playback settings + action buttons                     #
+        # ------------------------------------------------------------------ #
+        bottom = tk.Frame(dlg, bg=SIDE, padx=12, pady=8)
+        bottom.pack(fill="x", side="bottom")
 
-        def _delete_step():
-            s = st.selection()
-            if not s:
-                return
-            i = st.index(s[0])
-            if i < len(step_data):
-                del step_data[i]
-                _refresh_tree(keep_sel=max(0, i - 1) if step_data else None)
+        left_bottom = tk.Frame(bottom, bg=SIDE)
+        left_bottom.pack(side="left", fill="y")
 
-        def _move_up():
-            s = st.selection()
-            if not s:
-                return
-            i = st.index(s[0])
-            if i > 0:
-                step_data[i - 1], step_data[i] = step_data[i], step_data[i - 1]
-                _refresh_tree(keep_sel=i - 1)
-
-        def _move_down():
-            s = st.selection()
-            if not s:
-                return
-            i = st.index(s[0])
-            if i < len(step_data) - 1:
-                step_data[i + 1], step_data[i] = step_data[i], step_data[i + 1]
-                _refresh_tree(keep_sel=i + 1)
-
-        btn_row = tk.Frame(edit_outer, bg=BG)
-        btn_row.pack(fill="x", pady=(4, 0))
-        for txt, cmd in [("Update Step", _update_step),
-                         ("Delete Step",  _delete_step),
-                         ("Move Up",      _move_up),
-                         ("Move Down",    _move_down)]:
-            ttk.Button(btn_row, text=txt, command=cmd).pack(
-                side="left", padx=(0, 4))
-
-        # -- Playback settings + Silent Mode --
-        play_frame = tk.Frame(dlg, bg=BG)
-        play_frame.pack(fill="x", padx=20, pady=(4, 2))
-        _lbl(play_frame, "Speed:", fg=MUT, bg=BG,
-             font=("Segoe UI", 9)).pack(side="left")
+        _lbl(left_bottom, "Speed:", fg=MUT, bg=SIDE,
+             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         speed_var = tk.DoubleVar(
             value=float(existing.get("speed", 1.0)) if existing else 1.0)
-        ttk.Combobox(play_frame, textvariable=speed_var,
-                     values=[0.5, 1.0, 1.5, 2.0],
-                     state="readonly", width=5).pack(side="left", padx=(4, 16))
-        _lbl(play_frame, "Repeat:", fg=MUT, bg=BG,
-             font=("Segoe UI", 9)).pack(side="left")
+        ttk.Combobox(left_bottom, textvariable=speed_var,
+                     values=[0.25, 0.5, 1.0, 1.5, 2.0],
+                     state="readonly", width=5).pack(side="left", padx=(0, 14))
+
+        _lbl(left_bottom, "Ulangi:", fg=MUT, bg=SIDE,
+             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         repeat_var = tk.IntVar(
             value=int(existing.get("repeat", 1)) if existing else 1)
-        tk.Spinbox(play_frame, from_=1, to=9999, width=5,
-                   textvariable=repeat_var,
-                   bg=CARD, fg=FG, insertbackground=FG,
-                   relief="flat").pack(side="left", padx=(4, 16))
+        repeat_sp = tk.Spinbox(left_bottom, from_=1, to=999999, width=6,
+                               textvariable=repeat_var,
+                               bg=CARD, fg=FG, insertbackground=FG,
+                               relief="flat", font=("Segoe UI", 9))
+        repeat_sp.pack(side="left", padx=(0, 14), ipady=2)
+
         silent_var = tk.BooleanVar(
             value=bool(existing.get("silent_mode", False)) if existing else False)
-        tk.Checkbutton(play_frame, text="Silent Mode",
-                       variable=silent_var, bg=BG, fg=FG,
-                       activebackground=BG, activeforeground=FG,
+        tk.Checkbutton(left_bottom, text="Silent Mode",
+                       variable=silent_var, bg=SIDE, fg=FG,
+                       activebackground=SIDE, activeforeground=FG,
+                       selectcolor=CARD,
+                       font=("Segoe UI", 9)).pack(side="left", padx=(0, 10))
+
+        unlimited_var = tk.BooleanVar(value=False)
+
+        def _toggle_unlimited():
+            if unlimited_var.get():
+                repeat_var.set(999999)
+                repeat_sp.configure(state="disabled")
+            else:
+                repeat_var.set(1)
+                repeat_sp.configure(state="normal")
+
+        tk.Checkbutton(left_bottom, text="Loop Tak Terbatas",
+                       variable=unlimited_var, command=_toggle_unlimited,
+                       bg=SIDE, fg=FG,
+                       activebackground=SIDE, activeforeground=FG,
                        selectcolor=CARD,
                        font=("Segoe UI", 9)).pack(side="left")
-        _lbl(play_frame,
-             " (Chrome: clicks without moving cursor)",
-             fg=MUT, bg=BG, font=("Segoe UI", 8)).pack(side="left")
 
-        # -- Save / Test Run / Cancel --
+        right_bottom = tk.Frame(bottom, bg=SIDE)
+        right_bottom.pack(side="right", fill="y")
+
+        warn_lbl = tk.Label(right_bottom,
+                            text="Belum tersimpan", bg=SIDE, fg=YEL,
+                            font=("Segoe UI", 8))
+        warn_lbl.pack(side="left", padx=(0, 12))
+
+        # ------------------------------------------------------------------ #
+        #  Save + Test Run + Cancel                                            #
+        # ------------------------------------------------------------------ #
         def _save():
             name = name_var.get().strip()
             if not name:
-                name = simpledialog.askstring(
-                    "Name Your Recording", "Recording name:", parent=dlg)
+                name = self._ask_rec_name(dlg, "")
             if not name:
                 return
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -4259,13 +5212,19 @@ class SynthexApp:
             self._ud.save()
             self._refresh_recordings_tree()
             dlg.destroy()
+            # Restore recorder toolbar after saving
+            if self._rec_toolbar_win:
+                try:
+                    self._rec_toolbar_win.deiconify()
+                    self._rec_toolbar_win.lift()
+                except Exception:
+                    pass
             self._sv.set(
-                "Recording '{}' saved ({} steps).".format(name, len(step_data)))
+                "Rekaman '{}' disimpan ({} langkah).".format(name, len(step_data)))
 
         def _test_run():
-            """Run the current steps immediately (without saving) to verify."""
             if not step_data:
-                messagebox.showinfo("Test Run", "No steps to run.",
+                messagebox.showinfo("Test Run", "Tidak ada langkah.",
                                     parent=dlg)
                 return
             try:
@@ -4281,22 +5240,39 @@ class SynthexApp:
             }
             self._play_simple_recording(tmp_rec, -1)
 
-        sr = tk.Frame(dlg, bg=BG)
-        sr.pack(fill="x", padx=20, pady=(4, 16))
-        lbl_save = "SIMPAN PERUBAHAN" if (
-            edit_idx is not None and
-            0 <= (edit_idx or -1) < len(self._ud.recordings)) else "SIMPAN REKAMAN"
-        tk.Button(sr, text=lbl_save, bg=GRN, fg="#FFFFFF",
-                  font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
-                  padx=20, pady=10, cursor="hand2",
+        lbl_save = ("SIMPAN PERUBAHAN"
+                    if (edit_idx is not None and
+                        0 <= (edit_idx or -1) < len(self._ud.recordings))
+                    else "SIMPAN REKAMAN")
+        tk.Button(right_bottom, text=lbl_save,
+                  bg=GRN, fg="#FFFFFF",
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=16, pady=6, cursor="hand2",
                   activebackground="#3A9F70", activeforeground="#FFFFFF",
-                  command=_save).pack(side="left")
-        ttk.Button(sr, text="Test Run",
-                   command=_test_run).pack(side="left", padx=(10, 0))
-        ttk.Button(sr, text="Batal",
-                   command=dlg.destroy).pack(side="left", padx=(6, 0))
-        tk.Label(sr, text="  Rekaman belum tersimpan sampai klik SIMPAN",
-                 bg=BG, fg=YEL, font=("Segoe UI", 8)).pack(side="left", padx=(10, 0))
+                  command=_save).pack(side="left", padx=(0, 6))
+
+        tk.Button(right_bottom, text="Test Run",
+                  bg=CARD, fg=FG, relief="flat", bd=0,
+                  font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
+                  activebackground=ACC, activeforeground=BG,
+                  command=_test_run).pack(side="left", padx=(0, 6))
+
+        tk.Button(right_bottom, text="Batal",
+                  bg=CARD, fg=MUT, relief="flat", bd=0,
+                  font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
+                  activebackground=RED, activeforeground=BG,
+                  command=_on_editor_close).pack(side="left")
+
+        # ------------------------------------------------------------------ #
+        #  Keyboard shortcuts                                                  #
+        # ------------------------------------------------------------------ #
+        dlg.bind("<Delete>",    lambda e: _delete_step())
+        dlg.bind("<Control-z>", lambda e: _undo())
+        dlg.bind("<Control-y>", lambda e: _redo())
+        dlg.bind("<Control-d>", lambda e: _duplicate_step())
+        dlg.bind("<Control-c>", lambda e: _copy_step())
+        dlg.bind("<Control-v>", lambda e: _paste_step())
+        dlg.bind("<Control-a>", lambda e: st.selection_set(st.get_children()))
 
     # -- Smart Record ---------------------------------------------------
 
@@ -4548,10 +5524,7 @@ class SynthexApp:
                       command=cmd).pack(side="left", padx=(0, 4))
 
         def save_rec():
-            name = simpledialog.askstring(
-                "Nama Rekaman",
-                "Beri nama rekaman ini\n(contoh: Login Admin, Isi Form Pesanan):",
-                parent=dlg)
+            name = self._ask_rec_name(dlg, "")
             if not name:
                 return
             folder = (self._rec_folder_var.get()
@@ -4838,11 +5811,22 @@ class SynthexApp:
             tag   = "simple_tag" if rtype == "simple" else "smart_tag"
             self._recordings_tree.insert("", "end", tags=(tag,), values=(
                 rec.get("name", ""),
-                rtype.capitalize(),
+                "Simple" if rtype == "simple" else "Smart",
                 rec.get("step_count", len(rec.get("steps", []))),
                 rec.get("last_run", "-"),
                 rec.get("duration", "-"),
             ))
+        # Update counter badge
+        n = len(self._ud.recordings)
+        if hasattr(self, "_rec_count_lbl") and self._rec_count_lbl:
+            try:
+                if n == 0:
+                    self._rec_count_lbl.configure(text="", bg=CARD)
+                else:
+                    self._rec_count_lbl.configure(
+                        text=" {} ".format(n), bg=ACC)
+            except Exception:
+                pass
 
     def _on_rec_tree_select(self):
         """Update _last_selected_rec_idx when user clicks a recording."""
@@ -4880,13 +5864,182 @@ class SynthexApp:
         idx = self._recordings_tree.index(sel[0])
         if idx >= len(self._ud.recordings):
             return
-        name = self._ud.recordings[idx].get("name","")
-        if messagebox.askyesno("Delete",
-                               "Delete recording '{}'?".format(name),
-                               parent=self._root):
+        name = self._ud.recordings[idx].get("name", "")
+        # Custom styled confirm dialog
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Hapus Rekaman")
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.attributes("-topmost", True)
+        dlg.overrideredirect(False)
+
+        hdr = tk.Frame(dlg, bg=RED, height=44)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="  Hapus Rekaman", bg=RED, fg="white",
+                 font=("Segoe UI", 11, "bold")).pack(side="left", pady=10)
+
+        body = tk.Frame(dlg, bg=BG, padx=24, pady=18)
+        body.pack(fill="both", expand=True)
+        tk.Label(body,
+                 text='Yakin hapus rekaman ini?',
+                 bg=BG, fg=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        tk.Label(body, text='"{}"'.format(name),
+                 bg=BG, fg=ACC2, font=("Segoe UI", 10, "italic"),
+                 wraplength=320).pack(anchor="w", pady=(4, 12))
+        tk.Label(body, text="Rekaman yang dihapus tidak bisa dipulihkan.",
+                 bg=BG, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+
+        result = [False]
+        btn_row = tk.Frame(body, bg=BG)
+        btn_row.pack(anchor="w", pady=(16, 0))
+
+        def _yes():
+            result[0] = True
+            dlg.destroy()
+
+        tk.Button(btn_row, text="Hapus", bg=RED, fg="white",
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=18, pady=7, cursor="hand2",
+                  command=_yes).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Batal", bg=CARD, fg=FG,
+                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  padx=14, pady=7, cursor="hand2",
+                  command=dlg.destroy).pack(side="left")
+
+        dlg.update_idletasks()
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        w, h = 380, 220
+        dlg.geometry("{}x{}+{}+{}".format(w, h, (sw - w) // 2, (sh - h) // 2))
+        self._root.wait_window(dlg)
+
+        if result[0]:
             del self._ud.recordings[idx]
             self._ud.save()
             self._refresh_recordings_tree()
+
+    def _move_rec_up(self):
+        """Move selected recording one position up in the list."""
+        if not self._recordings_tree:
+            return
+        sel = self._recordings_tree.selection()
+        if not sel:
+            return
+        idx = self._recordings_tree.index(sel[0])
+        if idx <= 0 or idx >= len(self._ud.recordings):
+            return
+        recs = self._ud.recordings
+        recs[idx - 1], recs[idx] = recs[idx], recs[idx - 1]
+        self._ud.save()
+        self._refresh_recordings_tree()
+        # Re-select the moved item
+        children = self._recordings_tree.get_children()
+        if idx - 1 < len(children):
+            self._recordings_tree.selection_set(children[idx - 1])
+            self._recordings_tree.see(children[idx - 1])
+
+    def _move_rec_down(self):
+        """Move selected recording one position down in the list."""
+        if not self._recordings_tree:
+            return
+        sel = self._recordings_tree.selection()
+        if not sel:
+            return
+        idx = self._recordings_tree.index(sel[0])
+        if idx < 0 or idx >= len(self._ud.recordings) - 1:
+            return
+        recs = self._ud.recordings
+        recs[idx], recs[idx + 1] = recs[idx + 1], recs[idx]
+        self._ud.save()
+        self._refresh_recordings_tree()
+        children = self._recordings_tree.get_children()
+        if idx + 1 < len(children):
+            self._recordings_tree.selection_set(children[idx + 1])
+            self._recordings_tree.see(children[idx + 1])
+
+    def _ask_rec_name(self, parent, current_name=""):
+        """
+        Show a styled dialog to enter/edit a recording name.
+        Returns the entered name string, or "" if cancelled.
+        """
+        dlg = tk.Toplevel(parent)
+        dlg.title("Nama Rekaman")
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        dlg.attributes("-topmost", True)
+
+        # ── Header ────────────────────────────────────────────────────
+        hdr = tk.Frame(dlg, bg=ACC, height=48)
+        hdr.pack(fill="x")
+        hdr.pack_propagate(False)
+        tk.Label(hdr, text="  Simpan Rekaman",
+                 bg=ACC, fg="white",
+                 font=("Segoe UI", 12, "bold")).pack(side="left", pady=12, padx=4)
+
+        # ── Body ──────────────────────────────────────────────────────
+        body = tk.Frame(dlg, bg=BG, padx=24, pady=20)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(body, text="Nama Rekaman",
+                 bg=BG, fg=FG,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+
+        # Entry with rounded-look border frame
+        ef = tk.Frame(body, bg=ACC, padx=1, pady=1)
+        ef.pack(fill="x", pady=(4, 2))
+        name_entry = tk.Entry(ef, bg=CARD2, fg=FG, insertbackground=FG,
+                              relief="flat", font=("Segoe UI", 11),
+                              bd=6)
+        name_entry.pack(fill="x")
+        if current_name:
+            name_entry.insert(0, current_name)
+            name_entry.select_range(0, "end")
+
+        tk.Label(body,
+                 text="Contoh: Login Admin, Isi Form Pesanan, Klik Tombol Beli",
+                 bg=BG, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(2, 14))
+
+        # ── Buttons ───────────────────────────────────────────────────
+        result = [""]
+        btn_row = tk.Frame(body, bg=BG)
+        btn_row.pack(anchor="w")
+
+        def _save():
+            val = name_entry.get().strip()
+            if not val:
+                name_entry.configure(bg="#3A1A1A")
+                name_entry.focus_set()
+                return
+            result[0] = val
+            dlg.destroy()
+
+        def _cancel():
+            dlg.destroy()
+
+        tk.Button(btn_row, text="Simpan", bg=ACC, fg="white",
+                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  padx=20, pady=8, cursor="hand2",
+                  command=_save).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Batal", bg=CARD, fg=FG,
+                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  padx=14, pady=8, cursor="hand2",
+                  command=_cancel).pack(side="left")
+
+        dlg.bind("<Return>", lambda e: _save())
+        dlg.bind("<Escape>", lambda e: _cancel())
+
+        dlg.update_idletasks()
+        sw = parent.winfo_screenwidth()
+        sh = parent.winfo_screenheight()
+        w, h = 400, 230
+        dlg.geometry("{}x{}+{}+{}".format(w, h, (sw - w) // 2, (sh - h) // 2))
+        name_entry.focus_set()
+        parent.wait_window(dlg)
+        return result[0]
 
     # ================================================================
     #  Task actions
@@ -5716,52 +6869,87 @@ class SynthexApp:
         threading.Thread(target=_run, daemon=True).start()
 
     def _setup_hotkey(self):
-        """Register global hotkeys Ctrl+1 (play/pause) and Ctrl+3 (record toggle)."""
+        """Single keyboard listener: handles CTRL+1/CTRL+3 hotkeys AND routes
+        key events to SimpleRecorder when recording is active.
+        Using one listener prevents the two-listener C-level crash on Windows."""
         try:
             from pynput import keyboard as _kb
-            self._hkl = _kb.GlobalHotKeys({
-                "<ctrl>+1": lambda: (
-                    self._root.after(0, self._hk_play_pause)
-                    if self._root else None),
-                "<ctrl>+3": lambda: (
-                    self._root.after(0, self._hk_record_toggle)
-                    if self._root else None),
-            })
+
+            _ctrl = [False]
+
+            def _on_press(key):
+                # Track CTRL state
+                try:
+                    if key in (_kb.Key.ctrl_l, _kb.Key.ctrl_r, _kb.Key.ctrl):
+                        _ctrl[0] = True
+                except Exception:
+                    pass
+
+                if _ctrl[0]:
+                    # Detect CTRL+1 (VK 0x31) and CTRL+3 (VK 0x33)
+                    vk = getattr(key, 'vk', None)
+                    ch = None
+                    try:
+                        ch = key.char
+                    except Exception:
+                        pass
+                    if vk == 0x31 or ch in ('1', '\x01'):
+                        if self._root:
+                            self._root.after(0, self._hk_play_pause)
+                        return
+                    if vk == 0x33 or ch in ('3', '\x03'):
+                        self.logger.info("HK: CTRL+3 detected vk=%s ch=%r rec=%s fn=%s",
+                            vk, ch, self._rec, self._rec_toggle_fn is not None)
+                        if self._root:
+                            self._root.after(0, self._hk_record_toggle)
+                        return
+
+                # Route to SimpleRecorder when recording is active
+                if self._rec and self._simple_recorder:
+                    try:
+                        self._simple_recorder._on_key_press(key)
+                    except Exception:
+                        pass
+
+            def _on_release(key):
+                try:
+                    if key in (_kb.Key.ctrl_l, _kb.Key.ctrl_r, _kb.Key.ctrl):
+                        _ctrl[0] = False
+                except Exception:
+                    pass
+
+            self._hkl = _kb.Listener(
+                on_press=_on_press,
+                on_release=_on_release,
+                suppress=False,
+            )
             self._hkl.daemon = True
             self._hkl.start()
-        except Exception:
-            pass
+            self.logger.info("Hotkey listener started OK")
+        except Exception as _e:
+            self.logger.error("Hotkey setup failed: %s", _e)
 
     # -- Hotkey actions --
 
     def _hk_play_pause(self):
-        """Ctrl+1: Play / Pause toggle — only active during playback."""
+        """Ctrl+1: Pause/resume recording when recorder active, else play/pause playback."""
         if self._step_editor_open:
             return
-        # Block if nothing is playing and no recording has been selected to play
-        if not self._playback_running and self._last_selected_rec_idx is None:
+
+        # Priority 1: recorder sedang aktif → pause/resume rekaman via toolbar fn
+        if self._rec:
+            if self._rec_pause_fn:
+                self._rec_pause_fn()
             return
+
+        # Priority 2: playback sedang berjalan → pause/resume playback
         if self._playback_running and self._playback_pause.is_set():
-            # Currently paused -> resume
             self._playback_pause.clear()
-            self._show_toast("Resumed", kind="info")
+            self._show_toast("Dilanjutkan", kind="info")
         elif self._playback_running:
-            # Currently playing -> pause
             self._playback_pause.set()
-            self._show_toast("Paused", kind="info")
-        else:
-            # Not playing -> start playback of last selected recording
-            idx = self._last_selected_rec_idx
-            if idx is None or idx >= len(self._ud.recordings):
-                self._show_toast("No recording selected", kind="warning")
-                return
-            rec = self._ud.recordings[idx]
-            self._show_toast(
-                "Playing: {}".format(rec.get("name", "")), kind="success")
-            if rec.get("rec_type", "smart") == "simple":
-                self._play_simple_recording(rec, idx)
-            else:
-                self._hk_play_smart(rec, idx)
+            self._show_toast("Dijeda", kind="info")
+        # Jika tidak ada recording/playback aktif → tidak melakukan apapun
 
     def _hk_play_smart(self, rec, idx):
         """Start smart recording playback (used by Ctrl+1 hotkey)."""
@@ -5819,23 +7007,21 @@ class SynthexApp:
         threading.Thread(target=_run, daemon=True).start()
 
     def _hk_record_toggle(self):
-        """Ctrl+3: Stop/start recording — only active when recorder window is open."""
+        """Ctrl+3: Start/stop recording — hanya aktif jika toolbar sudah terbuka."""
+        self.logger.info("HK: _hk_record_toggle called step_editor=%s toolbar=%s rec=%s fn=%s",
+            self._step_editor_open,
+            self._rec_toolbar_win is not None,
+            self._rec,
+            self._rec_toggle_fn is not None)
         if self._step_editor_open:
             return
-        # Block Ctrl+3 if recorder window isn't open and not currently recording
-        if not self._rec and not self._rec_toolbar_win:
+        if not self._rec_toolbar_win and not self._rec:
             return
-        if self._rec:
-            actions_count = 0
-            if self._simple_recorder:
-                actions_count = len(self._simple_recorder.get_actions())
-            self._stop_simple_rec()
-            self._show_toast(
-                "Rekaman dihentikan - {} langkah terekam".format(actions_count),
-                kind="info")
-        else:
-            self._show_toast("Membuka Recorder...", kind="info")
-            self._start_simple_rec()
+        if self._rec_toggle_fn:
+            try:
+                self._rec_toggle_fn()
+            except Exception as _e:
+                self.logger.error("HK: _rec_toggle_fn error: %s", _e, exc_info=True)
 
     # ================================================================
     #  GOOGLE ACCOUNTS MANAGER  (in Settings)
@@ -6635,9 +7821,77 @@ class SynthexApp:
                           ]).pack(side="left", padx=(0, 3))
 
     def _quit(self):
-        if self._tray:
-            self._tray.stop()
-        if self._hkl:
-            self._hkl.stop()
-        if self._root:
-            self._root.destroy()
+        """Tampilkan konfirmasi close yang menarik, lalu keluar + logout."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#0D0D14")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+
+        W, H = 360, 210
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+
+        # Border frame
+        border = tk.Frame(dlg, bg=ACC, bd=0)
+        border.place(x=0, y=0, width=W, height=3)
+
+        # Icon + title
+        tk.Label(dlg, text="✕", bg="#0D0D14", fg=ACC,
+                 font=("Segoe UI", 22, "bold")).pack(pady=(22, 0))
+        tk.Label(dlg, text="Tutup Synthex?", bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(6, 0))
+        tk.Label(dlg, text="Kamu akan otomatis ter-logout\ndan semua proses akan dihentikan.",
+                 bg="#0D0D14", fg=MUT, font=("Segoe UI", 9),
+                 justify="center").pack(pady=(6, 16))
+
+        # Separator
+        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+
+        # Buttons
+        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        btn_row.pack(pady=16)
+
+        def _do_quit():
+            dlg.destroy()
+            import os as _os
+            token_path = _os.path.join(_os.environ.get("APPDATA", ""), "Synthex", "token.json")
+            if _os.path.exists(token_path):
+                try: _os.remove(token_path)
+                except Exception: pass
+            try:
+                self.config.set("ui.stay_logged_in", False)
+                self.config.set("ui.last_email", "")
+                self.config.save()
+            except Exception:
+                pass
+            if self._tray:
+                try: self._tray.stop()
+                except Exception: pass
+            if self._hkl:
+                try: self._hkl.stop()
+                except Exception: pass
+            if hasattr(self, "_price_monitor") and self._price_monitor:
+                try: self._price_monitor.stop()
+                except Exception: pass
+            if getattr(self, "_scrcpy", None):
+                try: self._scrcpy.stop()
+                except Exception: pass
+            if self._root:
+                try: self._root.destroy()
+                except Exception: pass
+            _os._exit(0)
+
+        tk.Button(btn_row, text="  Ya, Tutup  ", bg=RED,
+                  fg="white", relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=14, pady=7,
+                  command=_do_quit).pack(side="left", padx=(0, 10))
+        tk.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
+                  relief="flat", font=("Segoe UI", 10),
+                  cursor="hand2", padx=14, pady=7,
+                  command=dlg.destroy).pack(side="left")
+
+        dlg.grab_set()
+        dlg.focus_force()
