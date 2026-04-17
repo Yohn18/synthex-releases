@@ -280,17 +280,18 @@ def _extract_sheet_id(url):
 
 class SynthexApp:
     NAV = [
-        ("Home",      "home"),
-        ("Web",       "web"),
-        ("Spy",       "spy"),
-        ("Record",    "record"),
-        ("Schedule",  "schedule"),
-        ("Templates", "templates"),
-        ("Sheet",     "sheet"),
-        ("Rekening",  "rekening"),
-        ("History",   "history"),
-        ("Logs",      "logs"),
-        ("Settings",  "settings"),
+        ("Home",          "home"),
+        ("Web",           "web"),
+        ("Spy",           "spy"),
+        ("Record",        "record"),
+        ("Schedule",      "schedule"),
+        ("Templates",     "templates"),
+        ("Sheet",         "sheet"),
+        ("Rekening",      "rekening"),
+        ("Monitor Harga", "monitor"),
+        ("History",       "history"),
+        ("Logs",          "logs"),
+        ("Settings",      "settings"),
     ]
 
     def __init__(self, config, engine=None):
@@ -316,6 +317,7 @@ class SynthexApp:
         self._rec_toolbar_win = None       # floating mini toolbar window
         self._rec_start_time  = 0.0        # wall time when recording started
         self._rec_timer_id    = None       # after() id for toolbar timer
+        self._step_editor_open = False     # True while smart record editor is open
 
         # Spy panel state
         self._spy_active        = False
@@ -481,7 +483,7 @@ class SynthexApp:
             "home":      "\U0001f3e0", "web":       "\U0001f310", "spy":      "\U0001f441",
             "record":    "\u23fa",     "schedule":  "\U0001f4c5", "sheet":    "\U0001f4ca",
             "rekening":  "\U0001f3e6", "history":   "\U0001f4cb", "settings": "\u2699\ufe0f",
-            "templates": "\U0001f4da", "logs":      "\U0001f5d2",
+            "templates": "\U0001f4da", "logs":      "\U0001f5d2", "monitor":  "\U0001f4b9",
         }
         self._nav      = {}
         self._nav_bars = {}
@@ -535,6 +537,7 @@ class SynthexApp:
             "templates": self._pg_templates,
             "sheet":     self._pg_sheet,
             "rekening":  self._pg_rekening,
+            "monitor":   self._pg_monitor,
             "history":   self._pg_history,
             "logs":      self._pg_logs,
             "settings":  self._pg_settings,
@@ -928,7 +931,19 @@ class SynthexApp:
     def _pg_record(self):
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "Action Recording",
-                  "Record and replay actions.")
+                  "Rekam & putar ulang aksi secara otomatis.")
+
+        # How-to strip
+        how = tk.Frame(f, bg="#0D1A0D", padx=14, pady=8)
+        how.pack(fill="x", padx=20, pady=(0, 10))
+        tk.Label(how, text="Cara pakai:",
+                 bg="#0D1A0D", fg=GRN, font=("Segoe UI", 8, "bold")).pack(
+            side="left", padx=(0, 6))
+        tk.Label(how,
+                 text="Simple Record = rekam gerakan mouse & ketikan  |  "
+                      "Smart Record = buat langkah otomasi manual (URL, klik, ketik, dll)",
+                 bg="#0D1A0D", fg=FG, font=("Segoe UI", 8)).pack(
+            side="left", fill="x", expand=True)
 
         # Two mode cards
         cards = tk.Frame(f, bg=BG)
@@ -940,8 +955,9 @@ class SynthexApp:
         _lbl(sc, "SIMPLE RECORD", bg=CARD, fg=ACC,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
         _lbl(sc,
-             "Rekam klik & ketikan\nberdasarkan posisi\nlayar. Cocok untuk\n"
-             "tugas berulang di\naplikasi manapun.",
+             "Rekam semua klik mouse\ndan ketikan keyboard\nsecara otomatis.\n\n"
+             "Cocok untuk tugas\nberulang di aplikasi\nmanapun (desktop/game).\n\n"
+             "Shortcut: Ctrl+3",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
         tk.Button(sc, text="Buka Recorder",
@@ -955,11 +971,12 @@ class SynthexApp:
         _lbl(ac, "SMART RECORD", bg=CARD, fg=GRN,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
         _lbl(ac,
-             "Rekam aksi di Chrome\nsecara cerdas - tetap\nbekerja meski\n"
-             "halaman bergerak.\nButuh Chrome terbuka.",
+             "Buat langkah otomasi\nsatu per satu secara\nmanual: buka URL,\n"
+             "klik elemen, ketik\nteks, tunggu, ambil\nteks, screenshot, dll.\n\n"
+             "Hasil bisa dijalankan\nberkali-kali.",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        tk.Button(ac, text="Mulai Smart Rec",
+        tk.Button(ac, text="Buat Langkah Baru",
                   bg=GRN, fg=BG, font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_smart_rec).pack(fill="x")
@@ -1539,11 +1556,14 @@ class SynthexApp:
             row = tk.Frame(parent, bg=BG)
             row.pack(fill="x", pady=(0, 10))
             def _open_test():
-                url = self._mb_field_vars.get("url")
-                if url and isinstance(url, tk.StringVar) and self.engine:
-                    threading.Thread(
-                        target=self.engine.open_url,
-                        args=(url.get(),), daemon=True).start()
+                import webbrowser as _wb
+                url_var = self._mb_field_vars.get("url")
+                if url_var and isinstance(url_var, tk.StringVar):
+                    u = url_var.get().strip()
+                    if u:
+                        if not u.startswith(("http://", "https://")):
+                            u = "https://" + u
+                        _wb.open(u)
             tk.Button(row, text="Open in Browser",
                       bg=CARD, fg=FG, font=("Segoe UI", 9),
                       relief="flat", bd=0, padx=10, pady=5,
@@ -2656,6 +2676,333 @@ class SynthexApp:
     #  HISTORY PAGE
     # ================================================================
 
+    # ================================================================
+    #  MONITOR HARGA PAGE
+    # ================================================================
+
+    def _pg_monitor(self):
+        """Halaman Monitor Harga — ambil tabel web, tulis ke Google Sheet."""
+        from modules.price_monitor import PriceMonitor
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Monitor Harga")
+
+        # State: satu instance PriceMonitor per session
+        if not hasattr(self, "_price_monitor"):
+            self._price_monitor = None
+
+        # ── Outer scroll area ─────────────────────────────────────────────────
+        body = tk.Frame(f, bg=BG)
+        body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        # ── Konfigurasi ───────────────────────────────────────────────────────
+        cfg_card = _card(body, "Konfigurasi")
+        cfg_card.pack(fill="x", pady=(8, 0))
+
+        def _row(parent, label, widget_fn):
+            row = tk.Frame(parent, bg=CARD)
+            row.pack(fill="x", padx=10, pady=3)
+            tk.Label(row, text=label, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 9), width=22, anchor="w").pack(
+                         side="left", padx=(0, 6))
+            w = widget_fn(row)
+            w.pack(side="left", fill="x", expand=True)
+            return w
+
+        # URL
+        v_url = tk.StringVar()
+        _row(cfg_card, "URL Halaman *",
+             lambda p: tk.Entry(p, textvariable=v_url, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+
+        # Tombol refresh selector
+        v_btn = tk.StringVar()
+        btn_entry = _row(cfg_card, "Selector Tombol Refresh",
+                         lambda p: tk.Entry(p, textvariable=v_btn, bg=CARD2, fg=FG,
+                                            insertbackground=FG, relief="flat",
+                                            font=("Segoe UI", 9)))
+        tk.Label(cfg_card, text="   (kosongkan jika tidak ada tombol refresh)",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", padx=10)
+
+        # Selector tabel
+        v_tbl = tk.StringVar(value="table")
+        _row(cfg_card, "Selector Tabel *",
+             lambda p: tk.Entry(p, textvariable=v_tbl, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+
+        # Mode
+        v_mode = tk.StringVar(value="requests")
+        mode_row = tk.Frame(cfg_card, bg=CARD)
+        mode_row.pack(fill="x", padx=10, pady=3)
+        tk.Label(mode_row, text="Mode Browser", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
+        for txt, val in [("Requests (halaman statis)", "requests"),
+                         ("Headless Chrome (JS/dinamis)", "headless")]:
+            tk.Radiobutton(mode_row, text=txt, variable=v_mode, value=val,
+                           bg=CARD, fg=FG, selectcolor=CARD2,
+                           activebackground=CARD, activeforeground=FG,
+                           font=("Segoe UI", 9)).pack(side="left", padx=(0, 12))
+
+        tk.Label(cfg_card,
+                 text="   Headless = browser tersembunyi, tidak muncul di layar. "
+                      "Tab browser kamu bisa diminimize.",
+                 bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(anchor="w", padx=10, pady=(0, 4))
+
+        # Interval
+        v_interval = tk.StringVar(value="5")
+        intv_row = tk.Frame(cfg_card, bg=CARD)
+        intv_row.pack(fill="x", padx=10, pady=3)
+        tk.Label(intv_row, text="Interval (menit) *", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
+        tk.Spinbox(intv_row, from_=1, to=1440, textvariable=v_interval,
+                   width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
+                   relief="flat", font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(intv_row, text="menit", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left", padx=4)
+
+        # ── Google Sheet ──────────────────────────────────────────────────────
+        sheet_card = _card(body, "Google Sheet Tujuan")
+        sheet_card.pack(fill="x", pady=(10, 0))
+
+        v_sheet_id = tk.StringVar()
+        _row(sheet_card, "Sheet ID / URL *",
+             lambda p: tk.Entry(p, textvariable=v_sheet_id, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+
+        v_ws = tk.StringVar(value="Sheet1")
+        _row(sheet_card, "Nama Worksheet",
+             lambda p: tk.Entry(p, textvariable=v_ws, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+
+        v_cell = tk.StringVar(value="A1")
+        _row(sheet_card, "Mulai dari sel",
+             lambda p: tk.Entry(p, textvariable=v_cell, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+
+        v_clear = tk.BooleanVar(value=True)
+        tk.Checkbutton(sheet_card, text="Hapus isi sheet sebelum update",
+                       variable=v_clear, bg=CARD, fg=FG,
+                       selectcolor=CARD2, activebackground=CARD,
+                       activeforeground=FG, font=("Segoe UI", 9)).pack(
+                           anchor="w", padx=10, pady=(0, 6))
+
+        # ── Status & log ──────────────────────────────────────────────────────
+        ctrl_card = _card(body, "Status & Kontrol")
+        ctrl_card.pack(fill="both", expand=True, pady=(10, 0))
+
+        # Stats row
+        stats_row = tk.Frame(ctrl_card, bg=CARD)
+        stats_row.pack(fill="x", padx=10, pady=(6, 4))
+
+        v_status_lbl  = tk.StringVar(value="Belum berjalan")
+        v_last_update = tk.StringVar(value="-")
+        v_cycle_count = tk.StringVar(value="0")
+
+        tk.Label(stats_row, text="Status:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(stats_row, textvariable=v_status_lbl, bg=CARD, fg=YEL,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+        tk.Label(stats_row, text="Siklus:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(stats_row, textvariable=v_cycle_count, bg=CARD, fg=FG,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+        tk.Label(stats_row, text="Update terakhir:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(stats_row, textvariable=v_last_update, bg=CARD, fg=GRN,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+
+        # Log box
+        log_frame = tk.Frame(ctrl_card, bg=CARD2, relief="flat")
+        log_frame.pack(fill="both", expand=True, padx=10, pady=(0, 6))
+        log_txt = tk.Text(log_frame, height=7, bg=CARD2, fg=FG,
+                          font=("Consolas", 8), relief="flat",
+                          state="disabled", wrap="word")
+        log_scroll = tk.Scrollbar(log_frame, command=log_txt.yview,
+                                  bg=CARD2, troughcolor=CARD2)
+        log_txt.configure(yscrollcommand=log_scroll.set)
+        log_scroll.pack(side="right", fill="y")
+        log_txt.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Preview tabel
+        prev_card = _card(body, "Preview Data Terakhir")
+        prev_card.pack(fill="both", expand=True, pady=(10, 0))
+
+        prev_txt = tk.Text(prev_card, height=6, bg=CARD2, fg=GRN,
+                           font=("Consolas", 8), relief="flat",
+                           state="disabled", wrap="none")
+        prev_scroll_y = tk.Scrollbar(prev_card, command=prev_txt.yview,
+                                     bg=CARD2, troughcolor=CARD2)
+        prev_scroll_x = tk.Scrollbar(prev_card, orient="horizontal",
+                                     command=prev_txt.xview,
+                                     bg=CARD2, troughcolor=CARD2)
+        prev_txt.configure(yscrollcommand=prev_scroll_y.set,
+                           xscrollcommand=prev_scroll_x.set)
+        prev_scroll_y.pack(side="right", fill="y")
+        prev_scroll_x.pack(side="bottom", fill="x")
+        prev_txt.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # ── Helpers ───────────────────────────────────────────────────────────
+
+        def _log(msg):
+            """Append a timestamped line to log box (thread-safe via after)."""
+            import datetime
+            ts  = datetime.datetime.now().strftime("%H:%M:%S")
+            line = "[{}] {}\n".format(ts, msg)
+
+            def _do():
+                log_txt.configure(state="normal")
+                log_txt.insert("end", line)
+                log_txt.see("end")
+                log_txt.configure(state="disabled")
+            try:
+                f.after(0, _do)
+            except Exception:
+                pass
+
+        def _update_preview(rows):
+            """Render table rows in preview box."""
+            if not rows:
+                return
+            lines = []
+            for row in rows[:20]:   # Max 20 baris di preview
+                lines.append("  |  ".join(str(c)[:25] for c in row))
+            text = "\n".join(lines)
+            if len(rows) > 20:
+                text += "\n... ({} baris total)".format(len(rows))
+
+            def _do():
+                prev_txt.configure(state="normal")
+                prev_txt.delete("1.0", "end")
+                prev_txt.insert("end", text)
+                prev_txt.configure(state="disabled")
+            try:
+                f.after(0, _do)
+            except Exception:
+                pass
+
+        def _refresh_stats():
+            pm = self._price_monitor
+            if pm is None:
+                return
+            v_cycle_count.set(str(pm.cycle_count))
+            if pm.last_update:
+                v_last_update.set(pm.last_update.strftime("%H:%M:%S"))
+
+        def _on_status(msg):
+            _log(msg)
+            f.after(0, _refresh_stats)
+
+        def _on_data(rows):
+            f.after(0, lambda: _update_preview(rows))
+
+        # ── Buttons ───────────────────────────────────────────────────────────
+
+        btn_row = tk.Frame(ctrl_card, bg=CARD)
+        btn_row.pack(fill="x", padx=10, pady=(0, 8))
+
+        def _build_monitor():
+            """Read config vars and create/reconfigure PriceMonitor."""
+            url = v_url.get().strip()
+            if not url:
+                messagebox.showwarning("Monitor Harga",
+                                       "URL wajib diisi.", parent=self._root)
+                return None
+            if not url.startswith(("http://", "https://")):
+                messagebox.showwarning("Monitor Harga",
+                                       "URL harus dimulai dengan http:// atau https://",
+                                       parent=self._root)
+                return None
+
+            try:
+                interval_sec = max(1, int(v_interval.get())) * 60
+            except ValueError:
+                interval_sec = 300
+
+            pm = PriceMonitor(on_status=_on_status, on_data=_on_data)
+            pm.configure(
+                url            = url,
+                btn_selector   = v_btn.get().strip(),
+                table_selector = v_tbl.get().strip() or "table",
+                mode           = v_mode.get(),
+                interval_sec   = interval_sec,
+                sheet_id       = v_sheet_id.get().strip(),
+                worksheet      = v_ws.get().strip() or "Sheet1",
+                start_cell     = v_cell.get().strip().upper() or "A1",
+                clear_before   = v_clear.get(),
+            )
+            return pm
+
+        btn_start = tk.Button(btn_row, text="MULAI MONITOR", bg=GRN, fg=BG,
+                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              padx=14, pady=6, cursor="hand2")
+        btn_stop  = tk.Button(btn_row, text="STOP", bg=RED, fg="#fff",
+                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              padx=14, pady=6, cursor="hand2",
+                              state="disabled")
+        btn_once  = tk.Button(btn_row, text="JALANKAN SEKALI", bg=ACC2, fg="#fff",
+                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              padx=14, pady=6, cursor="hand2")
+
+        def _start():
+            if self._price_monitor and self._price_monitor.running:
+                return
+            pm = _build_monitor()
+            if pm is None:
+                return
+            self._price_monitor = pm
+            pm.start()
+            v_status_lbl.set("Berjalan")
+            btn_start.configure(state="disabled")
+            btn_stop.configure(state="normal")
+            btn_once.configure(state="disabled")
+
+        def _stop():
+            if self._price_monitor:
+                self._price_monitor.stop()
+                self._price_monitor = None
+            v_status_lbl.set("Dihentikan")
+            btn_start.configure(state="normal")
+            btn_stop.configure(state="disabled")
+            btn_once.configure(state="normal")
+
+        def _run_once():
+            pm = _build_monitor()
+            if pm is None:
+                return
+            self._price_monitor = pm
+            btn_once.configure(state="disabled")
+            _log("Menjalankan satu siklus...")
+
+            def _worker():
+                pm.run_once()
+                try:
+                    f.after(0, lambda: btn_once.configure(state="normal"))
+                except Exception:
+                    pass
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        btn_start.configure(command=_start)
+        btn_stop.configure(command=_stop)
+        btn_once.configure(command=_run_once)
+
+        btn_start.pack(side="left", padx=(0, 8))
+        btn_stop.pack(side="left", padx=(0, 8))
+        btn_once.pack(side="left")
+
+        # Restore running state if monitor is already active
+        if self._price_monitor and self._price_monitor.running:
+            v_status_lbl.set("Berjalan")
+            btn_start.configure(state="disabled")
+            btn_stop.configure(state="normal")
+            btn_once.configure(state="disabled")
+            # Rewire callbacks to new UI
+            self._price_monitor._on_status = _on_status
+            self._price_monitor._on_data   = _on_data
+            _log("Monitor sudah berjalan (dilanjutkan dari sesi sebelumnya).")
+
+        return f
+
     def _pg_history(self):
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "Activity History")
@@ -2799,7 +3146,7 @@ class SynthexApp:
         rak = _card(f, "Rekening API")
         rak.pack(fill="x", padx=20, pady=(12, 0))
 
-        _lbl(rak, "API Key Validasi Rekening (apivalidasi.my.id)",
+        _lbl(rak, "API Key Validasi Rekening (Unlimited API)",
              fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
 
         rak_row = tk.Frame(rak, bg=CARD)
@@ -2998,13 +3345,16 @@ class SynthexApp:
         existing = [e.get("name") for e in self._ud.elements]
         if name in existing:
             return
+        elem_type = type_map.get(tag, tag.upper() if tag else "Coord")
         self._ud.elements.append({
             "name":     name,
-            "type":     type_map.get(tag, tag.upper()),
+            "type":     elem_type,
             "selector": info.get("css_selector", info.get("selector", "")),
             "xpath":    info.get("xpath", ""),
             "text":     info.get("text", ""),
             "id":       info.get("id", ""),
+            "x":        info.get("x", ""),
+            "y":        info.get("y", ""),
         })
         self._ud.save()
         self._refresh_spy_elements_tree()
@@ -3210,17 +3560,6 @@ class SynthexApp:
 
         dlg.after(1000, _tick)
 
-    def _do_start_simple_rec(self):
-        """Actually start the SimpleRecorder and show mini toolbar."""
-        import time as _time
-        from modules.macro.simple_recorder import SimpleRecorder
-        self._simple_recorder = SimpleRecorder()
-        self._simple_recorder.start_recording()
-        self._rec = True
-        self._rec_start_time = _time.time()
-        self._sv.set("Simple recording... perform actions, then click STOP.")
-        self._show_rec_toolbar()
-
     def _show_rec_toolbar(self):
         """Floating recorder control panel - recording starts/stops from here."""
         import time as _time
@@ -3350,14 +3689,20 @@ class SynthexApp:
         def _fmt_action(a):
             t = a.get("type", "")
             if t == "click":
-                return "[klik] ({},{})".format(a.get("x","?"), a.get("y","?"))
-            if t == "move":
-                return "[gerak] ({},{})".format(a.get("x","?"), a.get("y","?"))
-            if t == "key_press":
+                btn = a.get("button", "left")
+                return "[klik{}] ({},{})".format(
+                    "-kanan" if btn == "right" else "", a.get("x","?"), a.get("y","?"))
+            if t == "type":
+                txt = str(a.get("text", ""))
+                return "[ketik] \"{}\"".format(txt[:22])
+            if t in ("key", "key_press"):
                 return "[tombol] {}".format(str(a.get("key",""))[:18])
             if t == "scroll":
-                return "[scroll] ({},{})".format(a.get("x","?"), a.get("y","?"))
-            return "[?] {}".format(t)
+                arah = "atas" if a.get("amount", 0) > 0 else "bawah"
+                return "[scroll-{}] ({},{})".format(arah, a.get("x","?"), a.get("y","?"))
+            if t == "move":
+                return "[gerak] ({},{})".format(a.get("x","?"), a.get("y","?"))
+            return "[{}]".format(t)
 
         def _update_state_idle():
             dot_var.set("●")
@@ -3366,7 +3711,7 @@ class SynthexApp:
             timer_var.set("00:00")
             steps_var.set("0 langkah")
             rec_btn_var.set("● REKAM")
-            rec_btn.configure(bg=RED, fg="#FFFFFF")
+            rec_btn.configure(bg=RED, fg="#FFFFFF", state="normal")
             pause_btn.configure(state="disabled")
             stop_btn.configure(state="disabled")
             for nl, tl in self._rec_preview_labels:
@@ -3452,9 +3797,12 @@ class SynthexApp:
                               command=_toggle_pause)
         pause_btn.pack(side="left")
 
-        # Row 2: Play
+        # Row 2: Play + Speed + Repeat
         play_row = tk.Frame(win, bg="#0D0D14")
-        play_row.pack(fill="x", padx=12, pady=(0, 10))
+        play_row.pack(fill="x", padx=12, pady=(0, 4))
+
+        _toolbar_speed_var  = tk.StringVar(value="1.0")
+        _toolbar_repeat_var = tk.IntVar(value=1)
 
         def _play_last():
             if self._rec:
@@ -3462,7 +3810,34 @@ class SynthexApp:
                                        "Hentikan rekaman terlebih dahulu.",
                                        parent=win)
                 return
-            self._play_selected_recording()
+            if not self._recordings_tree:
+                messagebox.showinfo("Play",
+                                    "Buka tab Rekaman lalu pilih rekaman.",
+                                    parent=win)
+                return
+            sel = self._recordings_tree.selection()
+            if not sel:
+                messagebox.showinfo("Play",
+                                    "Pilih rekaman dari daftar di tab Rekaman.",
+                                    parent=win)
+                return
+            idx = self._recordings_tree.index(sel[0])
+            if idx >= len(self._ud.recordings):
+                return
+            import copy as _copy
+            rec = _copy.deepcopy(self._ud.recordings[idx])
+            try:
+                rec["speed"]  = float(_toolbar_speed_var.get())
+            except Exception:
+                pass
+            try:
+                rec["repeat"] = max(1, int(_toolbar_repeat_var.get()))
+            except Exception:
+                pass
+            if rec.get("rec_type", "smart") == "simple":
+                self._play_simple_recording(rec, idx)
+            else:
+                self._play_selected_recording()
 
         tk.Button(play_row, text="▶ MAINKAN",
                   bg="#1A3A2A", fg=GRN,
@@ -3470,9 +3845,22 @@ class SynthexApp:
                   padx=14, pady=7, cursor="hand2",
                   command=_play_last).pack(side="left")
 
-        tk.Label(play_row, text="  Mainkan rekaman yang dipilih",
+        tk.Label(play_row, text="  Speed:",
                  bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left")
+        ttk.Combobox(play_row, textvariable=_toolbar_speed_var,
+                     values=["0.5", "1.0", "1.5", "2.0"],
+                     state="readonly", width=4).pack(side="left", padx=(2, 8))
+        tk.Label(play_row, text="Ulang:",
+                 bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left")
+        tk.Spinbox(play_row, from_=1, to=9999, width=4,
+                   textvariable=_toolbar_repeat_var,
+                   bg="#1A1A28", fg=FG, insertbackground=FG,
+                   relief="flat").pack(side="left", padx=(2, 0))
+        tk.Label(play_row, text="x",
+                 bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(2, 0))
 
         # ── Tick ──────────────────────────────────────────────────────────────
         def _tick():
@@ -3493,7 +3881,8 @@ class SynthexApp:
                     else:
                         nl.configure(text="")
                         tl.configure(text="")
-            self._rec_timer_id = win.after(400, _tick)
+            if self._rec:   # Hanya reschedule selama masih recording
+                self._rec_timer_id = win.after(400, _tick)
 
         win.protocol("WM_DELETE_WINDOW", lambda: _close_ref[0]())
         _update_state_idle()
@@ -3527,6 +3916,13 @@ class SynthexApp:
     def _show_simple_step_editor(self, actions, edit_idx=None):
         """Show editable list of simple recorded actions with full step editing."""
         import uuid as _uuid
+
+        if not actions and edit_idx is None:
+            messagebox.showinfo("Rekaman Kosong",
+                                "Tidak ada langkah yang terekam.\n"
+                                "Coba rekam ulang — pastikan melakukan klik atau ketikan.",
+                                parent=self._root)
+            return
 
         # Existing recording metadata (if editing)
         existing = (self._ud.recordings[edit_idx]
@@ -3887,26 +4283,30 @@ class SynthexApp:
 
         sr = tk.Frame(dlg, bg=BG)
         sr.pack(fill="x", padx=20, pady=(4, 16))
-        lbl_save = "Save Changes" if (
+        lbl_save = "SIMPAN PERUBAHAN" if (
             edit_idx is not None and
-            0 <= (edit_idx or -1) < len(self._ud.recordings)) else "Save Recording"
-        tk.Button(sr, text=lbl_save, bg=ACC, fg=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
-                  padx=16, pady=8, cursor="hand2",
+            0 <= (edit_idx or -1) < len(self._ud.recordings)) else "SIMPAN REKAMAN"
+        tk.Button(sr, text=lbl_save, bg=GRN, fg="#FFFFFF",
+                  font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
+                  padx=20, pady=10, cursor="hand2",
+                  activebackground="#3A9F70", activeforeground="#FFFFFF",
                   command=_save).pack(side="left")
         ttk.Button(sr, text="Test Run",
-                   command=_test_run).pack(side="left", padx=(8, 0))
-        ttk.Button(sr, text="Cancel",
-                   command=dlg.destroy).pack(side="left", padx=(8, 0))
+                   command=_test_run).pack(side="left", padx=(10, 0))
+        ttk.Button(sr, text="Batal",
+                   command=dlg.destroy).pack(side="left", padx=(6, 0))
+        tk.Label(sr, text="  Rekaman belum tersimpan sampai klik SIMPAN",
+                 bg=BG, fg=YEL, font=("Segoe UI", 8)).pack(side="left", padx=(10, 0))
 
     # -- Smart Record ---------------------------------------------------
 
     def _start_smart_rec(self):
-        """Start browser-based recording (existing logic)."""
-        self._rec_mode = "smart"
-        self._toggle_rec()
+        """Open step editor to create / edit automation steps manually."""
+        if self._step_editor_open:
+            return
+        self._show_step_editor([])
 
-    # -- Smart Record toggle (existing, kept for smart mode) ------------
+    # -- Smart Record toggle (legacy, kept for direct browser recording) ----
 
     def _toggle_rec(self):
         self._rec = not self._rec
@@ -3979,20 +4379,29 @@ class SynthexApp:
 
         dlg = tk.Toplevel(self._root)
         dlg.title("Editor Langkah Rekaman")
-        dlg.geometry("700x560")
         dlg.configure(bg=BG)
         dlg.resizable(True, True)
-        dlg.grab_set()
+        self._step_editor_open = True
+
+        def _on_editor_close():
+            self._step_editor_open = False
+            try:
+                dlg.destroy()
+            except Exception:
+                pass
+
+        dlg.protocol("WM_DELETE_WINDOW", _on_editor_close)
 
         # Header
-        hdr_f = tk.Frame(dlg, bg=BG, padx=20, pady=(16, 4))
-        hdr_f.pack(fill="x")
+        hdr_f = tk.Frame(dlg, bg=BG)
+        hdr_f.pack(fill="x", padx=20, pady=(16, 4))
         _lbl(hdr_f, "Editor Langkah Rekaman",
              font=("Segoe UI", 13, "bold"), bg=BG).pack(anchor="w")
-        _lbl(hdr_f,
-             "{} langkah terekam   |   Klik baris untuk edit, lalu klik Perbarui".format(
-                 len(steps)),
-             fg=MUT, bg=BG, font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+        step_count_var = tk.StringVar(
+            value="{} langkah   |   Klik baris untuk edit, lalu klik Perbarui".format(
+                len(steps)))
+        _lbl(hdr_f, "", fg=MUT, bg=BG, font=("Segoe UI", 9),
+             textvariable=step_count_var).pack(anchor="w", pady=(2, 0))
 
         # Panduan cepat
         guide = tk.Frame(dlg, bg="#1A2A1A", padx=12, pady=8)
@@ -4026,6 +4435,9 @@ class SynthexApp:
         step_data = list(steps)
 
         def refresh():
+            step_count_var.set(
+                "{} langkah   |   Klik baris untuk edit, lalu klik Perbarui".format(
+                    len(step_data)))
             for row in st.get_children():
                 st.delete(row)
             for i, s in enumerate(step_data, 1):
@@ -4162,6 +4574,7 @@ class SynthexApp:
                 })
             self._ud.save()
             self._refresh_recordings_tree()
+            self._step_editor_open = False
             dlg.destroy()
             self._sv.set(
                 "Rekaman '{}' disimpan ({} langkah).".format(name, len(step_data)))
@@ -4173,14 +4586,26 @@ class SynthexApp:
                   padx=16, pady=8, cursor="hand2",
                   command=save_rec).pack(side="left")
         ttk.Button(sr, text="Batal",
-                   command=dlg.destroy).pack(side="left", padx=(8, 0))
+                   command=_on_editor_close).pack(side="left", padx=(8, 0))
+
+        # Centre on screen, force render, bring to front
+        dlg.update_idletasks()
+        w, h = 720, 580
+        sw = dlg.winfo_screenwidth()
+        sh = dlg.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(
+            w, h, (sw - w) // 2, (sh - h) // 2))
+        dlg.grab_set()
+        dlg.lift()
+        dlg.focus_force()
 
     def _play_selected_recording(self):
         if not self._recordings_tree:
             return
         sel = self._recordings_tree.selection()
         if not sel:
-            messagebox.showinfo("Play", "Select a recording from the list.",
+            messagebox.showinfo("Mainkan",
+                                "Pilih rekaman dari daftar terlebih dahulu.",
                                 parent=self._root)
             return
         idx = self._recordings_tree.index(sel[0])
@@ -4189,7 +4614,8 @@ class SynthexApp:
         rec   = self._ud.recordings[idx]
         steps = rec.get("steps", [])
         if not steps:
-            messagebox.showinfo("Play", "This recording has no steps.",
+            messagebox.showinfo("Mainkan",
+                                "Rekaman ini tidak memiliki langkah apapun.",
                                 parent=self._root)
             return
 
@@ -4255,13 +4681,15 @@ class SynthexApp:
     def _show_playback_window(self, total, name=""):
         win = tk.Toplevel(self._root)
         win.title("Playing...")
-        win.geometry("220x160")
+        win.geometry("220x195")
         win.configure(bg=CARD)
         win.resizable(False, False)
         win.attributes("-topmost", True)
         sw = self._root.winfo_screenwidth()
-        win.geometry("220x160+{}+40".format(sw - 240))
-        win.protocol("WM_DELETE_WINDOW", lambda: None)
+        win.geometry("220x195+{}+40".format(sw - 240))
+        def _on_playback_close():
+            self._playback_stop.set()
+        win.protocol("WM_DELETE_WINDOW", _on_playback_close)
 
         _lbl(win, (name[:22] or "Playing Recording"),
              fg=ACC, bg=CARD, font=("Segoe UI", 10, "bold")).pack(
@@ -4274,8 +4702,12 @@ class SynthexApp:
                  font=("Segoe UI", 8), wraplength=196,
                  justify="left").pack(padx=12, pady=(2, 6))
 
-        pb = tk.Canvas(win, width=196, height=6, bg=BG, highlightthickness=0)
-        pb.pack(padx=12, pady=(0, 8))
+        pct_var = tk.StringVar(value="0%")
+        tk.Label(win, textvariable=pct_var, fg=GRN, bg=CARD,
+                 font=("Consolas", 9, "bold")).pack(padx=12)
+        pb = tk.Canvas(win, width=196, height=10, bg=BG, highlightthickness=0)
+        pb.pack(padx=12, pady=(2, 8))
+        win._pct_var = pct_var
 
         btn_row  = tk.Frame(win, bg=CARD)
         btn_row.pack(fill="x", padx=12, pady=(0, 12))
@@ -4310,10 +4742,11 @@ class SynthexApp:
             win._step_var.set("Step {} / {}".format(step, total))
             win._desc_var.set(desc[:60])
             pct = step / total if total else 0
+            win._pct_var.set("{}%".format(int(pct * 100)))
             win._pb_canvas.delete("pb")
             win._pb_canvas.create_rectangle(
-                0, 0, int(196 * pct), 6,
-                fill=ACC, outline="", tags="pb")
+                0, 0, int(196 * pct), 10,
+                fill=GRN, outline="", tags="pb")
         except Exception:
             pass
 
@@ -4376,6 +4809,8 @@ class SynthexApp:
                     silent_click_fn=_silent_click if silent_mode else None)
             except Exception as e:
                 self.logger.error("Simple playback error: {}".format(e))
+                self._root.after(0, lambda err=str(e): self._update_playback_window(
+                    win, 0, total, "ERROR: {}".format(err[:50])))
             self._playback_running = False
             duration = "{:.1f}s".format(time.time() - start_time)
             if 0 <= idx < len(self._ud.recordings):
@@ -5300,7 +5735,12 @@ class SynthexApp:
     # -- Hotkey actions --
 
     def _hk_play_pause(self):
-        """Ctrl+1: Play / Pause toggle."""
+        """Ctrl+1: Play / Pause toggle — only active during playback."""
+        if self._step_editor_open:
+            return
+        # Block if nothing is playing and no recording has been selected to play
+        if not self._playback_running and self._last_selected_rec_idx is None:
+            return
         if self._playback_running and self._playback_pause.is_set():
             # Currently paused -> resume
             self._playback_pause.clear()
@@ -5379,7 +5819,12 @@ class SynthexApp:
         threading.Thread(target=_run, daemon=True).start()
 
     def _hk_record_toggle(self):
-        """Ctrl+3: Open recorder window, or stop recording if active."""
+        """Ctrl+3: Stop/start recording — only active when recorder window is open."""
+        if self._step_editor_open:
+            return
+        # Block Ctrl+3 if recorder window isn't open and not currently recording
+        if not self._rec and not self._rec_toolbar_win:
+            return
         if self._rec:
             actions_count = 0
             if self._simple_recorder:

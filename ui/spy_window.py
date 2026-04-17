@@ -346,6 +346,104 @@ class _CDPTracker:
                 self._cdp = None
 
 
+# ── UIA via comtypes (built-in, tidak perlu install package tambahan) ──────────
+# Menggunakan Windows UI Automation yang sudah ada di semua Windows 7+
+# Bekerja di Chrome, Firefox, Edge tanpa setup apapun.
+
+_UIA_CLSID   = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
+_UIA_DLL     = r"C:\Windows\System32\UIAutomationCore.dll"
+_uia_obj     = None   # singleton IUIAutomation
+_uia_obj_lock = threading.Lock()
+
+# Map ControlType integer → tag HTML
+_UIA_TYPE_MAP = {
+    50000: "button",    # Button
+    50004: "input",     # Edit
+    50020: "span",      # Text
+    50005: "a",         # Hyperlink
+    50006: "img",       # Image
+    50002: "input",     # CheckBox  (input[type=checkbox])
+    50003: "select",    # ComboBox
+    50008: "ul",        # List
+    50007: "li",        # ListItem
+    50026: "div",       # Group
+    50033: "div",       # Pane
+    50030: "body",      # Document
+    50023: "table",     # Table
+    50028: "tr",        # DataItem
+    50025: "th",        # Header
+    50011: "li",        # MenuItem
+    50025: "th",        # HeaderItem
+}
+
+
+def _init_uia():
+    """Lazy-init singleton IUIAutomation. Thread-safe."""
+    global _uia_obj
+    if _uia_obj is not None:
+        return _uia_obj
+    with _uia_obj_lock:
+        if _uia_obj is not None:
+            return _uia_obj
+        try:
+            import comtypes.client, comtypes
+            comtypes.client.GetModule(_UIA_DLL)
+            from comtypes.gen import UIAutomationClient as _UIA
+            _uia_obj = comtypes.client.CreateObject(
+                _UIA_CLSID,
+                clsctx=comtypes.CLSCTX_INPROC_SERVER,
+                interface=_UIA.IUIAutomation,
+            )
+        except Exception:
+            pass
+    return _uia_obj
+
+
+def _get_uia_info(x, y):
+    """Ambil info elemen di (x, y) via Windows UI Automation (comtypes).
+    Tidak butuh install package — comtypes sudah built-in."""
+    try:
+        import comtypes
+        from comtypes.gen import UIAutomationClient as _UIA
+        uia = _init_uia()
+        if uia is None:
+            return {}
+        pt = _UIA.tagPOINT()
+        pt.x, pt.y = int(x), int(y)
+        el = uia.ElementFromPoint(pt)
+        if el is None:
+            return {}
+        name     = (el.CurrentName or "").strip()
+        loc_type = (el.CurrentLocalizedControlType or "").strip()
+        ctrl_int = el.CurrentControlType        # integer
+        aid      = (el.CurrentAutomationId or "").strip()
+        cls      = (el.CurrentClassName or "").strip()
+        selector = _build_uia_selector(ctrl_int, loc_type, aid, cls, name)
+        return {
+            "tagName":      loc_type,
+            "text":         name[:80],
+            "id":           aid,
+            "className":    cls[:80],
+            "css_selector": selector,
+        }
+    except Exception:
+        return {}
+
+
+def _build_uia_selector(ctrl_int, loc_type, aid, cls, name):
+    """Bangun CSS selector dari properti UIA."""
+    tag = _UIA_TYPE_MAP.get(ctrl_int, "div")
+    if aid:
+        return "#{}".format(aid)
+    if cls:
+        parts = cls.strip().split()
+        if parts:
+            return "{}.{}".format(tag, parts[0])
+    if name and ctrl_int in (50000, 50005):   # Button, Hyperlink
+        return "{}[aria-label='{}']".format(tag, name[:40])
+    return "{} ({})".format(tag, loc_type) if loc_type else tag
+
+
 # ── FloatingSpyWindow ─────────────────────────────────────────────────────────
 
 class FloatingSpyWindow:
@@ -353,7 +451,7 @@ class FloatingSpyWindow:
     Press F8 or SAVE to save a named coordinate entry."""
 
     W = 300
-    H = 560
+    H = 620
 
     def __init__(self, parent, browser=None, on_capture=None,
                  on_use_in_macro=None):
@@ -362,12 +460,13 @@ class FloatingSpyWindow:
         self.logger          = get_logger("spy_window")
         self._tracker        = _CDPTracker()
 
-        self._pinned  = False
-        self._drag_x  = 0
-        self._drag_y  = 0
-        self._poll_id = None
+        self._pinned      = False
+        self._drag_x      = 0
+        self._drag_y      = 0
+        self._poll_id     = None
+        self._uia_alive   = False
         self._f8_listener = None
-        self._saved   = _load_saved()
+        self._saved       = _load_saved()
 
         self._win = tk.Toplevel(parent)
         self._win.title("Synthex Spy")
@@ -454,18 +553,36 @@ class FloatingSpyWindow:
         _row(wf, "Class", self._v_wclass)
         _row(wf, "Handle", self._v_hwnd, MUT)
 
-        # ── Element (F8) ─────────────────────────────────────────────────────
-        ef = _section("Element  (Ctrl+Q to save)")
-        self._v_etag  = tk.StringVar(value="-")
-        self._v_etext = tk.StringVar(value="-")
-        self._v_eid   = tk.StringVar(value="-")
-        self._v_ecss  = tk.StringVar(value="-")
+        # ── Element (live UIA hover) ──────────────────────────────────────────
+        ef = _section("Element  [live hover • Ctrl+Q simpan]")
+        self._v_etag   = tk.StringVar(value="-")
+        self._v_etext  = tk.StringVar(value="-")
+        self._v_eid    = tk.StringVar(value="-")
+        self._v_eclass = tk.StringVar(value="-")
+        self._v_ecss   = tk.StringVar(value="-")
         self._v_expath = tk.StringVar(value="-")
-        _row(ef, "Tag", self._v_etag, GRN)
-        _row(ef, "Text", self._v_etext)
-        _row(ef, "ID", self._v_eid)
-        _row(ef, "CSS", self._v_ecss)
+        _row(ef, "Tag",   self._v_etag,   GRN)
+        _row(ef, "Text",  self._v_etext)
+        _row(ef, "ID",    self._v_eid)
+        _row(ef, "Class", self._v_eclass, MUT)
+        _row(ef, "CSS",   self._v_ecss,   ACC2)
         _row(ef, "XPath", self._v_expath)
+
+        # Tombol copy cepat untuk elemen
+        eq = tk.Frame(ef, bg=CARD)
+        eq.pack(fill="x", pady=(4, 0))
+        tk.Button(eq, text="COPY CSS", bg=CARD2, fg=ACC2,
+                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  padx=6, pady=3, cursor="hand2",
+                  command=self._copy_css).pack(side="left", padx=(0, 4))
+        tk.Button(eq, text="COPY TEXT", bg=CARD2, fg=FG,
+                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  padx=6, pady=3, cursor="hand2",
+                  command=self._copy_text).pack(side="left", padx=(0, 4))
+        tk.Button(eq, text="BUAT STEP", bg=ACC, fg="#FFFFFF",
+                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  padx=6, pady=3, cursor="hand2",
+                  command=self._copy_as_step).pack(side="left")
 
         # ── Save coords ───────────────────────────────────────────────────────
         sf = tk.Frame(win, bg=CARD2, padx=8, pady=6)
@@ -536,9 +653,18 @@ class FloatingSpyWindow:
         sb.config(command=self._listbox.yview)
         self._listbox.bind("<Double-Button-1>", self._on_list_dbl)
         self._listbox.bind("<Button-3>",        self._on_list_right)
+        self._listbox.bind("<<ListboxSelect>>", self._on_list_sel)
 
-        tk.Label(lf, text="Double-click: copy  |  Right-click: delete",
+        tk.Label(lf, text="Klik: detail  |  Double: copy CSS/XY  |  Kanan: menu",
                  bg=CARD, fg=MUT, font=("Segoe UI", 7)).pack(pady=(3, 0))
+
+        # ── Detail panel ────────────────────────────────────────────────
+        self._detail_frame = tk.Frame(win, bg=CARD2, padx=6, pady=4,
+                                      height=82)
+        self._detail_frame.pack(fill="x", padx=4, pady=(0, 2))
+        self._detail_frame.pack_propagate(False)
+        tk.Label(self._detail_frame, text="Klik item untuk lihat detail",
+                 bg=CARD2, fg=MUT, font=("Segoe UI", 7)).pack(anchor="w")
 
         # ── Status ────────────────────────────────────────────────────────────
         self._v_status = tk.StringVar(value="Hover to inspect")
@@ -590,6 +716,58 @@ class FloatingSpyWindow:
 
     def _start_poll(self):
         self._poll()
+        self._start_uia_poll()
+
+    # ── UIA live hover ────────────────────────────────────────────────────────
+
+    def _start_uia_poll(self):
+        """Jalankan background thread yang membaca elemen di bawah kursor via UIA."""
+        self._uia_alive = True
+        t = threading.Thread(target=self._uia_loop, daemon=True)
+        t.start()
+
+    def _uia_loop(self):
+        import time as _t
+        import comtypes
+        # COM harus di-init di setiap thread yang menggunakannya
+        try:
+            comtypes.CoInitialize()
+        except Exception:
+            pass
+        # Pastikan UIA singleton sudah siap sebelum loop mulai
+        _init_uia()
+        while self._uia_alive:
+            try:
+                if not self._pinned:
+                    try:
+                        alive = self._win.winfo_exists()
+                    except Exception:
+                        break
+                    if not alive:
+                        break
+                    x, y = _get_cursor_pos()
+                    info = _get_uia_info(x, y)
+                    if info:
+                        self._win.after(0, lambda i=info: self._update_element_ui(i))
+            except Exception:
+                pass
+            _t.sleep(0.35)
+        try:
+            comtypes.CoUninitialize()
+        except Exception:
+            pass
+
+    def _update_element_ui(self, info):
+        """Update baris Element dari hasil UIA (dipanggil di main thread)."""
+        try:
+            self._v_etag.set(info.get("tagName", "-") or "-")
+            text = (info.get("text", "") or "").strip()
+            self._v_etext.set(text[:60] if text else "-")
+            self._v_eid.set(info.get("id", "-") or "-")
+            self._v_eclass.set(info.get("className", "-") or "-")
+            self._v_ecss.set(info.get("css_selector", "-") or "-")
+        except Exception:
+            pass
 
     # ── Ctrl+Q hotkey ────────────────────────────────────────────────────────
 
@@ -621,59 +799,58 @@ class FloatingSpyWindow:
 
     def _save_coord(self):
         x, y = _get_cursor_pos()
-        title, cls, hwnd, cx, cy = _get_window_info(x, y)
+        title, win_cls, hwnd, cx, cy = _get_window_info(x, y)
         hex_col, rgb = _get_color_at(x, y)
 
         name = self._name_var.get().strip()
         if not name:
-            # Auto-name
             name = "coord_{}".format(len(self._saved) + 1)
 
+        # Baca data UIA yang sudah live di label (tidak perlu request ulang)
+        cur_tag  = self._v_etag.get()
+        cur_text = self._v_etext.get()
+        cur_id   = self._v_eid.get()
+        cur_cls  = self._v_eclass.get()
+        cur_css  = self._v_ecss.get()
+
+        def _clean(v):
+            return "" if v in ("-", "", None) else v
+
         entry = {
-            "name":    name,
-            "x":       x,
-            "y":       y,
+            "name":     name,
+            "x":        x,
+            "y":        y,
             "client_x": cx,
             "client_y": cy,
-            "color":   hex_col,
-            "window":  title[:60],
-            "class":   cls[:60],
-            "hwnd":    hwnd,
+            "color":    hex_col,
+            "window":   title[:60],
+            "class":    win_cls[:60],
+            "hwnd":     hwnd,
+            # Data elemen dari UIA live
+            "tag":      _clean(cur_tag),
+            "text":     _clean(cur_text),
+            "id":       _clean(cur_id),
+            "css_class":_clean(cur_cls),
+            "css":      _clean(cur_css),
         }
 
-        # Also try CDP element
-        def _try_cdp():
-            info = self._tracker.get_element_now()
-            if info and info.get("tagName"):
-                entry["tag"]    = info.get("tagName", "")
-                entry["id"]     = info.get("id", "")
-                entry["css"]    = info.get("css_selector", "")
-                entry["xpath"]  = info.get("xpath", "")
-                entry["text"]   = info.get("text", "")
-                self._win.after(0, lambda: self._v_etag.set(entry.get("tag", "-")))
-                self._win.after(0, lambda: self._v_etext.set(entry.get("text", "-")[:40]))
-                self._win.after(0, lambda: self._v_eid.set(entry.get("id", "-")))
-                self._win.after(0, lambda: self._v_ecss.set(entry.get("css", "-")[:40]))
-                self._win.after(0, lambda: self._v_expath.set(entry.get("xpath", "-")[:40]))
-                # Kirim ke Saved Elements utama (halaman Spy) pakai nama yang sudah diisi
-                if self.on_capture:
-                    capture_info = {
-                        "name":         entry["name"],
-                        "tagName":      entry.get("tag", ""),
-                        "css_selector": entry.get("css", ""),
-                        "xpath":        entry.get("xpath", ""),
-                        "text":         entry.get("text", ""),
-                        "id":           entry.get("id", ""),
-                    }
-                    self._win.after(0, lambda i=capture_info: self.on_capture(i))
-            self._saved.append(entry)
-            _save_all(self._saved)
-            self._win.after(0, self._refresh_list)
-            self._win.after(0, lambda: self._name_var.set(""))
-            self._win.after(0, lambda: self._v_status.set(
-                "Saved: \"{}\" ({}, {})".format(name, x, y)))
+        if self.on_capture:
+            self.on_capture({
+                "name":         name,
+                "x":            x,
+                "y":            y,
+                "tagName":      entry["tag"],
+                "css_selector": entry["css"],
+                "text":         entry["text"],
+                "id":           entry["id"],
+            })
 
-        threading.Thread(target=_try_cdp, daemon=True).start()
+        self._saved.append(entry)
+        _save_all(self._saved)
+        self._refresh_list()
+        self._name_var.set("")
+        self._v_status.set("Saved: \"{}\" ({}, {})  CSS: {}".format(
+            name, x, y, entry["css"] or "-"))
 
     # ── Copy XY ──────────────────────────────────────────────────────────────
 
@@ -684,11 +861,49 @@ class FloatingSpyWindow:
         self._win.clipboard_append(text)
         self._v_status.set("Copied: {}".format(text))
 
+    def _copy_as_step(self):
+        """Buat step macro dari elemen yang sedang di-hover dan copy ke clipboard."""
+        x, y = _get_cursor_pos()
+        css  = self._v_ecss.get()
+        text = self._v_etext.get()
+        tag  = self._v_etag.get()
+
+        # Pilih format step terbaik
+        if css and css not in ("-", "div", "body"):
+            step = {"type": "click", "selector": css,
+                    "hint": text[:40] if text and text != "-" else ""}
+        else:
+            step = {"type": "click", "x": x, "y": y,
+                    "hint": text[:40] if text and text != "-" else ""}
+
+        step_json = json.dumps(step, ensure_ascii=False)
+        self._win.clipboard_clear()
+        self._win.clipboard_append(step_json)
+        self._v_status.set("Step disalin: {}".format(step_json[:55]))
+
+    def _copy_css(self):
+        css = self._v_ecss.get()
+        if css and css != "-":
+            self._win.clipboard_clear()
+            self._win.clipboard_append(css)
+            self._v_status.set("Copied CSS: {}".format(css[:40]))
+        else:
+            self._v_status.set("Belum ada CSS selector — arahkan ke elemen browser")
+
+    def _copy_text(self):
+        text = self._v_etext.get()
+        if text and text != "-":
+            self._win.clipboard_clear()
+            self._win.clipboard_append(text)
+            self._v_status.set("Copied text: {}".format(text[:40]))
+        else:
+            self._v_status.set("Belum ada teks elemen — arahkan ke elemen browser")
+
     # ── Clear element fields ─────────────────────────────────────────────────
 
     def _clear_element(self):
         for v in (self._v_etag, self._v_etext, self._v_eid,
-                  self._v_ecss, self._v_expath):
+                  self._v_eclass, self._v_ecss, self._v_expath):
             v.set("-")
         self._v_status.set("Element info cleared")
 
@@ -697,10 +912,43 @@ class FloatingSpyWindow:
     def _refresh_list(self):
         self._listbox.delete(0, tk.END)
         for i, e in enumerate(self._saved):
-            line = "{:>2}. {:<18} ({}, {})".format(
-                i + 1, e.get("name", "")[:18],
+            css  = e.get("css", "") or ""
+            hint = " [{}]".format(css[:20]) if css else ""
+            line = "{:>2}. {:<16}{}  ({},{})".format(
+                i + 1, e.get("name", "")[:16], hint,
                 e.get("x", "?"), e.get("y", "?"))
             self._listbox.insert(tk.END, line)
+
+    def _show_entry_detail(self, idx):
+        """Tampilkan detail lengkap koordinat tersimpan di panel detail."""
+        if idx < 0 or idx >= len(self._saved):
+            return
+        e = self._saved[idx]
+        lines = [
+            ("Name",    e.get("name", "-")),
+            ("XY",      "{}, {}".format(e.get("x","?"), e.get("y","?"))),
+            ("Tag",     e.get("tag", "-") or "-"),
+            ("Text",    e.get("text", "-") or "-"),
+            ("ID",      e.get("id", "-") or "-"),
+            ("Class",   e.get("css_class", "-") or "-"),
+            ("CSS",     e.get("css", "-") or "-"),
+            ("Window",  e.get("window", "-") or "-"),
+        ]
+        # Tampilkan di panel detail
+        for widget in self._detail_frame.winfo_children():
+            widget.destroy()
+        for label, val in lines:
+            row = tk.Frame(self._detail_frame, bg=CARD2)
+            row.pack(fill="x", pady=1)
+            tk.Label(row, text="{:<7}".format(label), bg=CARD2, fg=MUT,
+                     font=("Consolas", 7), width=8, anchor="w").pack(side="left")
+            tk.Label(row, text=str(val)[:36], bg=CARD2, fg=FG,
+                     font=("Consolas", 7), anchor="w").pack(side="left", fill="x", expand=True)
+
+    def _on_list_sel(self, event):
+        sel = self._listbox.curselection()
+        if sel and sel[0] < len(self._saved):
+            self._show_entry_detail(sel[0])
 
     def _on_list_dbl(self, event):
         sel = self._listbox.curselection()
@@ -710,29 +958,43 @@ class FloatingSpyWindow:
         if idx >= len(self._saved):
             return
         e = self._saved[idx]
-        text = "{}, {}".format(e.get("x"), e.get("y"))
-        self._win.clipboard_clear()
-        self._win.clipboard_append(text)
-        self._v_status.set("Copied: {} -> ({})".format(e.get("name"), text))
+        # Double-click: copy CSS kalau ada, kalau tidak copy XY
+        css = e.get("css", "")
+        if css:
+            self._win.clipboard_clear()
+            self._win.clipboard_append(css)
+            self._v_status.set("Copied CSS: {}".format(css[:40]))
+        else:
+            xy = "{}, {}".format(e.get("x"), e.get("y"))
+            self._win.clipboard_clear()
+            self._win.clipboard_append(xy)
+            self._v_status.set("Copied XY: {}".format(xy))
 
     def _on_list_right(self, event):
         idx = self._listbox.nearest(event.y)
         if idx < 0 or idx >= len(self._saved):
             return
-        name = self._saved[idx].get("name", str(idx))
+        self._listbox.selection_clear(0, tk.END)
+        self._listbox.selection_set(idx)
+        self._show_entry_detail(idx)
+        e    = self._saved[idx]
+        name = e.get("name", str(idx))
+        css  = e.get("css", "")
+        text = e.get("text", "")
         menu = tk.Menu(self._win, tearoff=0, bg=CARD, fg=FG,
                        activebackground=ACC, activeforeground="#FFFFFF",
                        font=("Segoe UI", 9))
-        menu.add_command(
-            label="Copy X, Y",
-            command=lambda i=idx: self._copy_entry(i))
-        menu.add_command(
-            label="Copy JSON",
-            command=lambda i=idx: self._copy_entry_json(i))
+        menu.add_command(label="Copy CSS Selector",
+                         command=lambda i=idx: self._copy_entry_css(i))
+        menu.add_command(label="Copy Text / Nilai",
+                         command=lambda i=idx: self._copy_entry_text(i))
+        menu.add_command(label="Copy X, Y",
+                         command=lambda i=idx: self._copy_entry(i))
+        menu.add_command(label="Copy JSON Lengkap",
+                         command=lambda i=idx: self._copy_entry_json(i))
         menu.add_separator()
-        menu.add_command(
-            label="Delete \"{}\"".format(name),
-            command=lambda i=idx: self._delete_entry(i))
+        menu.add_command(label="Delete \"{}\"".format(name),
+                         command=lambda i=idx: self._delete_entry(i))
         menu.tk_popup(event.x_root, event.y_root)
 
     def _copy_entry(self, idx):
@@ -740,7 +1002,27 @@ class FloatingSpyWindow:
         text = "{}, {}".format(e.get("x"), e.get("y"))
         self._win.clipboard_clear()
         self._win.clipboard_append(text)
-        self._v_status.set("Copied: {}".format(text))
+        self._v_status.set("Copied XY: {}".format(text))
+
+    def _copy_entry_css(self, idx):
+        e   = self._saved[idx]
+        css = e.get("css", "")
+        if css:
+            self._win.clipboard_clear()
+            self._win.clipboard_append(css)
+            self._v_status.set("Copied CSS: {}".format(css[:50]))
+        else:
+            self._v_status.set("CSS tidak ada untuk \"{}\"".format(e.get("name","")))
+
+    def _copy_entry_text(self, idx):
+        e    = self._saved[idx]
+        text = e.get("text", "")
+        if text:
+            self._win.clipboard_clear()
+            self._win.clipboard_append(text)
+            self._v_status.set("Copied text: {}".format(text[:50]))
+        else:
+            self._v_status.set("Text tidak ada untuk \"{}\"".format(e.get("name","")))
 
     def _copy_entry_json(self, idx):
         text = json.dumps(self._saved[idx], ensure_ascii=False, indent=2)
@@ -769,6 +1051,7 @@ class FloatingSpyWindow:
     # ── Public ───────────────────────────────────────────────────────────────
 
     def close(self):
+        self._uia_alive = False
         if self._poll_id:
             try:
                 self._win.after_cancel(self._poll_id)

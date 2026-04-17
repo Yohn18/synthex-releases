@@ -3,6 +3,12 @@ modules/macro/simple_recorder.py - Simple click/keystroke recorder like OP Auto 
 
 Records mouse clicks, keyboard input, and scroll events with timing delays.
 Playback uses pyautogui to replay at the same screen coordinates.
+
+Hybrid UIA mode: each click also captures Windows UIA element info (name,
+automationId, className).  During playback the element is searched first via
+UIA so the click lands on the correct button even when the window has moved or
+the screen resolution changed.  Falls back to raw coordinates if UIA lookup
+fails.
 """
 
 import threading
@@ -11,14 +17,180 @@ import time
 from core.logger import get_logger
 
 
+# ── UIA helpers (shared, lazy-init) ──────────────────────────────────────────
+
+_uia_obj      = None
+_uia_obj_lock = threading.Lock()
+_UIA_DLL      = r"C:\Windows\System32\UIAutomationCore.dll"
+_UIA_CLSID    = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
+
+
+def _init_uia():
+    """Lazy-init IUIAutomation singleton (thread-safe)."""
+    global _uia_obj
+    if _uia_obj is not None:
+        return _uia_obj
+    try:
+        with _uia_obj_lock:
+            if _uia_obj is not None:
+                return _uia_obj
+            import comtypes, comtypes.client
+            comtypes.client.GetModule(_UIA_DLL)
+            from comtypes.gen import UIAutomationClient as _UIA
+            _uia_obj = comtypes.client.CreateObject(
+                _UIA_CLSID,
+                clsctx=comtypes.CLSCTX_INPROC_SERVER,
+                interface=_UIA.IUIAutomation,
+            )
+    except Exception:
+        pass
+    return _uia_obj
+
+
+def _capture_uia(x, y):
+    """
+    Return UIA fingerprint dict for the element at screen position (x, y).
+    Returns {} on any error so the caller can fall back to coordinates.
+
+    Fingerprint keys:
+        name        – CurrentName (button label, field placeholder, …)
+        aid         – CurrentAutomationId
+        cls         – CurrentClassName
+        ctrl        – CurrentControlType (integer)
+        loc_type    – CurrentLocalizedControlType (e.g. "button")
+        proc        – CurrentProcessId (to disambiguate same name across apps)
+    """
+    try:
+        import comtypes
+        comtypes.CoInitialize()
+        from comtypes.gen import UIAutomationClient as _UIA
+        uia = _init_uia()
+        if uia is None:
+            return {}
+        pt = _UIA.tagPOINT()
+        pt.x, pt.y = int(x), int(y)
+        el = uia.ElementFromPoint(pt)
+        if el is None:
+            return {}
+        return {
+            "name":     (el.CurrentName or "").strip()[:80],
+            "aid":      (el.CurrentAutomationId or "").strip()[:80],
+            "cls":      (el.CurrentClassName or "").strip()[:80],
+            "ctrl":     el.CurrentControlType,
+            "loc_type": (el.CurrentLocalizedControlType or "").strip(),
+            "proc":     el.CurrentProcessId,
+        }
+    except Exception:
+        return {}
+
+
+def _uia_find_center(fingerprint):
+    """
+    Try to locate the element matching *fingerprint* on the current screen.
+    Returns (cx, cy) center coords, or None if not found / ambiguous.
+
+    Strategy:
+      1. Build a condition from the best available identifier (aid > name+cls > name).
+      2. Search from the desktop root.
+      3. If multiple matches, pick the one whose bounding-rect centre is closest
+         to the original recorded position (stored separately as fallback).
+    """
+    if not fingerprint:
+        return None
+    try:
+        import comtypes
+        comtypes.CoInitialize()
+        from comtypes.gen import UIAutomationClient as _UIA
+
+        UIA_AutomationIdPropertyId  = 30011
+        UIA_NamePropertyId          = 30005
+        UIA_ClassNamePropertyId     = 30012
+        UIA_ControlTypePropertyId   = 30003
+        TreeScope_Descendants       = 4
+
+        uia  = _init_uia()
+        if uia is None:
+            return None
+        root = uia.GetRootElement()
+
+        aid      = fingerprint.get("aid", "")
+        name     = fingerprint.get("name", "")
+        cls      = fingerprint.get("cls", "")
+        ctrl     = fingerprint.get("ctrl", 0)
+
+        # Build the most specific condition we can
+        cond = None
+        if aid:
+            cond = uia.CreatePropertyCondition(UIA_AutomationIdPropertyId, aid)
+        elif name and cls:
+            c_name = uia.CreatePropertyCondition(UIA_NamePropertyId, name)
+            c_cls  = uia.CreatePropertyCondition(UIA_ClassNamePropertyId, cls)
+            cond   = uia.CreateAndCondition(c_name, c_cls)
+        elif name:
+            cond = uia.CreatePropertyCondition(UIA_NamePropertyId, name)
+
+        if cond is None:
+            return None
+
+        # Also restrict by ControlType when available
+        if ctrl:
+            c_ctrl = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, ctrl)
+            cond   = uia.CreateAndCondition(cond, c_ctrl)
+
+        elements = root.FindAll(TreeScope_Descendants, cond)
+        if elements is None or elements.Length == 0:
+            return None
+
+        # Pick best element: prefer same process, then smallest bounding rect
+        # (most specific / innermost element)
+        proc_id = fingerprint.get("proc", 0)
+        best    = None
+        best_area = None
+        for i in range(elements.Length):
+            el = elements.GetElement(i)
+            if el is None:
+                continue
+            try:
+                rect = el.CurrentBoundingRectangle
+                w = rect.right  - rect.left
+                h = rect.bottom - rect.top
+                if w <= 0 or h <= 0:
+                    continue
+                area = w * h
+                same_proc = (el.CurrentProcessId == proc_id)
+                # Prefer same-process smaller element
+                if best is None:
+                    best = el; best_area = area
+                else:
+                    if same_proc and (el.CurrentProcessId != best.CurrentProcessId
+                                      or area < best_area):
+                        best = el; best_area = area
+            except Exception:
+                continue
+
+        if best is None:
+            return None
+
+        rect = best.CurrentBoundingRectangle
+        cx = (rect.left + rect.right)  // 2
+        cy = (rect.top  + rect.bottom) // 2
+        return (cx, cy)
+
+    except Exception:
+        return None
+
+
 class SimpleRecorder:
     """
     Records mouse clicks, key presses, and scroll events with delays.
 
     Actions format:
-        {"type": "click",  "x": 450, "y": 320, "button": "left", "delay": 0.5}
+        {"type": "click",  "x": 450, "y": 320, "button": "left", "delay": 0.5,
+         "uia": {"name": "Masuk", "aid": "btnLogin", "cls": "Button", ...}}
         {"type": "type",   "text": "hello", "delay": 0.2}
         {"type": "scroll", "x": 450, "y": 320, "amount": -3,    "delay": 0.1}
+
+    The "uia" key is optional — absent on older recordings and on scroll events.
     """
 
     def __init__(self):
@@ -26,6 +198,7 @@ class SimpleRecorder:
         self._events     = []   # raw pynput events with timestamps
         self._actions    = []   # cleaned action list (returned by stop_recording)
         self._recording  = False
+        self._paused     = False
         self._start_time = 0.0
         self._mouse_listener    = None
         self._keyboard_listener = None
@@ -44,6 +217,7 @@ class SimpleRecorder:
         self._events     = []
         self._actions    = []
         self._recording  = True
+        self._paused     = False
         self._start_time = time.time()
         self.logger.info("Simple recording started.")
 
@@ -75,6 +249,17 @@ class SimpleRecorder:
             "Simple recording stopped. {} actions.".format(len(self._events)))
         return list(self._actions)
 
+    def pause_recording(self):
+        """Pause recording — events are ignored while paused."""
+        self._paused = True
+        self.logger.info("Recording paused.")
+
+    def resume_recording(self):
+        """Resume recording after a pause."""
+        self._paused = False
+        self._start_time = time.time() - (self._events[-1]["t"] if self._events else 0)
+        self.logger.info("Recording resumed.")
+
     def get_actions(self):
         """Return the last recorded action list."""
         return list(self._actions)
@@ -87,20 +272,31 @@ class SimpleRecorder:
         return time.time() - self._start_time
 
     def _on_click(self, x, y, button, pressed):
-        if not self._recording or not pressed:
+        if not self._recording or self._paused or not pressed:
             return
         t = self._elapsed()
         self._flush_pending_text(t)
-        delay = self._calc_delay(t)
+        delay    = self._calc_delay(t)
         btn_name = getattr(button, "name", "left")
+
+        # Capture UIA fingerprint in a background thread so pynput isn't blocked
+        uia_info = {}
+        try:
+            uia_info = _capture_uia(x, y)
+        except Exception:
+            pass
+
         action = {"type": "click", "x": x, "y": y,
                   "button": btn_name, "delay": round(delay, 3)}
+        if uia_info:
+            action["uia"] = uia_info
+
         with self._lock:
             self._events.append({"t": t, "action": action})
             self._actions.append(action)
 
     def _on_scroll(self, x, y, dx, dy):
-        if not self._recording:
+        if not self._recording or self._paused:
             return
         t = self._elapsed()
         self._flush_pending_text(t)
@@ -112,7 +308,7 @@ class SimpleRecorder:
             self._actions.append(action)
 
     def _on_key_press(self, key):
-        if not self._recording:
+        if not self._recording or self._paused:
             return
         # Skip F5-F9 (global hotkeys) so they are not recorded as steps
         try:
@@ -132,8 +328,7 @@ class SimpleRecorder:
                         self._pending_text_time = t
                     self._pending_text.append(char)
                 return
-            # Control-key combos (Ctrl+1, Ctrl+3, etc.) produce non-printable
-            # chars; skip them so hotkeys are not recorded as steps.
+            # Control-key combos produce non-printable chars — skip hotkeys
             if char is not None:
                 return
         except AttributeError:
@@ -182,7 +377,12 @@ class SimpleRecorder:
                        on_step=None, stop_event=None, pause_event=None,
                        silent_mode=False, silent_click_fn=None):
         """
-        Replay recorded actions using pyautogui (or Playwright CDP in silent mode).
+        Replay recorded actions using pyautogui.
+
+        For click actions that have a "uia" fingerprint:
+          1. Try to find the element on screen via Windows UIA.
+          2. If found → click its current centre (works after window move/resize).
+          3. If not found → fall back to recorded (x, y) coordinates.
 
         Args:
             actions:          List of action dicts from stop_recording().
@@ -193,7 +393,6 @@ class SimpleRecorder:
             pause_event:      threading.Event - set to pause playback.
             silent_mode:      If True, use silent_click_fn for click actions.
             silent_click_fn:  Callable(x, y, button) used when silent_mode is True.
-                              Clicks via CDP so cursor does not move.
         """
         import pyautogui
         pyautogui.FAILSAFE = False
@@ -203,7 +402,6 @@ class SimpleRecorder:
 
         for _rep in range(repeat):
             if _rep > 0:
-                # Pause between repeat cycles
                 time.sleep(0.5)
             for i, action in enumerate(actions):
                 if stop_event and stop_event.is_set():
@@ -213,7 +411,6 @@ class SimpleRecorder:
                         return
                     time.sleep(0.05)
 
-                # Wait the recorded delay (adjusted for speed)
                 delay = action.get("delay", 0) * speed
                 if delay > 0:
                     time.sleep(delay)
@@ -226,15 +423,38 @@ class SimpleRecorder:
 
                 if atype == "click":
                     btn = action.get("button", "left")
+                    cx, cy = action["x"], action["y"]
+
+                    # ── Hybrid UIA lookup ───────────────────────────────────
+                    uia_fp = action.get("uia")
+                    if uia_fp:
+                        found = _uia_find_center(uia_fp)
+                        if found:
+                            cx, cy = found
+                            self.logger.debug(
+                                "UIA resolved click → ({}, {})".format(cx, cy))
+                        else:
+                            self.logger.debug(
+                                "UIA lookup failed, using coords ({}, {})".format(
+                                    action["x"], action["y"]))
+                    # ────────────────────────────────────────────────────────
+
                     if silent_mode and silent_click_fn:
-                        # CDP dispatch - cursor stays in place
-                        silent_click_fn(action["x"], action["y"], btn)
+                        silent_click_fn(cx, cy, btn)
                     else:
-                        pyautogui.click(action["x"], action["y"], button=btn)
+                        pyautogui.click(cx, cy, button=btn)
 
                 elif atype == "type":
-                    pyautogui.typewrite(action.get("text", ""),
-                                       interval=0.03)
+                    text = action.get("text", "")
+                    try:
+                        import pyperclip
+                        pyperclip.copy(text)
+                        pyautogui.hotkey("ctrl", "v")
+                        time.sleep(0.12)
+                    except Exception:
+                        safe = text.encode("ascii", "ignore").decode("ascii")
+                        if safe:
+                            pyautogui.typewrite(safe, interval=0.05)
 
                 elif atype == "scroll":
                     pyautogui.scroll(action.get("amount", 0),
@@ -251,8 +471,12 @@ class SimpleRecorder:
     def _action_desc(action):
         atype = action.get("type", "")
         if atype == "click":
-            return "Click {} at ({}, {})".format(
-                action.get("button", "left"), action.get("x", 0), action.get("y", 0))
+            uia = action.get("uia", {})
+            label = uia.get("name") or uia.get("aid") or ""
+            loc   = ' "{}"'.format(label[:20]) if label else ""
+            return "Click{} {} at ({}, {})".format(
+                loc, action.get("button", "left"),
+                action.get("x", 0), action.get("y", 0))
         if atype == "type":
             return 'Type "{}"'.format(action.get("text", "")[:30])
         if atype == "scroll":

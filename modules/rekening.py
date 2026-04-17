@@ -156,11 +156,11 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
             result["status"] = "Tidak Ditemukan"
 
     except requests.Timeout:
-        result["status"] = "Timeout"
+        result["status"] = "Timeout — cek koneksi internet, coba lagi"
     except requests.ConnectionError:
-        result["status"] = "No Connection"
+        result["status"] = "Tidak ada koneksi — periksa WiFi/internet"
     except Exception as e:
-        result["status"] = "Error: {}".format(str(e)[:30])
+        result["status"] = "Error: {} — coba lagi".format(str(e)[:25])
 
     return result
 
