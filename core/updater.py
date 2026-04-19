@@ -1,17 +1,19 @@
 # -*- coding: utf-8 -*-
 """
 core/updater.py
-Version check & force-update system for Synthex.
+Version check & auto-update system for Synthex.
 
 Flow:
-  1. Fetch version info from Firebase Realtime Database
+  1. Fetch version info from GitHub Gist
   2. Compare local version with min_version
-  3. If local < min_version → block login, show update screen
+  3. If local < min_version → block login, show update screen with auto-download
   4. If update available (not forced) → show optional banner
 """
 
 import json
+import os
 import re
+import sys
 import certifi
 import requests
 import urllib3
@@ -110,3 +112,92 @@ def check_version(local_version: str) -> dict:
         result["force_update"] = True
 
     return result
+
+
+def auto_download_update(download_url: str, on_progress=None) -> tuple[bool, str]:
+    """
+    Download .exe baru ke folder temp, lalu jalankan bat script yang:
+      1. Tunggu proses Synthex lama tutup
+      2. Ganti Synthex.exe lama dengan yang baru
+      3. Jalankan Synthex.exe baru
+
+    Args:
+        download_url:  URL ke file .exe terbaru
+        on_progress:   callback(pct: int, msg: str) untuk update progress bar
+
+    Returns:
+        (True, "") jika berhasil dijadwalkan
+        (False, pesan_error) jika gagal
+    """
+    try:
+        import tempfile, subprocess
+
+        if on_progress:
+            on_progress(0, "Menghubungi server...")
+
+        # Tentukan path exe yang sedang berjalan
+        if getattr(sys, "frozen", False):
+            current_exe = sys.executable
+        else:
+            current_exe = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                "dist", "Synthex.exe")
+
+        tmp_dir  = tempfile.gettempdir()
+        new_exe  = os.path.join(tmp_dir, "Synthex_new.exe")
+        bat_path = os.path.join(tmp_dir, "synthex_update.bat")
+
+        # Download dengan progress
+        resp = requests.get(download_url, stream=True, timeout=60, verify=certifi.where())
+        total = int(resp.headers.get("content-length", 0))
+        downloaded = 0
+
+        with open(new_exe, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=65536):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if total and on_progress:
+                        pct = int(downloaded / total * 90)
+                        on_progress(pct, "Mengunduh... {}%".format(pct))
+
+        if on_progress:
+            on_progress(92, "Menyiapkan update...")
+
+        # Buat bat script yang replace exe setelah proses selesai
+        bat_content = (
+            "@echo off\n"
+            "timeout /t 2 /nobreak >nul\n"
+            ":wait\n"
+            "tasklist /FI \"IMAGENAME eq Synthex.exe\" 2>nul | find /I \"Synthex.exe\" >nul\n"
+            "if not errorlevel 1 (\n"
+            "    timeout /t 1 /nobreak >nul\n"
+            "    goto wait\n"
+            ")\n"
+            "copy /Y \"{new}\" \"{cur}\"\n"
+            "start \"\" \"{cur}\"\n"
+            "del \"%~f0\"\n"
+        ).format(new=new_exe, cur=current_exe)
+
+        with open(bat_path, "w") as f:
+            f.write(bat_content)
+
+        if on_progress:
+            on_progress(98, "Memulai update...")
+
+        # Jalankan bat di background, lalu app akan tutup sendiri
+        subprocess.Popen(
+            ["cmd.exe", "/c", bat_path],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+            close_fds=True,
+        )
+
+        if on_progress:
+            on_progress(100, "Selesai! Synthex akan restart otomatis.")
+
+        return True, ""
+
+    except requests.Timeout:
+        return False, "Timeout saat download — coba lagi"
+    except Exception as e:
+        return False, str(e)[:80]

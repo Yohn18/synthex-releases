@@ -159,12 +159,38 @@ if __name__ == "__main__":
                 _btn_row = tk.Frame(_body, bg="#0A0A0F")
                 _btn_row.pack(anchor="w", pady=(12, 0))
                 if ver.get("download_url"):
-                    tk.Button(_btn_row, text="Download Versi Terbaru",
+                    _prog_var = tk.StringVar(value="")
+                    _prog_lbl = tk.Label(_body, textvariable=_prog_var,
+                                         bg="#0A0A0F", fg="#00D4AA",
+                                         font=("Segoe UI", 8))
+                    _prog_lbl.pack(anchor="w", pady=(4, 0))
+
+                    def _do_auto_update():
+                        from core.updater import auto_download_update
+                        _upd_btn.configure(state="disabled", text="Mengunduh...")
+                        def _prog(pct, msg):
+                            _r.after(0, lambda: _prog_var.set(msg))
+                        def _run():
+                            ok, err = auto_download_update(ver["download_url"], on_progress=_prog)
+                            if ok:
+                                _r.after(0, lambda: [
+                                    _prog_var.set("Update berhasil! Synthex akan restart..."),
+                                    _r.after(1500, lambda: [_r.destroy(), sys.exit(0)])
+                                ])
+                            else:
+                                _r.after(0, lambda: [
+                                    _prog_var.set("Gagal: " + err),
+                                    _upd_btn.configure(state="normal", text="Update Otomatis")
+                                ])
+                        import threading as _thr
+                        _thr.Thread(target=_run, daemon=True).start()
+
+                    _upd_btn = tk.Button(_btn_row, text="Update Otomatis",
                               bg="#6C4AFF", fg="white",
                               font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                               padx=16, pady=8, cursor="hand2",
-                              command=lambda: webbrowser.open(ver["download_url"])
-                              ).pack(side="left", padx=(0, 10))
+                              command=_do_auto_update)
+                    _upd_btn.pack(side="left", padx=(0, 10))
                 tk.Button(_btn_row, text="💬 Chat WhatsApp",
                           bg="#25D366", fg="white",
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,

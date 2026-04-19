@@ -2358,11 +2358,10 @@ class SynthexApp:
         if idx >= len(self._ud.sheets):
             return
         name = self._ud.sheets[idx].get("name","")
-        if messagebox.askyesno("Remove Sheet",
-                               "Remove sheet '{}'?\n\n"
-                               "This only removes it from Synthex. "
-                               "Your actual Google Sheet is not affected.".format(name),
-                               parent=self._root):
+        if self._confirm_dialog(
+                "Hapus Sheet?",
+                "Hapus '{}'?\nData di Google Sheets tidak akan terhapus.".format(name),
+                confirm_text="Ya, Hapus", accent=RED):
             del self._ud.sheets[idx]
             self._ud.save()
             self._navigate("sheet")
@@ -2511,11 +2510,11 @@ class SynthexApp:
         now = datetime.now()
         value = value.replace("{current_date}", now.strftime("%Y-%m-%d"))
         value = value.replace("{current_time}", now.strftime("%H:%M:%S"))
-        if not messagebox.askyesno(
-            "Confirm Write",
-            "Write '{}' to cell {} in '{}'?".format(value, cell, name),
-            parent=self._root,
-        ):
+        if not self._confirm_dialog(
+                "Konfirmasi Tulis",
+                "Tulis '{}' ke cell {} di '{}'?".format(value, cell, name),
+                confirm_text="Ya, Tulis", accent=ACC):
+
             return
 
         def _do():
@@ -3138,15 +3137,18 @@ class SynthexApp:
             try:
                 devs = self._adb.list_devices()
                 vals = [d["serial"] for d in devs if d["state"] == "device"]
-                dev_combo["values"] = vals
-                if vals:
-                    dev_combo.set(vals[0])
-                    status_var.set("{} perangkat".format(len(vals)))
-                    dot.configure(fg=GRN)
-                else:
-                    dev_combo.set("")
-                    status_var.set("Tidak ada perangkat")
-                    dot.configure(fg=MUT)
+                def _apply():
+                    dev_combo["values"] = vals
+                    if vals:
+                        dev_combo.set(vals[0])
+                        status_var.set("{} perangkat".format(len(vals)))
+                        dot.configure(fg=GRN)
+                    else:
+                        dev_combo.set("")
+                        status_var.set("Tidak ada perangkat")
+                        dot.configure(fg=MUT)
+                if self._root:
+                    self._root.after(0, _apply)
             except Exception:
                 pass
 
@@ -3168,7 +3170,7 @@ class SynthexApp:
                  width=18, bd=4).pack(side="left", padx=(6, 4))
         tk.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        port_var = tk.StringVar(value="5555")
+        port_var = tk.StringVar(value=str(self.config.get("remote.last_port", "5555")))
         tk.Entry(ip_row, textvariable=port_var,
                  bg=CARD2, fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
@@ -3177,7 +3179,8 @@ class SynthexApp:
         def _connect_bg():
             ip = ip_var.get().strip()
             if not ip:
-                msg_var.set("Masukkan IP address HP.")
+                if self._root:
+                    self._root.after(0, lambda: msg_var.set("Masukkan IP address HP."))
                 return
             try:
                 port = int(port_var.get().strip())
@@ -3191,6 +3194,7 @@ class SynthexApp:
             ok, msg = self._adb.connect(ip, port)
             if ok:
                 self.config.set("remote.last_ip", ip)
+                self.config.set("remote.last_port", str(port))
                 self.config.save()
             if self._root:
                 self._root.after(0, lambda: msg_var.set(msg))
@@ -3441,9 +3445,13 @@ class SynthexApp:
             if rot is not None and hasattr(self._scrcpy, '_extra_args'):
                 pass  # orientation handled via start() override below
             serial = dev_var.get()
+            try:
+                max_size = int(res_var.get())
+            except (ValueError, TypeError):
+                max_size = 1080
             ok, msg = self._scrcpy.start(
                 serial=serial,
-                max_size=int(res_var.get()),
+                max_size=max_size,
                 bitrate=br_var.get(),
                 stay_awake=stay_var.get(),
                 show_touches=touch_var.get(),
@@ -3524,10 +3532,13 @@ class SynthexApp:
                 e["time"], e["task"], e["result"],
                 "OK" if e.get("ok") else "FAIL",
             ))
+        def _clear_history():
+            self._ud.activity.clear()
+            self._ud.save()
+            t.delete(*t.get_children())
+
         ttk.Button(c, text="Clear All", style="Danger.TButton",
-                   command=lambda: [
-                       self._ud.activity.clear(), self._ud.save()
-                   ]).pack(anchor="e", pady=(8, 0))
+                   command=_clear_history).pack(anchor="e", pady=(8, 0))
         return f
 
     # ================================================================
@@ -3596,10 +3607,10 @@ class SynthexApp:
                 return
             chosen = backups[idx[0]]
             dlg.destroy()
-            if not messagebox.askyesno(
-                    "Confirm Restore",
-                    f"Restore from {chosen['name']}?\n"
-                    "Current data will be overwritten."):
+            if not self._confirm_dialog(
+                    "Konfirmasi Restore",
+                    "Restore dari {}?\nData saat ini akan ditimpa.".format(chosen["name"]),
+                    confirm_text="Ya, Restore", accent=YEL):
                 return
             def _run():
                 ok = ab.restore_backup(chosen["path"])
@@ -4008,9 +4019,10 @@ class SynthexApp:
         if idx >= len(self._ud.elements):
             return
         name = self._ud.elements[idx].get("name","")
-        if messagebox.askyesno(
-                "Delete", "Delete element '{}'?".format(name),
-                parent=self._root):
+        if self._confirm_dialog(
+                "Hapus Elemen?",
+                "Hapus elemen '{}'?".format(name),
+                confirm_text="Ya, Hapus", accent=RED):
             del self._ud.elements[idx]
             self._ud.save()
             self._refresh_spy_elements_tree()
@@ -6699,9 +6711,10 @@ class SynthexApp:
         if idx >= len(self._ud.tasks):
             return
         name = self._ud.tasks[idx].get("name","")
-        if messagebox.askyesno("Delete Task",
-                               "Delete macro '{}'?".format(name),
-                               parent=self._root):
+        if self._confirm_dialog(
+                "Hapus Macro?",
+                "Hapus macro '{}'?\nAksi ini tidak bisa dibatalkan.".format(name),
+                confirm_text="Ya, Hapus", accent=RED):
             task_id = self._ud.tasks[idx].get("id", "")
             if task_id and self.engine and self.engine.scheduler:
                 self.engine.scheduler.remove_job("task_{}".format(task_id))
@@ -6837,10 +6850,60 @@ class SynthexApp:
     #  Logout / tray / hotkey / quit
     # ================================================================
 
+    def _confirm_dialog(self, title, message, confirm_text="Ya",
+                        cancel_text="Batal", accent=None):
+        """Custom dark-theme confirmation dialog. Returns True if confirmed."""
+        accent = accent or RED
+        result = tk.BooleanVar(value=False)
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#0D0D14")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+
+        W, H = 380, 200
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+
+        tk.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+        tk.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 9), justify="center",
+                 wraplength=330).pack(pady=(8, 14))
+        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+
+        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        btn_row.pack(pady=14)
+
+        def _yes():
+            result.set(True)
+            dlg.destroy()
+
+        tk.Button(btn_row, text="  {}  ".format(confirm_text), bg=accent,
+                  fg="white", relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=12, pady=6,
+                  command=_yes).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="  {}  ".format(cancel_text), bg=CARD2, fg=FG,
+                  relief="flat", font=("Segoe UI", 10),
+                  cursor="hand2", padx=12, pady=6,
+                  command=dlg.destroy).pack(side="left")
+
+        dlg.grab_set()
+        dlg.focus_force()
+        dlg.wait_window(dlg)
+        return result.get()
+
     def _logout(self):
         import os
-        if not messagebox.askyesno("Logout", "Are you sure you want to log out?",
-                                   parent=self._root):
+        if not self._confirm_dialog(
+                "Logout dari Synthex?",
+                "Sesi kamu akan dihapus.\nKamu perlu login ulang saat membuka aplikasi.",
+                confirm_text="Ya, Logout", cancel_text="Batal",
+                accent=YEL):
             return
         # Clear token file
         token_path = os.path.join(os.environ.get("APPDATA", ""), "Synthex", "token.json")
@@ -7132,11 +7195,10 @@ class SynthexApp:
 
     def _google_remove_account(self, name, refresh_cb):
         from modules.sheets import connector as _sc
-        if not messagebox.askyesno(
-                "Hapus Akun",
-                "Hapus akun '{}'?\nSemua sheet yang pakai akun ini "
-                "perlu disetup ulang.".format(name),
-                parent=self._root):
+        if not self._confirm_dialog(
+                "Hapus Akun Google?",
+                "Hapus akun '{}'?\nSemua sheet yang pakai akun ini perlu disetup ulang.".format(name),
+                confirm_text="Ya, Hapus", accent=RED):
             return
         _sc.remove_account(name)
         refresh_cb()
