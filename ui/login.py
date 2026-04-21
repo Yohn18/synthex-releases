@@ -220,6 +220,11 @@ class LoginWindow:
         self._part_ids         = []
         self._alpha            = 0.0
         self._pulse_phase      = 0.0
+        self._tagline_idx      = 0
+        self._tagline_char     = 0
+        self._tagline_var      = None
+        self._tagline_lbl      = None
+        self._taglines         = []
         self._logo_photo       = None
         self._bg_photo         = None
         self._glow_photo       = None
@@ -436,9 +441,22 @@ class LoginWindow:
                                                           fill=ACCENT, outline="")
         self._animate_underline(0)
 
-        # Tagline
-        tk.Label(rf, text="Masukkan kredensial untuk melanjutkan",
-                 bg=BG, fg=DIM, font=("Segoe UI", 8)).place(relx=0.5, y=72, anchor="center")
+        # Tagline — rotating promotional phrases with typewriter effect
+        self._taglines = [
+            "Automate everything. Achieve more.",
+            "Your workflow, on autopilot.",
+            "Built for speed. Designed to scale.",
+            "Smart automation for modern teams.",
+            "Less manual work. More results.",
+        ]
+        self._tagline_idx  = 0
+        self._tagline_char = 0
+        self._tagline_var  = tk.StringVar(value="")
+        self._tagline_lbl  = tk.Label(rf, textvariable=self._tagline_var,
+                                       bg=BG, fg="#5A5A8A",
+                                       font=("Segoe UI Italic", 8))
+        self._tagline_lbl.place(relx=0.5, y=72, anchor="center")
+        self._animate_tagline()
 
         # ── Email field ───────────────────────────────────────────────────────
         tk.Label(rf, text="EMAIL", bg=BG, fg=DIM,
@@ -618,6 +636,33 @@ class LoginWindow:
             pass
 
     # ── Logo pulse animation ──────────────────────────────────────────────────
+    def _animate_tagline(self, phase="type"):
+        """Typewriter effect cycling through promotional taglines."""
+        if not self._animating or not self._tagline_var:
+            return
+        try:
+            full = self._taglines[self._tagline_idx % len(self._taglines)]
+            if phase == "type":
+                self._tagline_char += 1
+                shown = full[:self._tagline_char]
+                self._tagline_var.set(shown)
+                if self._tagline_char < len(full):
+                    self._root.after(52, self._animate_tagline, "type")
+                else:
+                    self._root.after(2200, self._animate_tagline, "erase")
+            elif phase == "erase":
+                self._tagline_char = max(0, self._tagline_char - 2)
+                shown = full[:self._tagline_char]
+                self._tagline_var.set(shown)
+                if self._tagline_char > 0:
+                    self._root.after(28, self._animate_tagline, "erase")
+                else:
+                    self._tagline_idx += 1
+                    self._tagline_char = 0
+                    self._root.after(300, self._animate_tagline, "type")
+        except Exception:
+            pass
+
     def _animate_pulse(self):
         if not self._animating or not _PIL:
             return

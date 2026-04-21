@@ -1321,25 +1321,54 @@ class SynthexApp:
         active_count = sum(1 for t in self._ud.tasks
                            if t.get("enabled", True) and
                            t.get("schedule_type", "manual") != "manual")
+
+        # Generate home-page icons (26px, colored per chip)
+        from ui.icons import generate_all_icons as _gen_icons
+        if not hasattr(self, "_home_chip_photos"):
+            self._home_chip_photos = {}
+        _chip_icon_keys = ["web", "sheet", "schedule", "record"]
+        _chip_icon_colors = [
+            (0, 212, 170) if browser_ok else (240, 192, 96),
+            (0, 212, 170) if sheet_count else (80, 80, 112),
+            (108, 74, 255),
+            (200, 200, 232),
+        ]
+        for _ck, _cc in zip(_chip_icon_keys, _chip_icon_colors):
+            _ckey = "{}_{}".format(_ck, _cc)
+            if _ckey not in self._home_chip_photos:
+                _raw = _gen_icons(26, _cc)
+                self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_ck])
+
         chips_row = tk.Frame(body, bg=BG)
         chips_row.pack(fill="x", padx=20, pady=(10, 0))
-        for lbl, val, clr in [
-            ("Chrome",  "Connected" if browser_ok else "Standby",
-             GRN if browser_ok else YEL),
-            ("Sheets",  "{} connected".format(sheet_count), GRN if sheet_count else MUT),
-            ("Tasks",   "{} aktif".format(active_count),    ACC),
-            ("Macros",  "{} tersimpan".format(len(self._ud.tasks)), FG),
-        ]:
-            chip = tk.Frame(chips_row, bg=CARD, padx=16, pady=10)
+        for (lbl, val, clr), icon_key, icon_color in zip(
+            [
+                ("Chrome",  "Connected" if browser_ok else "Standby",
+                 GRN if browser_ok else YEL),
+                ("Sheets",  "{} connected".format(sheet_count), GRN if sheet_count else MUT),
+                ("Tasks",   "{} aktif".format(active_count),    ACC),
+                ("Macros",  "{} tersimpan".format(len(self._ud.tasks)), FG),
+            ],
+            _chip_icon_keys,
+            _chip_icon_colors,
+        ):
+            chip = tk.Frame(chips_row, bg=CARD, padx=14, pady=10)
             chip.pack(side="left", fill="both", expand=True, padx=(0, 6))
-            tk.Frame(chip, bg=clr, height=2).pack(fill="x", pady=(0, 6))
-            tk.Label(chip, text=lbl, bg=CARD, fg=MUT,
-                     font=("Segoe UI", 8)).pack(anchor="w")
-            val_lbl = tk.Label(chip, text=val, bg=CARD, fg=clr,
-                               font=("Segoe UI", 12, "bold"))
-            val_lbl.pack(anchor="w")
+            # Top accent line
+            tk.Frame(chip, bg=clr, height=2).pack(fill="x", pady=(0, 8))
+            # Icon + label row
+            icon_row = tk.Frame(chip, bg=CARD)
+            icon_row.pack(anchor="w", pady=(0, 2))
+            _ckey = "{}_{}".format(icon_key, icon_color)
+            _ph = self._home_chip_photos.get(_ckey)
+            if _ph:
+                tk.Label(icon_row, image=_ph, bg=CARD).pack(side="left", padx=(0, 8))
+            tk.Label(icon_row, text=lbl, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 8, "bold")).pack(side="left", anchor="w")
+            tk.Label(chip, text=val, bg=CARD, fg=clr,
+                     font=("Segoe UI", 13, "bold")).pack(anchor="w")
             # Hover glow
-            def _chip_enter(e, c=chip, col=clr):
+            def _chip_enter(e, c=chip):
                 _deep_bg(c, CARD2)
             def _chip_leave(e, c=chip):
                 _deep_bg(c, CARD)
@@ -1350,34 +1379,63 @@ class SynthexApp:
                 w.bind("<Leave>", _chip_leave)
 
         # ── Quick actions ────────────────────────────────────────────────────
-        qa = tk.Frame(body, bg=SIDE, padx=14, pady=8)
-        qa.pack(fill="x", padx=20, pady=(10, 0))
-        tk.Label(qa, text="AKSI CEPAT", bg=SIDE, fg="#4A4A6A",
-                 font=("Segoe UI", 7, "bold")).pack(side="left", padx=(0, 14))
-        for qa_lbl, qa_cmd, qa_clr in [
-            ("+ Macro Baru",    lambda: self._show("schedule"), ACC),
-            ("Mulai Record",    self._start_simple_rec,          GRN),
-            ("Buka Spy",        self._open_floating_spy,         BLUE),
-            ("Templates",       lambda: self._show("templates"), PRP),
-            ("Lihat Log",       lambda: self._show("logs"),      MUT),
-        ]:
-            qb = tk.Button(qa, text=qa_lbl, bg=qa_clr, fg=BG,
-                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                           padx=10, pady=4, cursor="hand2",
-                           command=qa_cmd)
-            qb.pack(side="left", padx=(0, 6))
-            def _qb_enter(e, btn=qb, col=qa_clr):
+        # Generate 16px icons for quick action buttons
+        if not hasattr(self, "_home_qa_photos"):
+            self._home_qa_photos = {}
+        _qa_defs = [
+            ("schedule",  "+ Macro Baru",  lambda: self._show("schedule"), ACC,  (108, 74, 255)),
+            ("record",    "Rekam Macro",   self._start_simple_rec,          GRN,  (0, 212, 170)),
+            ("spy",       "Buka Spy",      self._open_floating_spy,         BLUE, (74, 158, 255)),
+            ("templates", "Templates",     lambda: self._show("templates"), PRP,  (157, 92, 246)),
+            ("logs",      "Lihat Log",     lambda: self._show("logs"),      MUT,  (100, 100, 140)),
+        ]
+        for _ik, _, __, ___, _rgb in _qa_defs:
+            if _ik not in self._home_qa_photos:
+                _raw = _gen_icons(14, _rgb)
+                self._home_qa_photos[_ik] = ImageTk.PhotoImage(_raw[_ik])
+
+        qa_wrap = tk.Frame(body, bg=BG)
+        qa_wrap.pack(fill="x", padx=20, pady=(10, 0))
+        tk.Label(qa_wrap, text="AKSI CEPAT", bg=BG, fg="#3A3A5A",
+                 font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 6))
+        qa = tk.Frame(qa_wrap, bg=BG)
+        qa.pack(fill="x")
+
+        for icon_key, qa_lbl, qa_cmd, qa_clr, qa_rgb in _qa_defs:
+            _ph = self._home_qa_photos.get(icon_key)
+            # Use a Frame as button (icon + text side by side)
+            qf = tk.Frame(qa, bg=qa_clr, cursor="hand2")
+            qf.pack(side="left", padx=(0, 8))
+            qf.bind("<Button-1>", lambda e, c=qa_cmd: c())
+
+            inner = tk.Frame(qf, bg=qa_clr, padx=8, pady=5)
+            inner.pack()
+            inner.bind("<Button-1>", lambda e, c=qa_cmd: c())
+
+            if _ph:
+                il = tk.Label(inner, image=_ph, bg=qa_clr)
+                il.pack(side="left", padx=(0, 5))
+                il.bind("<Button-1>", lambda e, c=qa_cmd: c())
+
+            tl = tk.Label(inner, text=qa_lbl, bg=qa_clr, fg=BG,
+                          font=("Segoe UI", 8, "bold"))
+            tl.pack(side="left")
+            tl.bind("<Button-1>", lambda e, c=qa_cmd: c())
+
+            def _qb_enter(e, f=qf, i=inner, col=qa_clr):
                 try:
-                    r_ = min(255, int(col[1:3], 16) + 30)
-                    g_ = min(255, int(col[3:5], 16) + 30)
-                    b_ = min(255, int(col[5:7], 16) + 30)
-                    btn.configure(bg="#{:02x}{:02x}{:02x}".format(r_, g_, b_))
+                    r_ = min(255, int(col[1:3], 16) + 28)
+                    g_ = min(255, int(col[3:5], 16) + 28)
+                    b_ = min(255, int(col[5:7], 16) + 28)
+                    hl = "#{:02x}{:02x}{:02x}".format(r_, g_, b_)
+                    _deep_bg(f, hl)
                 except Exception:
                     pass
-            def _qb_leave(e, btn=qb, col=qa_clr):
-                btn.configure(bg=col)
-            qb.bind("<Enter>", _qb_enter)
-            qb.bind("<Leave>", _qb_leave)
+            def _qb_leave(e, f=qf, col=qa_clr):
+                _deep_bg(f, col)
+            for w in [qf, inner] + list(inner.winfo_children()):
+                w.bind("<Enter>", _qb_enter)
+                w.bind("<Leave>", _qb_leave)
 
         # ── My Tasks ─────────────────────────────────────────────────────────
         my_tasks = list(enumerate(self._ud.tasks[:5]))
