@@ -4,7 +4,7 @@ import json, logging, os, re, sys, threading, time, tkinter as tk
 from datetime import datetime
 from tkinter import ttk, scrolledtext
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter, ImageTk
 from core.config import Config
 from core.logger import get_logger
 
@@ -819,33 +819,51 @@ class SynthexApp:
         body = tk.Frame(r, bg=BG)
         body.pack(fill="both", expand=True)
 
+        # ── Generate PIL nav icons ─────────────────────────────────────────────
+        from ui.icons import generate_all_icons, generate_all_icons_glow
+        _acc_rgb  = (108, 74, 255)
+        _muted_rgb = (80, 80, 112)
+        _raw_icons      = generate_all_icons(20, _acc_rgb)
+        _raw_icons_dim  = generate_all_icons(20, _muted_rgb)
+        _raw_icons_glow = generate_all_icons_glow(20, _acc_rgb)
+        # Convert to ImageTk.PhotoImage — store on self to prevent GC
+        self._nav_photo       = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons.items()}
+        self._nav_photo_dim   = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_dim.items()}
+        self._nav_photo_glow  = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_glow.items()}
+
         # ── SIDEBAR ───────────────────────────────────────────────────────────
-        side = tk.Frame(body, bg=SIDE, width=204)
+        SIDE_W = 220
+        side = tk.Frame(body, bg=SIDE, width=SIDE_W)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
 
-        # Sidebar right border glow
-        tk.Frame(body, bg="#1E1E32", width=1).pack(side="left", fill="y")
+        # Sidebar right glow border (2px gradient look)
+        tk.Frame(body, bg="#18182C", width=1).pack(side="left", fill="y")
+        tk.Frame(body, bg="#0E0E1A", width=1).pack(side="left", fill="y")
 
-        # Top divider + label
-        tk.Frame(side, bg="#1A1A30", height=1).pack(fill="x")
-        _nav_hdr = tk.Frame(side, bg=SIDE)
-        _nav_hdr.pack(fill="x", padx=14, pady=(12, 6))
-        tk.Frame(_nav_hdr, bg=ACC, width=2, height=12).pack(side="left", padx=(0, 6))
-        tk.Label(_nav_hdr, text="NAVIGATION", bg=SIDE, fg="#4A4A70",
-                 font=("Segoe UI", 7, "bold")).pack(side="left")
+        # Sidebar top: mini branding
+        _sb_top = tk.Frame(side, bg="#0A0A16", height=40)
+        _sb_top.pack(fill="x")
+        _sb_top.pack_propagate(False)
+        tk.Frame(_sb_top, bg=ACC, width=3).pack(side="left", fill="y")
+        tk.Label(_sb_top, text="⚡ Menu", bg="#0A0A16", fg="#3A3A60",
+                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=10)
+        tk.Frame(side, bg="#1A1A2E", height=1).pack(fill="x")
 
-        # Bottom status bar (fixed at bottom, placed before canvas so it anchors)
+        # Bottom status bar
         self._sv = tk.StringVar(value="")
-        tk.Label(side, textvariable=self._sv, bg=SIDE, fg=MUT,
-                 font=("Segoe UI", 7), wraplength=180,
-                 justify="left").pack(side="bottom", anchor="w", padx=12, pady=(4, 4))
+        _sb_bottom = tk.Frame(side, bg=SIDE)
+        _sb_bottom.pack(side="bottom", fill="x")
+        tk.Frame(_sb_bottom, bg="#1A1A2E", height=1).pack(fill="x")
+        tk.Label(_sb_bottom, textvariable=self._sv, bg=SIDE, fg=MUT,
+                 font=("Segoe UI", 7), wraplength=SIDE_W - 20,
+                 justify="left").pack(anchor="w", padx=12, pady=(4, 6))
 
         # Scrollable nav area
         _side_sb = ttk.Scrollbar(side, orient="vertical")
         _side_sb.pack(side="right", fill="y")
         _side_cv = tk.Canvas(side, bg=SIDE, highlightthickness=0,
-                             yscrollcommand=_side_sb.set, width=196)
+                             yscrollcommand=_side_sb.set, width=SIDE_W - 14)
         _side_cv.pack(side="left", fill="both", expand=True)
         _side_sb.config(command=_side_cv.yview)
         _side_inner = tk.Frame(_side_cv, bg=SIDE)
@@ -856,20 +874,12 @@ class SynthexApp:
         _side_cv.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
             int(-1*(e.delta/120)), "units"))
 
-        NAV_ICONS = {
-            "home":      "\U0001f3e0", "web":       "\U0001f310", "spy":      "\U0001f441",
-            "record":    "\u23fa",     "schedule":  "\U0001f4c5", "sheet":    "\U0001f4ca",
-            "rekening":  "\U0001f3e6", "history":   "\U0001f4cb", "settings": "\u2699\ufe0f",
-            "templates": "\U0001f4da", "logs":      "\U0001f5d2", "monitor":  "\U0001f4b9",
-            "remote":    "\U0001f4f1", "chat":      "\U0001f4ac", "blog":     "\U0001f4f0",
-            "inbox":     "\U0001f4ec", "master":    "\U0001f451",
-        }
         _is_master = (self._email == self.MASTER_EMAIL)
-        self._nav      = {}
-        self._nav_bars = {}
+        self._nav       = {}
+        self._nav_bars  = {}
+        self._nav_icons = {}   # key -> icon Label widget (for swapping image)
 
         for label, key in self.NAV:
-            # Hide master-only items from non-master users
             if key == "master" and not _is_master:
                 continue
             if key == "" and label == "MASTER" and not _is_master:
@@ -878,57 +888,80 @@ class SynthexApp:
             if key == "":
                 # Category separator
                 sep_f = tk.Frame(_side_inner, bg=SIDE)
-                sep_f.pack(fill="x", padx=14, pady=(10, 2))
-                tk.Frame(sep_f, bg="#2A2A3C", height=1).pack(fill="x", pady=(0, 4))
-                _sep_clr = "#6C4AFF" if label == "MASTER" else "#4A4A6A"
-                tk.Label(sep_f, text=label, bg=SIDE, fg=_sep_clr,
+                sep_f.pack(fill="x", padx=10, pady=(10, 2))
+                tk.Frame(sep_f, bg="#222238", height=1).pack(fill="x", pady=(0, 5))
+                _sep_clr = "#5540CC" if label == "MASTER" else "#3A3A5A"
+                tk.Label(sep_f, text="  " + label, bg=SIDE, fg=_sep_clr,
                          font=("Segoe UI", 7, "bold"), anchor="w").pack(anchor="w")
                 continue
 
-            icon = NAV_ICONS.get(key, "•")
+            # Nav row
             row = tk.Frame(_side_inner, bg=SIDE)
             row.pack(fill="x")
             row.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
+            # Active bar (left edge glow)
             bar = tk.Frame(row, bg=ACC, width=3)
             bar.pack(side="left", fill="y")
             bar.pack_forget()
             self._nav_bars[key] = bar
 
-            b = tk.Button(
-                row,
-                text="  {}  {}".format(icon, label),
-                anchor="w", bg=SIDE, fg=MUT,
-                activebackground=CARD, activeforeground=FG,
-                font=("Segoe UI", 9), relief="flat", bd=0,
-                padx=14, pady=8, cursor="hand2",
-                command=lambda k=key: self._show(k))
-            b.pack(fill="x", side="left", expand=True)
-            b.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+            # Row inner container (for hover bg)
+            row_inner = tk.Frame(row, bg=SIDE)
+            row_inner.pack(fill="x", side="left", expand=True)
+            row_inner.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
-            # Hover glow effect
-            def _nav_enter(e, btn=b, k=key):
+            # Icon label (PIL image)
+            dim_photo = self._nav_photo_dim.get(key)
+            icon_lbl = tk.Label(row_inner, image=dim_photo, bg=SIDE,
+                                padx=10, pady=9)
+            icon_lbl.pack(side="left")
+            icon_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+                int(-1*(e.delta/120)), "units"))
+            self._nav_icons[key] = icon_lbl
+
+            # Text label
+            text_lbl = tk.Label(row_inner, text=label, bg=SIDE, fg=MUT,
+                                font=("Segoe UI", 9), anchor="w", cursor="hand2")
+            text_lbl.pack(side="left", fill="x", expand=True)
+            text_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+                int(-1*(e.delta/120)), "units"))
+
+            # Invisible click button covering the whole row
+            b = tk.Button(row_inner, text="", bg=SIDE, relief="flat", bd=0,
+                          activebackground=CARD, cursor="hand2",
+                          command=lambda k=key: self._show(k))
+            b.place(x=0, y=0, relwidth=1.0, relheight=1.0)
+            self._nav[key] = text_lbl   # use text_lbl as the nav widget
+
+            def _nav_enter(e, ri=row_inner, k=key, il=icon_lbl, tl=text_lbl):
                 if self._cur != k:
-                    btn.configure(bg=CARD2, fg=FG)
+                    _deep_bg(ri, CARD2)
+                    ph = self._nav_photo.get(k)
+                    if ph:
+                        il.configure(image=ph, bg=CARD2)
+                    tl.configure(fg=FG, bg=CARD2)
                     bar_w = self._nav_bars.get(k)
                     if bar_w and not bar_w.winfo_ismapped():
                         bar_w.configure(bg=ACC2)
                         bar_w.pack(side="left", fill="y")
 
-            def _nav_leave(e, btn=b, k=key):
+            def _nav_leave(e, ri=row_inner, k=key, il=icon_lbl, tl=text_lbl):
                 if self._cur != k:
-                    btn.configure(bg=SIDE, fg=MUT)
+                    _deep_bg(ri, SIDE)
+                    ph = self._nav_photo_dim.get(k)
+                    if ph:
+                        il.configure(image=ph, bg=SIDE)
+                    tl.configure(fg=MUT, bg=SIDE)
                     bar_w = self._nav_bars.get(k)
                     if bar_w and bar_w.cget("bg") != ACC:
                         bar_w.pack_forget()
 
-            b.bind("<Enter>", _nav_enter)
-            b.bind("<Leave>", _nav_leave)
-            row.bind("<Enter>", _nav_enter)
-            row.bind("<Leave>", _nav_leave)
-            self._nav[key] = b
+            for w in [row_inner, icon_lbl, text_lbl]:
+                w.bind("<Enter>", _nav_enter)
+                w.bind("<Leave>", _nav_leave)
 
         # ── CONTENT ───────────────────────────────────────────────────────────
         self._content = tk.Frame(body, bg=BG)
@@ -1046,15 +1079,34 @@ class SynthexApp:
 
         if self._cur in self._pages:
             self._pages[self._cur].pack_forget()
-        for k, b in self._nav.items():
-            b.configure(bg=SIDE, fg=MUT,
-                        activebackground=CARD, activeforeground=FG)
+        for k, lbl in self._nav.items():
+            try:
+                lbl.configure(fg=MUT)
+                parent = lbl.master
+                _deep_bg(parent, SIDE)
+                # restore dim icon
+                ph_dim = self._nav_photo_dim.get(k)
+                il = self._nav_icons.get(k)
+                if il and ph_dim:
+                    il.configure(image=ph_dim, bg=SIDE)
+            except Exception:
+                pass
             bar_w = self._nav_bars.get(k)
             if bar_w:
                 bar_w.pack_forget()
         if key in self._nav:
-            self._nav[key].configure(bg=CARD, fg=FG,
-                                      activebackground=CARD, activeforeground=ACC)
+            lbl = self._nav[key]
+            try:
+                lbl.configure(fg=FG)
+                parent = lbl.master
+                _deep_bg(parent, CARD)
+                # glow icon for active
+                ph_glow = self._nav_photo_glow.get(key)
+                il = self._nav_icons.get(key)
+                if il and ph_glow:
+                    il.configure(image=ph_glow, bg=CARD)
+            except Exception:
+                pass
             bar_w = self._nav_bars.get(key)
             if bar_w:
                 bar_w.configure(bg=ACC)
