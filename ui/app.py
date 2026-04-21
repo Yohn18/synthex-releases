@@ -1104,7 +1104,36 @@ class SynthexApp:
                 bar_w.pack(side="left", fill="y")
                 self._animate_nav_bar(key)
         if key not in self._pages:
+            # Show skeleton placeholder while page builds
+            _skel = tk.Frame(self._content, bg=BG)
+            _skel.pack(fill="both", expand=True)
+            _skel_lbl = tk.Label(_skel, text="", bg=BG, fg=MUT,
+                                  font=("Segoe UI", 9))
+            _skel_lbl.pack(pady=60)
+            _shimmer_colors = [CARD, CARD2, CARD]
+            _skel_bars = []
+            for _bw, _by in [(340, 80), (260, 104), (200, 128)]:
+                _b = tk.Frame(_skel, bg=CARD, height=10, width=_bw)
+                _b.place(x=20, y=_by)
+                _skel_bars.append(_b)
+
+            def _shimmer(step=0):
+                if not _skel.winfo_exists(): return
+                col = _shimmer_colors[step % len(_shimmer_colors)]
+                for _b in _skel_bars:
+                    try: _b.configure(bg=col)
+                    except Exception: pass
+                if step < 6:
+                    _skel.after(80, _shimmer, step + 1)
+
+            _skel.after(10, _shimmer)
+            self._root.update_idletasks()
+
+            # Build actual page then replace skeleton
             self._pages[key] = self._page_builders[key]()
+            try: _skel.destroy()
+            except Exception: pass
+
         self._pages[key].pack(fill="both", expand=True)
         self._cur = key
         if key == "chat":
@@ -1871,6 +1900,49 @@ class SynthexApp:
         self._tasks_tree.tag_configure("status_running", foreground=YEL)
         self._tasks_tree.bind("<Double-1>", lambda e: self._run_selected_task())
         self._tasks_tree.bind("<Button-3>", self._tasks_tree_right_click)
+
+        # ── Drag-and-drop reorder ─────────────────────────────────────
+        _dnd = {"item": None, "start_y": 0}
+
+        def _dnd_start(e):
+            item = self._tasks_tree.identify_row(e.y)
+            if item:
+                _dnd["item"] = item
+                _dnd["start_y"] = e.y
+                self._tasks_tree.configure(cursor="fleur")
+
+        def _dnd_motion(e):
+            if not _dnd["item"]:
+                return
+            target = self._tasks_tree.identify_row(e.y)
+            if target and target != _dnd["item"]:
+                self._tasks_tree.selection_set(target)
+
+        def _dnd_release(e):
+            src = _dnd["item"]
+            _dnd["item"] = None
+            self._tasks_tree.configure(cursor="")
+            if not src:
+                return
+            target = self._tasks_tree.identify_row(e.y)
+            if not target or target == src:
+                self._tasks_tree.selection_set(src)
+                return
+            src_idx = self._tasks_tree.index(src)
+            tgt_idx = self._tasks_tree.index(target)
+            with self._ud_lock:
+                tasks = self._ud.tasks
+                if src_idx < len(tasks) and tgt_idx < len(tasks):
+                    task_moved = tasks.pop(src_idx)
+                    tasks.insert(tgt_idx, task_moved)
+            self._ud.save()
+            self._refresh_tasks_tree()
+            self._show_toast("Urutan macro diperbarui", kind="success")
+
+        self._tasks_tree.bind("<ButtonPress-1>",  _dnd_start,   add="+")
+        self._tasks_tree.bind("<B1-Motion>",       _dnd_motion)
+        self._tasks_tree.bind("<ButtonRelease-1>", _dnd_release, add="+")
+
         self._refresh_tasks_tree()
         self._start_countdown_refresh()
 
@@ -5478,6 +5550,53 @@ class SynthexApp:
     def _pg_settings(self):
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "Settings")
+
+        # ---- Tema Aplikasi card ---------------------------------------
+        tc = _card(f, "Tema Aplikasi")
+        tc.pack(fill="x", padx=20, pady=(8, 0))
+
+        _cur_theme = self.config.get("ui.theme", "dark")
+        _theme_var = tk.StringVar(value=_cur_theme)
+
+        theme_row = tk.Frame(tc, bg=CARD)
+        theme_row.pack(anchor="w", pady=(0, 10))
+        for _lbl_t, _val_t in [("🌙  Dark", "dark"), ("☀️  Light", "light")]:
+            tk.Radiobutton(
+                theme_row, text=_lbl_t, variable=_theme_var, value=_val_t,
+                bg=CARD, fg=FG, selectcolor=CARD2,
+                activebackground=CARD, activeforeground=ACC,
+                font=("Segoe UI", 10)
+            ).pack(side="left", padx=(0, 24))
+
+        def _apply_theme():
+            sel = _theme_var.get()
+            if sel == self.config.get("ui.theme", "dark"):
+                self._show_toast("Tema sudah aktif.", kind="info")
+                return
+            # Save to config.json
+            self.config.set("ui.theme", sel)
+            self.config.save()
+            cfg_path = os.path.join(_ROOT, "config.json")
+            try:
+                with open(cfg_path, encoding="utf-8") as _fp:
+                    _cfg = json.load(_fp)
+                _cfg.setdefault("ui", {})["theme"] = sel
+                with open(cfg_path, "w", encoding="utf-8") as _fp:
+                    json.dump(_cfg, _fp, indent=2)
+            except Exception:
+                pass
+            if self._confirm_dialog(
+                    "Restart Diperlukan",
+                    "Perubahan tema berlaku setelah restart.\nRestart Synthex sekarang?",
+                    confirm_text="Restart", cancel_text="Nanti"):
+                import subprocess as _sp
+                _sp.Popen([sys.executable] + sys.argv)
+                import os as _os2; _os2._exit(0)
+
+        tk.Button(tc, text="Terapkan Tema", bg=ACC, fg=BG,
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=12, pady=5, cursor="hand2",
+                  command=_apply_theme).pack(anchor="w")
 
         # ---- Backup & Restore card ------------------------------------
         from utils.backup import AutoBackup
@@ -9511,25 +9630,77 @@ class SynthexApp:
             if panel:
                 try:
                     panel["stop_btn"].configure(state="disabled")
-                    panel["step_lbl"].configure(
-                        text="Done: {}/{} steps OK".format(ok_count, total))
-                    panel["window"].after(
-                        4000,
-                        lambda: panel["window"].destroy()
-                        if panel["window"].winfo_exists() else None)
+                    failed_steps = [r for r in results if not r.get("ok")]
+                    if failed_steps:
+                        panel["step_lbl"].configure(
+                            text="⚠ {}/{} step berhasil — {} gagal".format(
+                                ok_count, total, len(failed_steps)),
+                            fg=RED)
+                        # Add summary of failures to log box
+                        lb = panel["log_box"]
+                        lb.configure(state="normal")
+                        lb.insert(tk.END, "\n─── Step Gagal ───\n", "info")
+                        for r in failed_steps:
+                            lb.insert(tk.END,
+                                "Step {}: [{}] {}\n".format(
+                                    r.get("step", 0)+1,
+                                    r.get("type","?"),
+                                    str(r.get("result",""))[:100]),
+                                "fail")
+                        lb.see(tk.END)
+                        lb.configure(state="disabled")
+                        # Keep panel open longer on failure
+                        panel["window"].after(
+                            8000,
+                            lambda: panel["window"].destroy()
+                            if panel["window"].winfo_exists() else None)
+                    else:
+                        panel["step_lbl"].configure(
+                            text="✓ Done: {}/{} steps OK".format(ok_count, total),
+                            fg=GRN)
+                        panel["window"].after(
+                            3000,
+                            lambda: panel["window"].destroy()
+                            if panel["window"].winfo_exists() else None)
                 except Exception:
                     pass
             if status == "OK":
                 self._toast_success(
-                    "Done! Task '{}': {}/{} steps completed.".format(
+                    "✓ '{}' selesai — {}/{} step berhasil.".format(
                         task["name"], ok_count, total))
                 self._sv.set("Task '{}' finished OK.".format(task["name"]))
             else:
-                from utils.error_handler import friendly_message
-                msg = (friendly_message(exc_ref) if exc_ref
-                       else "Task '{}' failed: {}/{} steps completed.".format(
-                           task["name"], ok_count, total))
-                self._toast_error(msg, exc_ref)
+                # Build specific error detail from failed steps
+                failed_steps = [r for r in results if not r.get("ok")]
+                if failed_steps:
+                    first = failed_steps[0]
+                    step_num  = first.get("step", 0) + 1
+                    step_type = first.get("type", "?").replace("_", " ")
+                    err_msg   = str(first.get("result", ""))[:120]
+                    fail_count = len(failed_steps)
+                    detail_lines = "\n".join(
+                        "Step {}: [{}] {}".format(
+                            r.get("step", 0) + 1,
+                            r.get("type", "?"),
+                            str(r.get("result", ""))[:80])
+                        for r in failed_steps[:5]
+                    )
+                    msg = "Step {}/{} gagal ({}) → {}".format(
+                        step_num, total, step_type, err_msg)
+                    if fail_count > 1:
+                        msg += " (+{} lainnya)".format(fail_count - 1)
+                    self._show_toast(
+                        msg, kind="error",
+                        details="Task: {}\n\nStep yang gagal:\n{}".format(
+                            task["name"], detail_lines))
+                elif exc_ref:
+                    from utils.error_handler import friendly_message
+                    self._toast_error(friendly_message(exc_ref), exc_ref)
+                else:
+                    self._show_toast(
+                        "'{}' gagal: {}/{} step OK".format(
+                            task["name"], ok_count, total),
+                        kind="error")
                 self._sv.set("Task '{}': {}/{} steps OK".format(
                     task["name"], ok_count, total))
             self._ud.log(
