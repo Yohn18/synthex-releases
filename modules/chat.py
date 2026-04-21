@@ -2,11 +2,13 @@
 modules/chat.py
 Group chat + presence via Firebase RTDB for Synthex users.
 """
+import logging
 import time
 import requests
 import certifi
 
-_RTDB = "https://synthex-yohn18-default-rtdb.asia-southeast1.firebasedatabase.app"
+_RTDB   = "https://synthex-yohn18-default-rtdb.asia-southeast1.firebasedatabase.app"
+_logger = logging.getLogger("chat")
 
 
 def _email_key(email: str) -> str:
@@ -15,13 +17,20 @@ def _email_key(email: str) -> str:
 
 def _req(method: str, path: str, token: str, **kw):
     url = "{}/{}.json?auth={}".format(_RTDB, path, token)
+    last_exc = None
     for verify in (certifi.where(), False):
         try:
             r = getattr(requests, method)(url, timeout=8, verify=verify, **kw)
             if r.ok:
                 return r.json()
-        except Exception:
-            continue
+        except requests.Timeout:
+            last_exc = "timeout"
+        except requests.ConnectionError:
+            last_exc = "connection error"
+        except Exception as e:
+            last_exc = str(e)
+    if last_exc:
+        _logger.debug("_req %s %s gagal: %s", method, path, last_exc)
     return None
 
 

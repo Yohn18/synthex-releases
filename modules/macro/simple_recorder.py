@@ -11,6 +11,7 @@ the screen resolution changed.  Falls back to raw coordinates if UIA lookup
 fails.
 """
 
+import os
 import threading
 import time
 
@@ -21,7 +22,10 @@ from core.logger import get_logger
 
 _uia_obj      = None
 _uia_obj_lock = threading.Lock()
-_UIA_DLL      = r"C:\Windows\System32\UIAutomationCore.dll"
+_UIA_DLL      = os.path.join(
+    os.environ.get("SystemRoot", r"C:\Windows"),
+    "System32", "UIAutomationCore.dll"
+)
 _UIA_CLSID    = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
 
 
@@ -63,6 +67,9 @@ def _capture_uia(x, y):
     try:
         import comtypes
         comtypes.CoInitialize()
+    except Exception:
+        pass
+    try:
         from comtypes.gen import UIAutomationClient as _UIA
         uia = _init_uia()
         if uia is None:
@@ -82,6 +89,12 @@ def _capture_uia(x, y):
         }
     except Exception:
         return {}
+    finally:
+        try:
+            import comtypes
+            comtypes.CoUninitialize()
+        except Exception:
+            pass
 
 
 def _uia_find_center(fingerprint):
@@ -100,6 +113,9 @@ def _uia_find_center(fingerprint):
     try:
         import comtypes
         comtypes.CoInitialize()
+    except Exception:
+        pass
+    try:
         from comtypes.gen import UIAutomationClient as _UIA
 
         UIA_AutomationIdPropertyId  = 30011
@@ -178,6 +194,12 @@ def _uia_find_center(fingerprint):
 
     except Exception:
         return None
+    finally:
+        try:
+            import comtypes
+            comtypes.CoUninitialize()
+        except Exception:
+            pass
 
 
 class SimpleRecorder:
@@ -273,21 +295,23 @@ class SimpleRecorder:
         delay    = self._calc_delay(t)
         btn_name = getattr(button, "name", "left")
 
-        # Capture UIA fingerprint in a background thread so pynput isn't blocked
-        uia_info = {}
-        try:
-            uia_info = _capture_uia(x, y)
-        except Exception:
-            pass
-
+        # Capture UIA fingerprint asynchronously so pynput listener is not blocked
         action = {"type": "click", "x": x, "y": y,
                   "button": btn_name, "delay": round(delay, 3)}
-        if uia_info:
-            action["uia"] = uia_info
-
         with self._lock:
             self._events.append({"t": t, "action": action})
             self._actions.append(action)
+
+        def _async_uia(ax=x, ay=y, act=action):
+            try:
+                info = _capture_uia(ax, ay)
+                if info:
+                    with self._lock:
+                        act["uia"] = info
+            except Exception:
+                pass
+        threading.Thread(target=_async_uia, daemon=True).start()
+        return  # action already appended above; skip append below
 
     def _on_scroll(self, x, y, dx, dy):
         if not self._recording or self._paused:
@@ -396,6 +420,8 @@ class SimpleRecorder:
 
         for _rep in range(repeat):
             if _rep > 0:
+                if stop_event and stop_event.is_set():
+                    return
                 time.sleep(0.5)
             for i, action in enumerate(actions):
                 if stop_event and stop_event.is_set():

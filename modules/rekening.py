@@ -19,9 +19,9 @@ def _rate_wait():
     with _rl_lock:
         now = time.monotonic()
         gap = _rl_last[0] + _rl_delay - now
-        if gap > 0:
-            time.sleep(gap)
-        _rl_last[0] = time.monotonic()
+        _rl_last[0] = now + max(gap, 0)
+    if gap > 0:
+        time.sleep(gap)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 _CONFIG_PATH = os.path.join(
@@ -129,6 +129,9 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
             result["status"] = "Tidak ada respons"
             return result
 
+        if resp.status_code == 401:
+            result["status"] = "API key tidak valid atau habis masa berlaku"
+            return result
         if resp.status_code == 403:
             result["status"] = "Layanan cek rekening sedang tidak tersedia"
             return result

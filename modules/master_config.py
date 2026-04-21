@@ -4,6 +4,7 @@ Remote config & master controls via Firebase RTDB.
 Only the master account (yohanesnzzz777@gmail.com) can write.
 All authenticated users can read.
 """
+import logging
 import time
 import requests
 import certifi
@@ -20,16 +21,25 @@ _rc_cache    = [None]
 _rc_cache_ts = [0.0]
 _RC_CACHE_TTL = 60
 
+_logger = logging.getLogger("master_config")
+
 
 def _req(method: str, path: str, token: str, **kw):
     url = "{}/{}.json?auth={}".format(_RTDB, path, token)
+    last_exc = None
     for verify in (certifi.where(), False):
         try:
             r = getattr(requests, method)(url, timeout=10, verify=verify, **kw)
             if r.ok:
                 return r.json()
-        except Exception:
-            continue
+        except requests.Timeout:
+            last_exc = "timeout"
+        except requests.ConnectionError:
+            last_exc = "connection error"
+        except Exception as e:
+            last_exc = str(e)
+    if last_exc:
+        _logger.debug("_req %s %s gagal: %s", method, path, last_exc)
     return None
 
 

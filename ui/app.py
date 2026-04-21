@@ -77,15 +77,19 @@ class UserData:
                    ("websites", "recordings", "tasks", "activity",
                     "elements", "sheets")}
         try:
-            saved = json.load(open(_DATA_FILE, "r", encoding="utf-8"))
+            with open(_DATA_FILE, "r", encoding="utf-8") as fh:
+                saved = json.load(fh)
             for k in self._d:
                 self._d[k] = saved.get(k, [])
-        except Exception:
+        except FileNotFoundError:
             pass
+        except Exception:
+            logging.getLogger("ui").warning("UserData: gagal load %s", _DATA_FILE, exc_info=True)
 
     def save(self):
         os.makedirs(os.path.dirname(_DATA_FILE), exist_ok=True)
-        json.dump(self._d, open(_DATA_FILE, "w", encoding="utf-8"), indent=2)
+        with open(_DATA_FILE, "w", encoding="utf-8") as fh:
+            json.dump(self._d, fh, indent=2)
 
     def log(self, task, result, ok=True):
         self._d["activity"].insert(0, {
@@ -325,7 +329,9 @@ class SynthexApp:
         self._root   = None
         self._email  = None
         self._token  = None
-        self._ud     = UserData()
+        self._ud      = UserData()
+        self._ud_lock    = threading.Lock()
+        self._dm_poll_id = None
         self._pages  = {}
         self._nav    = {}
         self._cur    = ""
@@ -371,6 +377,8 @@ class SynthexApp:
         self._adb             = None   # AdbManager instance
         self._scrcpy          = None   # ScrcpyManager instance
         self._rem_poll_id     = None   # after() id for scrcpy status poll
+        self._adb_poll_id     = None   # after() id for ADB device list poll
+        self._broadcast_poll_id = None # after() id for broadcast watcher
         # Chat
         self._chat_poll_id    = None
         self._chat_last_key   = None
@@ -408,7 +416,7 @@ class SynthexApp:
                 from modules.chat import update_presence
                 update_presence(email, token, online=True)
             except Exception:
-                pass
+                self.logger.debug("mark_online gagal", exc_info=True)
         threading.Thread(target=_mark_online, daemon=True).start()
 
         # Fetch remote config and cache it
@@ -421,7 +429,7 @@ class SynthexApp:
                 if self._root:
                     self._root.after(0, self._apply_remote_config_to_nav)
             except Exception:
-                pass
+                self.logger.debug("fetch_remote_config gagal", exc_info=True)
         threading.Thread(target=_fetch_rc, daemon=True).start()
 
         # Master: auto-deploy Firebase rules + init rekening URL on login
@@ -510,9 +518,9 @@ class SynthexApp:
             except Exception:
                 pass
             if self._root:
-                self._root.after(90000, _dm_poll)
+                self._dm_poll_id = self._root.after(90000, _dm_poll)
         if self._root:
-            self._root.after(10000, _dm_poll)
+            self._dm_poll_id = self._root.after(10000, _dm_poll)
 
     def _session_watcher(self):
         """Background thread: checks every 12s if another device claimed the session."""
@@ -1107,14 +1115,14 @@ class SynthexApp:
                       command=qa_cmd).pack(side="left", padx=(0, 6))
 
         # ── My Tasks ─────────────────────────────────────────────────────────
-        my_tasks = [t for t in self._ud.tasks][:5]
+        my_tasks = list(enumerate(self._ud.tasks[:5]))
         if my_tasks:
             tk.Label(body, text="MY TASKS", bg=BG, fg="#4A4A6A",
                      font=("Segoe UI", 8, "bold")).pack(
                 anchor="w", padx=22, pady=(14, 4))
             mt_card = tk.Frame(body, bg=CARD)
             mt_card.pack(fill="x", padx=20, pady=(0, 4))
-            for t in my_tasks:
+            for task_idx, t in my_tasks:
                 enabled = t.get("enabled", True)
                 status  = t.get("last_status", "—")
                 sc_type = t.get("schedule_type", "manual")
@@ -1144,14 +1152,14 @@ class SynthexApp:
                 tk.Button(row, text="▶ Run", bg=ACC, fg="white",
                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                           padx=8, pady=2, cursor="hand2",
-                          command=lambda idx=self._ud.tasks.index(t): (
+                          command=lambda idx=task_idx: (
                               self._show("schedule"),
                               self._root.after(200, lambda i=idx: self._run_task_by_idx(i))
                           )).pack(side="right")
-            if len(self._ud.tasks) > 5:
+            if len(self._ud.tasks) > len(my_tasks):
                 tk.Label(mt_card,
                          text="+ {} task lainnya — buka Schedule".format(
-                             len(self._ud.tasks) - 5),
+                             len(self._ud.tasks) - len(my_tasks)),
                          bg=CARD, fg=MUT, font=("Segoe UI", 8),
                          padx=14, pady=6).pack(anchor="w")
 
@@ -2302,11 +2310,12 @@ class SynthexApp:
             "last_run":       "-",
             "last_status":    "-",
         }
-        if (self._mb_edit_idx is not None and
-                0 <= self._mb_edit_idx < len(self._ud.tasks)):
-            self._ud.tasks[self._mb_edit_idx] = task_data
-        else:
-            self._ud.tasks.append(task_data)
+        with self._ud_lock:
+            if (self._mb_edit_idx is not None and
+                    0 <= self._mb_edit_idx < len(self._ud.tasks)):
+                self._ud.tasks[self._mb_edit_idx] = task_data
+            else:
+                self._ud.tasks.append(task_data)
 
         self._ud.save()
         if self.engine:
@@ -2386,6 +2395,16 @@ class SynthexApp:
 
         def _dry_run_thread():
             import queue as _queue
+
+            def _ui(fn):
+                """Schedule fn on main thread; no-op if root already destroyed."""
+                root = getattr(self, "_root", None)
+                if root:
+                    try:
+                        root.after(0, fn)
+                    except Exception:
+                        pass
+
             variables = {
                 "current_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "current_date": datetime.now().strftime("%Y-%m-%d"),
@@ -2405,21 +2424,21 @@ class SynthexApp:
                 step_desc = _step_label(step)
 
                 # Highlight current step in list
-                self._root.after(0, lambda idx=i: self._mb_highlight_step(idx))
+                _ui(lambda idx=i: self._mb_highlight_step(idx))
 
                 # Update panel label and wait for confirm
                 lbl = "Step {}/{}: {}  -  OK to execute?".format(
                     i + 1, len(self._mb_steps), step_desc[:40])
-                self._root.after(0, lambda t=lbl: panel["step_lbl"].configure(text=t))
-                self._root.after(0, _enable_confirm)
-                self._root.after(0, _watch_confirm)
+                _ui(lambda t=lbl: panel["step_lbl"].configure(text=t))
+                _ui(_enable_confirm)
+                _ui(_watch_confirm)
 
                 confirm_event.clear()
                 confirm_event.wait()
 
                 if confirm_result[0] == "skip":
                     msg = "Step {}: [SKIPPED]\n".format(i + 1)
-                    self._root.after(0, lambda m=msg: [
+                    _ui(lambda m=msg: [
                         panel["log_box"].configure(state="normal"),
                         panel["log_box"].insert(tk.END, m, "info"),
                         panel["log_box"].see(tk.END),
@@ -2434,13 +2453,13 @@ class SynthexApp:
                     ok_count += 1
                 tag = "ok" if ok else "fail"
                 msg = "Step {}: {}\n".format(i + 1, result["result"])
-                self._root.after(0, lambda m=msg, t=tag: [
+                _ui(lambda m=msg, t=tag: [
                     panel["log_box"].configure(state="normal"),
                     panel["log_box"].insert(tk.END, m, t),
                     panel["log_box"].see(tk.END),
                     panel["log_box"].configure(state="disabled"),
                 ])
-                panel["progress_var"].set(i + 1)
+                _ui(lambda v=i + 1: panel["progress_var"].set(v))
 
                 # Auto-screenshot after each step
                 if self.engine and hasattr(self.engine, "browser") and self.engine.browser:
@@ -2453,13 +2472,12 @@ class SynthexApp:
             fail_count = total_steps - ok_count
             summary = "Dry run done: {} succeeded, {} failed/skipped.".format(
                 ok_count, total_steps - ok_count)
-            self._root.after(0, lambda s=summary: [
+            _ui(lambda s=summary: [
                 panel["step_lbl"].configure(text=s),
                 self._toast_success(s) if fail_count == 0 else self._toast_warning(s),
-                self._mb_highlight_step(-1),  # clear highlight
+                self._mb_highlight_step(-1),
             ])
-            self._root.after(0, lambda: panel["stop_btn"].configure(
-                state="disabled", text="Done"))
+            _ui(lambda: panel["stop_btn"].configure(state="disabled", text="Done"))
 
         threading.Thread(target=_dry_run_thread, daemon=True).start()
 
@@ -4261,6 +4279,59 @@ class SynthexApp:
                   relief="flat", bd=0, cursor="hand2",
                   command=_take_screenshot).pack(side="right")
 
+        # ══════════════════════════════════════════════════════════════
+        # SECTION 3 — Tools
+        # ══════════════════════════════════════════════════════════════
+        tools_sec = _sec("Tools", accent="#1A1A0A")
+
+        secure_sv = tk.StringVar(value="")
+        secure_row = tk.Frame(tools_sec, bg=CARD)
+        secure_row.pack(fill="x", pady=(0, 6))
+
+        tk.Label(secure_row,
+                 text="Layar hitam saat buka app bank di mirror?",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 9)).pack(side="left")
+
+        tk.Label(tools_sec, textvariable=secure_sv,
+                 bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _run_surface_cmd(flag: str, ok_msg: str):
+            devs = list(_card_widgets.keys())
+            serial = devs[0] if devs else None
+            if not serial or self._adb is None:
+                secure_sv.set("Tidak ada perangkat terhubung.")
+                return
+            def _bg():
+                try:
+                    rc, _, err = self._adb._run(
+                        "-s", serial, "shell",
+                        "service", "call", "SurfaceFlinger", "1008", "i32", flag)
+                    msg = ok_msg if rc == 0 else "Gagal: {}".format((err or "rc={}".format(rc))[:60])
+                except Exception as ex:
+                    msg = "Error: {}".format(str(ex)[:60])
+                if self._root:
+                    self._root.after(0, lambda m=msg: secure_sv.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _bypass_secure():
+            _run_surface_cmd("0", "Bypass aktif — layar hitam tidak akan muncul lagi.")
+
+        def _restore_secure():
+            _run_surface_cmd("1", "Secure screen dikembalikan ke normal.")
+
+        btn_row = tk.Frame(tools_sec, bg=CARD)
+        btn_row.pack(anchor="w")
+        tk.Button(btn_row, text="\U0001f513  Bypass Secure Screen",
+                  bg="#3A2A00", fg=YEL,
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_bypass_secure).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="Kembalikan Normal",
+                  bg=CARD2, fg=MUT,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_restore_secure).pack(side="left")
+
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
             from modules.remote_control import AdbManager, ScrcpyManager
@@ -4282,6 +4353,16 @@ class SynthexApp:
                 self._root.after(0, _after)
 
         _thr.Thread(target=_init_adb, daemon=True).start()
+
+        # ── Auto-refresh device list every 10s ──────────────────────────────
+        def _poll_adb():
+            if not self._root:
+                return
+            if self._cur == "remote":
+                _thr.Thread(target=_refresh_devs, daemon=True).start()
+            self._adb_poll_id = self._root.after(10000, _poll_adb)
+
+        self._adb_poll_id = self._root.after(10000, _poll_adb)
 
         return f
 
@@ -4368,7 +4449,7 @@ class SynthexApp:
 
         # ── Helpers ─────────────────────────────────────────────────────────
         _my_email = self._email or ""
-        _shown_keys = set()
+        _shown_keys = {}  # OrderedDict-style: key → 1, insertion order = arrival order
         _online_names = []  # list of username strings (email prefix) currently online
 
         # @mention autocomplete popup
@@ -4382,9 +4463,7 @@ class SynthexApp:
 
         def _on_inp_key(event):
             val = inp_var.get()
-            # Find last @ token
-            import re as _re2
-            m = _re2.search(r'@(\w*)$', val)
+            m = re.search(r'@(\w*)$', val)
             if not m:
                 _close_mention_popup()
                 return
@@ -4422,7 +4501,7 @@ class SynthexApp:
         def _append(sender, text, ts, key, is_me=False, system=False, error=False):
             if key in _shown_keys:
                 return
-            _shown_keys.add(key)
+            _shown_keys[key] = 1
             msg_area.configure(state="normal")
             try:
                 t = _dt.fromtimestamp(ts).strftime("%H:%M")
@@ -4490,7 +4569,7 @@ class SynthexApp:
             msgs = fetch_messages(token, limit=80)
             if msgs == "AUTH_EXPIRED":
                 refreshed = refresh_id_token()
-                if refreshed:
+                if refreshed and isinstance(refreshed, dict) and "idToken" in refreshed:
                     msgs = fetch_messages(refreshed["idToken"], limit=80)
             if not isinstance(msgs, list):
                 return
@@ -4523,7 +4602,8 @@ class SynthexApp:
             if not self._root:
                 return
             _thr.Thread(target=_fetch_messages_bg, daemon=True).start()
-            self._chat_poll_id = self._root.after(3000, _poll_messages)
+            interval = 3000 if self._cur == "chat" else 15000
+            self._chat_poll_id = self._root.after(interval, _poll_messages)
 
         def _poll_users():
             if not self._root:
@@ -4554,7 +4634,7 @@ class SynthexApp:
             if not self._root:
                 return
             _thr.Thread(target=_fetch_broadcast_bg, daemon=True).start()
-            self._root.after(30000, _poll_broadcast)
+            self._broadcast_poll_id = self._root.after(30000, _poll_broadcast)
 
         self._root.after(5000, _poll_broadcast)
 
@@ -4584,16 +4664,14 @@ class SynthexApp:
         def _on_destroy(e):
             if e.widget is not f:
                 return
-            if self._chat_poll_id:
-                try:
-                    self._root.after_cancel(self._chat_poll_id)
-                except Exception:
-                    pass
-            if self._chat_pres_id:
-                try:
-                    self._root.after_cancel(self._chat_pres_id)
-                except Exception:
-                    pass
+            for attr in ("_chat_poll_id", "_chat_pres_id", "_broadcast_poll_id"):
+                poll_id = getattr(self, attr, None)
+                if poll_id:
+                    try:
+                        self._root.after_cancel(poll_id)
+                    except Exception:
+                        pass
+                    setattr(self, attr, None)
         f.bind("<Destroy>", _on_destroy)
 
         # ── Kick off ─────────────────────────────────────────────────────────
@@ -4601,18 +4679,24 @@ class SynthexApp:
         _session_start = _time_mod.time()
 
         # Wrap _apply_messages: filter ephemeral + badge + toast
-        _orig_apply = _apply_messages
-        _toaster = None
+        _orig_apply  = _apply_messages
+        _toaster     = None
+        _toast_lock  = _thr.Lock()
         def _apply_messages(msgs):  # noqa: F811
             nonlocal _toaster
             new_msgs = []
             for m in msgs:
                 key = m.get("_key", str(m.get("ts", "")))
                 if m.get("ts", 0) < _session_start:
-                    _shown_keys.add(key)
+                    _shown_keys[key] = 1
                     continue
                 if key not in _shown_keys:
                     new_msgs.append(m)
+            # Prune dict: pertahankan 200 key terbaru (insertion order = arrival order)
+            if len(_shown_keys) > 400:
+                drop = list(_shown_keys)[:-200]
+                for k in drop:
+                    del _shown_keys[k]
             _orig_apply(msgs)
             # Badge + toast only for messages while away from chat page
             if new_msgs and self._cur != "chat":
@@ -4625,17 +4709,18 @@ class SynthexApp:
                 sender = last.get("name", last.get("from", "?").split("@")[0])
                 text   = last.get("text", "")[:60]
                 def _toast(s=sender, t=text, n=new_count):
-                    try:
-                        nonlocal _toaster
-                        if _toaster is None:
-                            from win10toast import ToastNotifier
-                            _toaster = ToastNotifier()
-                        title = "Chat Synthex ({} pesan baru)".format(n) if n > 1 \
-                                else "Chat Synthex"
-                        _toaster.show_toast(title, "{}: {}".format(s, t),
-                                            duration=5, threaded=True)
-                    except Exception:
-                        pass
+                    nonlocal _toaster
+                    with _toast_lock:
+                        try:
+                            if _toaster is None:
+                                from win10toast import ToastNotifier
+                                _toaster = ToastNotifier()
+                            title = "Chat Synthex ({} pesan baru)".format(n) if n > 1 \
+                                    else "Chat Synthex"
+                            _toaster.show_toast(title, "{}: {}".format(s, t),
+                                                duration=5, threaded=True)
+                        except Exception:
+                            pass
                 _thr.Thread(target=_toast, daemon=True).start()
 
         _append("Synthex", "Selamat datang di chat! Hanya pesan baru yang tampil.",
@@ -6804,7 +6889,7 @@ class SynthexApp:
                 self._stop_simple_rec()
             if self._rec_timer_id:
                 try:
-                    win.after_cancel(self._rec_timer_id)
+                    self._root.after_cancel(self._rec_timer_id)
                 except Exception:
                     pass
             self._rec_timer_id    = None
@@ -6933,7 +7018,7 @@ class SynthexApp:
 
         def _stop_recording():
             if self._rec_timer_id:
-                try: win.after_cancel(self._rec_timer_id)
+                try: self._root.after_cancel(self._rec_timer_id)
                 except Exception: pass
             self._stop_simple_rec()
             _update_state_idle()
@@ -8478,6 +8563,7 @@ class SynthexApp:
                     win, 0, total, "ERROR: {}".format(err[:50])))
             self._playback_running = False
             duration = "{:.1f}s".format(time.time() - start_time)
+            stopped = self._playback_stop.is_set()
             if 0 <= idx < len(self._ud.recordings):
                 self._ud.recordings[idx]["last_run"] = \
                     datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -8485,11 +8571,17 @@ class SynthexApp:
                 self._ud.log("Play: {}".format(rec.get("name", "")),
                              "Simple playback done")
                 self._ud.save()
-            self._root.after(0, lambda: [
-                self._close_playback_window(win),
-                self._refresh_recordings_tree(),
-                self._sv.set("Simple playback complete."),
-            ])
+            macro_name = rec.get("name", "Macro")
+            def _finish(name=macro_name, dur=duration, did_stop=stopped):
+                self._close_playback_window(win)
+                self._refresh_recordings_tree()
+                if did_stop:
+                    self._sv.set("Playback dihentikan.")
+                    self._show_toast("⏹ {} dihentikan ({})".format(name, dur), duration=3000)
+                else:
+                    self._sv.set("Simple playback complete.")
+                    self._show_toast("✅ {} selesai ({})".format(name, dur), duration=4000)
+            self._root.after(0, _finish)
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -8816,7 +8908,7 @@ class SynthexApp:
             return
         for row in self._tasks_tree.get_children():
             self._tasks_tree.delete(row)
-        for task in self._ud.tasks:
+        for task in list(self._ud.tasks):
             stype = task.get("schedule_type", "manual")
             sval  = task.get("schedule_value", "")
             stime = task.get("schedule_time", "")
@@ -9055,9 +9147,10 @@ class SynthexApp:
         self._root.after(0, lambda: self._sv.set(
             "Running: {}...".format(task["name"])))
         # Mark as Running immediately so the tree shows yellow status
-        if idx < len(self._ud.tasks):
-            self._ud.tasks[idx]["last_status"] = "Running"
-            self._root.after(0, self._refresh_tasks_tree)
+        with self._ud_lock:
+            if idx < len(self._ud.tasks):
+                self._ud.tasks[idx]["last_status"] = "Running"
+        self._root.after(0, self._refresh_tasks_tree)
         ok_count, total = 0, len(task.get("steps", []))
         status = "FAIL"
         _exc = None
@@ -9100,9 +9193,11 @@ class SynthexApp:
         except Exception as e:
             _exc = e
             self.logger.error("Task '{}' failed: {}".format(task["name"], e))
-        self._ud.tasks[idx]["last_run"]    = \
-            datetime.now().strftime("%Y-%m-%d %H:%M")
-        self._ud.tasks[idx]["last_status"] = status
+        with self._ud_lock:
+            if idx < len(self._ud.tasks):
+                self._ud.tasks[idx]["last_run"]    = \
+                    datetime.now().strftime("%Y-%m-%d %H:%M")
+                self._ud.tasks[idx]["last_status"] = status
         self._ud.save()
 
         exc_ref = _exc
@@ -9271,9 +9366,10 @@ class SynthexApp:
         """Background thread for continuous mode task execution."""
         self._root.after(0, lambda: self._sv.set(
             "Running: {} [CONTINUOUS]...".format(task["name"])))
-        if idx < len(self._ud.tasks):
-            self._ud.tasks[idx]["last_status"] = "Running"
-            self._root.after(0, self._refresh_tasks_tree)
+        with self._ud_lock:
+            if idx < len(self._ud.tasks):
+                self._ud.tasks[idx]["last_status"] = "Running"
+        self._root.after(0, self._refresh_tasks_tree)
 
         def _log(msg, tag="info"):
             if not panel:
@@ -9370,10 +9466,11 @@ class SynthexApp:
                 "Continuous task '{}' failed: {}".format(task["name"], e))
             _log("Fatal error: {}".format(e), "fail")
 
-        if idx < len(self._ud.tasks):
-            self._ud.tasks[idx]["last_status"] = "Stopped"
-            self._ud.tasks[idx]["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M")
-            self._ud.save()
+        with self._ud_lock:
+            if idx < len(self._ud.tasks):
+                self._ud.tasks[idx]["last_status"] = "Stopped"
+                self._ud.tasks[idx]["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+        self._ud.save()
 
         def _done():
             self._refresh_tasks_tree()
@@ -9407,10 +9504,15 @@ class SynthexApp:
                 "Hapus Macro?",
                 "Hapus macro '{}'?\nAksi ini tidak bisa dibatalkan.".format(name),
                 confirm_text="Ya, Hapus", accent=RED):
-            task_id = self._ud.tasks[idx].get("id", "")
-            if task_id and self.engine and self.engine.scheduler:
-                self.engine.scheduler.remove_job("task_{}".format(task_id))
-            del self._ud.tasks[idx]
+            with self._ud_lock:
+                if idx < len(self._ud.tasks):
+                    task_id = self._ud.tasks[idx].get("id", "")
+                    if task_id and self.engine and self.engine.scheduler:
+                        try:
+                            self.engine.scheduler.remove_job("task_{}".format(task_id))
+                        except Exception:
+                            pass
+                    del self._ud.tasks[idx]
             self._ud.save()
             self._refresh_tasks_tree()
 
@@ -9423,11 +9525,16 @@ class SynthexApp:
         idx = self._tasks_tree.index(sel[0])
         if idx >= len(self._ud.tasks):
             return
-        self._ud.tasks[idx]["enabled"] = not self._ud.tasks[idx].get(
-            "enabled", True)
+        with self._ud_lock:
+            if idx < len(self._ud.tasks):
+                self._ud.tasks[idx]["enabled"] = not self._ud.tasks[idx].get(
+                    "enabled", True)
+                task_ref = self._ud.tasks[idx]
+            else:
+                return
         self._ud.save()
         if self.engine:
-            self.engine.register_task(self._ud.tasks[idx])
+            self.engine.register_task(task_ref)
         self._refresh_tasks_tree()
 
     # ================================================================
@@ -9883,8 +9990,8 @@ class SynthexApp:
                 on_press=_on_press,
                 on_release=_on_release,
                 suppress=False,
+                daemon=True,
             )
-            self._hkl.daemon = True
             self._hkl.start()
             self.logger.info("Hotkey listener started OK")
         except Exception as _e:
@@ -10827,6 +10934,9 @@ class SynthexApp:
                 self.config.save()
             except Exception:
                 pass
+            if self._dm_poll_id and self._root:
+                try: self._root.after_cancel(self._dm_poll_id)
+                except Exception: pass
             if self._tray:
                 try: self._tray.stop()
                 except Exception: pass

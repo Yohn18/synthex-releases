@@ -43,7 +43,9 @@ def _find_adb() -> str:
         result = subprocess.run(
             ["where", "adb"], capture_output=True, text=True, timeout=3)
         if result.returncode == 0:
-            return result.stdout.strip().splitlines()[0]
+            lines = result.stdout.strip().splitlines()
+            if lines:
+                return lines[0]
     except Exception:
         pass
     return ""
@@ -66,7 +68,9 @@ def _find_scrcpy() -> str:
         result = subprocess.run(
             ["where", "scrcpy"], capture_output=True, text=True, timeout=3)
         if result.returncode == 0:
-            return result.stdout.strip().splitlines()[0]
+            lines = result.stdout.strip().splitlines()
+            if lines:
+                return lines[0]
     except Exception:
         pass
     return ""

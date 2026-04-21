@@ -460,7 +460,7 @@ class FloatingSpyWindow:
         self.logger          = get_logger("spy_window")
         self._tracker        = _CDPTracker()
 
-        self._pinned      = False
+        self._pinned      = threading.Event()  # set = pinned, clear = live
         self._drag_x      = 0
         self._drag_y      = 0
         self._poll_id     = None
@@ -695,7 +695,7 @@ class FloatingSpyWindow:
     def _poll(self):
         if not self._win.winfo_exists():
             return
-        if not self._pinned:
+        if not self._pinned.is_set():
             x, y = _get_cursor_pos()
             self._v_screen.set("{}, {}".format(x, y))
 
@@ -738,7 +738,7 @@ class FloatingSpyWindow:
         _init_uia()
         while self._uia_alive:
             try:
-                if not self._pinned:
+                if not self._pinned.is_set():
                     try:
                         alive = self._win.winfo_exists()
                     except Exception:
@@ -787,13 +787,14 @@ class FloatingSpyWindow:
     # ── PIN ──────────────────────────────────────────────────────────────────
 
     def _toggle_pin(self):
-        self._pinned = not self._pinned
-        if self._pinned:
-            self._pin_btn.configure(text="UNPIN", bg=YEL, fg=BG)
-            self._v_status.set("Pinned - koordinat dibekukan")
-        else:
+        if self._pinned.is_set():
+            self._pinned.clear()
             self._pin_btn.configure(text="PIN", bg=ACC, fg="#FFFFFF")
             self._v_status.set("Hover to inspect")
+        else:
+            self._pinned.set()
+            self._pin_btn.configure(text="UNPIN", bg=YEL, fg=BG)
+            self._v_status.set("Pinned - koordinat dibekukan")
 
     # ── SAVE coord ───────────────────────────────────────────────────────────
 

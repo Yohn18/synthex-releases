@@ -117,6 +117,8 @@ class PriceMonitor:
     def stop(self):
         self.running = False
         self._stop_ev.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5)
         self._notify("Monitor dihentikan.")
 
     def run_once(self):

@@ -5,12 +5,17 @@ Single-session enforcement via Firebase Realtime Database.
 """
 
 import json
+import logging
 import os
+import threading
 import time
 import uuid
 import certifi
 import requests
 import urllib3
+
+_logger       = logging.getLogger("firebase_auth")
+_session_lock = threading.Lock()
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -143,9 +148,10 @@ def refresh_id_token(api_key: str = None, refresh_token: str = None) -> dict | N
     Uses in-memory values when parameters are omitted.
     Returns {"idToken": ..., "refreshToken": ..., "email": ...} or None.
     """
-    key   = api_key      or _session.get("api_key")
-    rtok  = refresh_token or _session.get("refresh_token")
-    email = _session.get("email", "")
+    with _session_lock:
+        key   = api_key       or _session.get("api_key")
+        rtok  = refresh_token or _session.get("refresh_token")
+        email = _session.get("email", "")
 
     if not key or not rtok:
         return None
@@ -156,19 +162,23 @@ def refresh_id_token(api_key: str = None, refresh_token: str = None) -> dict | N
         data={"grant_type": "refresh_token", "refresh_token": rtok},
     )
     if resp is None or not resp.ok:
+        reason = "no response" if resp is None else "HTTP {}".format(resp.status_code)
+        _logger.warning("refresh_id_token gagal: %s", reason)
         return None
 
     data     = resp.json()
     id_token = data.get("id_token", "")
     new_rtok = data.get("refresh_token", rtok)
     if not id_token:
+        _logger.warning("refresh_id_token: respons OK tapi id_token kosong")
         return None
 
     now = time.time()
-    _session["token"]        = id_token
-    _session["refresh_token"] = new_rtok
-    _session["token_issued"] = now
-    _session["api_key"]      = key
+    with _session_lock:
+        _session["token"]         = id_token
+        _session["refresh_token"] = new_rtok
+        _session["token_issued"]  = now
+        _session["api_key"]       = key
 
     _save_token_file(id_token, new_rtok, email, now, key)
     return {"idToken": id_token, "refreshToken": new_rtok, "email": email}
@@ -176,10 +186,14 @@ def refresh_id_token(api_key: str = None, refresh_token: str = None) -> dict | N
 
 def get_valid_token() -> str | None:
     """Return a valid (non-expired) ID token, auto-refreshing if needed."""
-    issued = _session.get("token_issued") or _session.get("login_time")
+    with _session_lock:
+        issued = _session.get("token_issued") or _session.get("login_time")
+        token  = _session.get("token")
     if issued and (time.time() - issued) >= (_ID_TOKEN_TTL - _REFRESH_MARGIN):
         refresh_id_token()
-    return _session.get("token")
+        with _session_lock:
+            token = _session.get("token")
+    return token
 
 
 def sign_in_with_email_password(email: str, password: str, api_key: str) -> dict:
@@ -202,12 +216,13 @@ def sign_in_with_email_password(email: str, password: str, api_key: str) -> dict
     result_email = data.get("email", email)
     now          = time.time()
 
-    _session["token"]         = id_token
-    _session["email"]         = result_email
-    _session["login_time"]    = now
-    _session["refresh_token"] = refresh_tok
-    _session["token_issued"]  = now
-    _session["api_key"]       = api_key
+    with _session_lock:
+        _session["token"]         = id_token
+        _session["email"]         = result_email
+        _session["login_time"]    = now
+        _session["refresh_token"] = refresh_tok
+        _session["token_issued"]  = now
+        _session["api_key"]       = api_key
 
     # Check ban status before allowing login
     try:
@@ -252,12 +267,13 @@ def load_saved_session() -> dict | None:
         return None
 
     # Populate session so refresh_id_token() can use in-memory values
-    _session["token"]         = id_token
-    _session["email"]         = email
-    _session["login_time"]    = issued
-    _session["refresh_token"] = refresh_tok
-    _session["token_issued"]  = issued
-    _session["api_key"]       = api_key
+    with _session_lock:
+        _session["token"]         = id_token
+        _session["email"]         = email
+        _session["login_time"]    = issued
+        _session["refresh_token"] = refresh_tok
+        _session["token_issued"]  = issued
+        _session["api_key"]       = api_key
 
     age = time.time() - issued
 
@@ -286,24 +302,28 @@ def get_token() -> str | None:
 
 
 def get_email() -> str | None:
-    return _session.get("email")
+    with _session_lock:
+        return _session.get("email")
 
 
 def is_authenticated() -> bool:
-    return bool(_session.get("token") and _session.get("email"))
+    with _session_lock:
+        return bool(_session.get("token") and _session.get("email"))
 
 
 def logout() -> None:
-    email    = _session.get("email")
-    id_token = _session.get("token")
+    with _session_lock:
+        email    = _session.get("email")
+        id_token = _session.get("token")
     if email and id_token:
         try:
             clear_session_rtdb(email, id_token)
         except Exception:
             pass
-    for k in ("token", "email", "login_time", "refresh_token",
-              "token_issued", "api_key", "session_id"):
-        _session[k] = None
+    with _session_lock:
+        for k in ("token", "email", "login_time", "refresh_token",
+                  "token_issued", "api_key", "session_id"):
+            _session[k] = None
     if os.path.exists(_TOKEN_FILE):
         try:
             os.remove(_TOKEN_FILE)
