@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.2",
+  "latest_version": "1.3.3",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.2/Synthex.exe",
-  "changelog": "v1.3.2: Dark/Light mode toggle di Settings; drag-and-drop reorder macro di Schedule; error macro tampil step spesifik yang gagal; skeleton loading saat pindah halaman",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.3/Synthex.exe",
+  "changelog": "v1.3.3: Fix NameError results undefined saat engine None; fix command palette hover highlight salah index; fix palette_open flag stuck jika error; fix CSV regex terlalu strict",
   "maintenance": false,
   "maintenance_msg": ""
 }

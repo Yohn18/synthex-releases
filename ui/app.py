@@ -9602,6 +9602,7 @@ class SynthexApp:
                     0, lambda t=lbl_text: panel["step_lbl"].configure(text=t)
                     if panel["window"].winfo_exists() else None)
 
+        results = []
         try:
             if self.engine:
                 results = self.engine.run_smart_task(
@@ -11328,7 +11329,7 @@ class SynthexApp:
                 text = lw.get("1.0", tk.END)
                 # Parse format: HH:MM:SS  [module        ]  LEVEL    message
                 pat = _re.compile(
-                    r"^(\d{2}:\d{2}:\d{2})\s+\[([^\]]+)\]\s+(\w+)\s+(.*)$")
+                    r"^(\d{2}:\d{2}:\d{2})\s+\[([^\]]*)\]\s+(\w+)\s+(.*)$")
                 rows = []
                 for line in text.splitlines():
                     m = pat.match(line.strip())
@@ -11650,15 +11651,16 @@ class SynthexApp:
                 tk.Label(rf, text="↵", bg="#0D0D18", fg="#2A2A44",
                          font=("Segoe UI", 10), padx=10).pack(side="right")
 
-                _k = key
-                def _bind_row(frame, k):
+                _rows.append((rf, key))
+                _cur_idx = len(_rows) - 1
+
+                def _bind_row(frame, k, idx):
                     frame.bind("<Button-1>", lambda e: _go(k))
                     for child in frame.winfo_children():
                         child.bind("<Button-1>", lambda e, kk=k: _go(kk))
-                    frame.bind("<Enter>", lambda e, idx=len(_rows): _highlight(idx))
-                    frame.bind("<Leave>", lambda e, idx=len(_rows): _highlight(_sel[0]))
-                _rows.append((rf, key))
-                _bind_row(rf, _k)
+                    frame.bind("<Enter>", lambda e, i=idx: _highlight(i))
+                    frame.bind("<Leave>", lambda e: _highlight(_sel[0]))
+                _bind_row(rf, key, _cur_idx)
 
             _highlight(0)
 
@@ -11703,7 +11705,11 @@ class SynthexApp:
 
         ov.after(10, _fade_in)
         entry.focus_set()
-        ov.grab_set()
+        try:
+            ov.grab_set()
+        except Exception:
+            self._palette_open = False
+            return
         ov.bind("<Destroy>", lambda e: setattr(self, "_palette_open", False))
 
     def _show_help(self):
