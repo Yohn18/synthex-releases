@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.2.7",
+  "latest_version": "1.2.8",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.7/Synthex.exe",
-  "changelog": "v1.2.2: Fix thread safety & race conditions di auth/session, task list, dan toast \u00e2\u20ac\u201d tambah lock untuk semua shared state; fix COM resource leak di macro recorder (CoUninitialize di finally); fix memory leak di shown_keys (dict insertion-order); fix app hang saat close (daemon thread + PriceMonitor join); fix rate limiter rekening (sleep di luar lock); fix timer cancel pakai root.after_cancel; async UIA capture agar pynput tidak blocked",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.8/Synthex.exe",
+  "changelog": "v1.2.8: Fix tombol X sekarang sembunyikan ke tray (bukan keluar); fix logout tidak hapus tray icon dan proses background",
   "maintenance": false,
   "maintenance_msg": ""
 }

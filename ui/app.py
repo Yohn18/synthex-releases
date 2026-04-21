@@ -626,7 +626,7 @@ class SynthexApp:
         r.geometry("460x280")
         r.resizable(False, False)
         r.configure(bg=BG)
-        r.protocol("WM_DELETE_WINDOW", self._quit)
+        r.protocol("WM_DELETE_WINDOW", self._quit)  # splash: quit OK
         sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
         r.geometry("460x280+{}+{}".format((sw-460)//2, (sh-280)//2))
         _lbl(r, "SYNTHEX", fg=ACC,
@@ -685,7 +685,7 @@ class SynthexApp:
         r.minsize(920, 600)
         r.resizable(True, True)
         r.configure(bg=BG)
-        r.protocol("WM_DELETE_WINDOW", self._quit)
+        r.protocol("WM_DELETE_WINDOW", lambda: r.withdraw())
         _apply_styles(r)
         # Center on screen then fade in
         sw = r.winfo_screenwidth()
@@ -10243,8 +10243,16 @@ class SynthexApp:
         self.config.set("ui.stay_logged_in", False)
         self.config.set("ui.last_email", "")
         self.config.save()
-        # Just close - user reopens manually
-        self._root.destroy()
+        # Stop tray, destroy window, exit process
+        if self._tray:
+            try: self._tray.stop()
+            except Exception: pass
+        if self._hkl:
+            try: self._hkl.stop()
+            except Exception: pass
+        try: self._root.destroy()
+        except Exception: pass
+        import os as _os; _os._exit(0)
 
     def _start_tray(self):
         def _run():
