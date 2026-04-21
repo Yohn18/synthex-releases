@@ -916,29 +916,34 @@ class SynthexApp:
             # Icon label (PIL image)
             dim_photo = self._nav_photo_dim.get(key)
             icon_lbl = tk.Label(row_inner, image=dim_photo, bg=SIDE,
-                                padx=10, pady=9)
+                                padx=10, pady=9, cursor="hand2")
             icon_lbl.pack(side="left")
             icon_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
             self._nav_icons[key] = icon_lbl
 
-            # Text label
-            text_lbl = tk.Label(row_inner, text=label, bg=SIDE, fg=MUT,
-                                font=("Segoe UI", 9), anchor="w", cursor="hand2")
+            # Text label — brighter default color so it's always readable
+            _NAV_FG = "#9090B8"   # readable but not fully active
+            text_lbl = tk.Label(row_inner, text=label, bg=SIDE, fg=_NAV_FG,
+                                font=("Segoe UI", 9), anchor="w", cursor="hand2",
+                                padx=0, pady=9)
             text_lbl.pack(side="left", fill="x", expand=True)
             text_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
-            # Invisible click button covering the whole row
-            b = tk.Button(row_inner, text="", bg=SIDE, relief="flat", bd=0,
-                          activebackground=CARD, cursor="hand2",
-                          command=lambda k=key: self._show(k))
-            b.place(x=0, y=0, relwidth=1.0, relheight=1.0)
-            self._nav[key] = text_lbl   # use text_lbl as the nav widget
+            # Bind click on all row widgets directly (no invisible overlay button)
+            _cmd = lambda k=key: self._show(k)
+            for w in [row_inner, icon_lbl, text_lbl]:
+                w.bind("<Button-1>", lambda e, c=_cmd: c())
+
+            self._nav[key] = text_lbl
 
             def _nav_enter(e, ri=row_inner, k=key, il=icon_lbl, tl=text_lbl):
                 if self._cur != k:
-                    _deep_bg(ri, CARD2)
+                    ri.configure(bg=CARD2)
+                    for ch in ri.winfo_children():
+                        try: ch.configure(bg=CARD2)
+                        except Exception: pass
                     ph = self._nav_photo.get(k)
                     if ph:
                         il.configure(image=ph, bg=CARD2)
@@ -950,11 +955,14 @@ class SynthexApp:
 
             def _nav_leave(e, ri=row_inner, k=key, il=icon_lbl, tl=text_lbl):
                 if self._cur != k:
-                    _deep_bg(ri, SIDE)
+                    ri.configure(bg=SIDE)
+                    for ch in ri.winfo_children():
+                        try: ch.configure(bg=SIDE)
+                        except Exception: pass
                     ph = self._nav_photo_dim.get(k)
                     if ph:
                         il.configure(image=ph, bg=SIDE)
-                    tl.configure(fg=MUT, bg=SIDE)
+                    tl.configure(fg=_NAV_FG, bg=SIDE)
                     bar_w = self._nav_bars.get(k)
                     if bar_w and bar_w.cget("bg") != ACC:
                         bar_w.pack_forget()
@@ -1079,11 +1087,15 @@ class SynthexApp:
 
         if self._cur in self._pages:
             self._pages[self._cur].pack_forget()
+        _NAV_FG_INACTIVE = "#9090B8"
         for k, lbl in self._nav.items():
             try:
-                lbl.configure(fg=MUT)
+                lbl.configure(fg=_NAV_FG_INACTIVE)
                 parent = lbl.master
-                _deep_bg(parent, SIDE)
+                parent.configure(bg=SIDE)
+                for ch in parent.winfo_children():
+                    try: ch.configure(bg=SIDE)
+                    except Exception: pass
                 # restore dim icon
                 ph_dim = self._nav_photo_dim.get(k)
                 il = self._nav_icons.get(k)
