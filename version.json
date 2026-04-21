@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.0",
+  "latest_version": "1.3.1",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.0/Synthex.exe",
-  "changelog": "v1.3.0: Command palette Ctrl+K — cari & navigasi fitur dengan keyboard; search bar di header; tombol X kembali ke konfirmasi logout; redesign toast notifikasi slide-in",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.1/Synthex.exe",
+  "changelog": "v1.3.1: Export log ke TXT & CSV dari halaman Logs; filter level (ALL/INFO/WARNING/ERROR) sekarang berfungsi nyata",
   "maintenance": false,
   "maintenance_msg": ""
 }

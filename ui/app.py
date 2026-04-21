@@ -11085,12 +11085,26 @@ class SynthexApp:
         tb.pack(fill="x", padx=20, pady=(0, 6))
 
         level_var = tk.StringVar(value="ALL")
+        _all_lines: list = []  # buffer of (level_str, display_line) tuples
+
+        def _apply_filter(*_):
+            filt = level_var.get()
+            lw.configure(state="normal")
+            lw.delete("1.0", tk.END)
+            for lvl, line in _all_lines:
+                if filt == "ALL" or lvl == filt:
+                    tag = {"INFO": "info", "WARNING": "warn",
+                           "ERROR": "error", "DEBUG": "debug"}.get(lvl, "info")
+                    lw.insert(tk.END, line + "\n", tag)
+            lw.configure(state="disabled")
+            lw.see(tk.END)
+
         for lv in ("ALL", "INFO", "WARNING", "ERROR"):
             tk.Radiobutton(tb, text=lv, variable=level_var, value=lv,
                            bg=BG, fg=FG, selectcolor=CARD,
                            activebackground=BG, activeforeground=ACC,
                            font=("Segoe UI", 8),
-                           command=lambda: None).pack(side="left", padx=(0, 8))
+                           command=_apply_filter).pack(side="left", padx=(0, 8))
 
         tk.Button(tb, text="Clear", bg=CARD, fg=RED,
                   font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
@@ -11109,6 +11123,69 @@ class SynthexApp:
                           lw.get("1.0", tk.END))
                   ]).pack(side="right", padx=(0, 6))
 
+        def _export_txt():
+            import csv as _csv
+            from tkinter import filedialog
+            path = filedialog.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text file", "*.txt"), ("All files", "*.*")],
+                initialfile="synthex_log_{}.txt".format(
+                    datetime.now().strftime("%Y%m%d_%H%M%S")),
+                title="Export Log sebagai TXT")
+            if not path:
+                return
+            try:
+                text = lw.get("1.0", tk.END)
+                with open(path, "w", encoding="utf-8") as fp:
+                    fp.write(text)
+                self._show_toast("Log diekspor ke TXT", kind="success")
+            except Exception as ex:
+                self._show_toast("Gagal export: {}".format(ex), kind="error")
+
+        def _export_csv():
+            import csv as _csv, re as _re
+            from tkinter import filedialog
+            path = filedialog.asksaveasfilename(
+                defaultextension=".csv",
+                filetypes=[("CSV file", "*.csv"), ("All files", "*.*")],
+                initialfile="synthex_log_{}.csv".format(
+                    datetime.now().strftime("%Y%m%d_%H%M%S")),
+                title="Export Log sebagai CSV")
+            if not path:
+                return
+            try:
+                text = lw.get("1.0", tk.END)
+                # Parse format: HH:MM:SS  [module        ]  LEVEL    message
+                pat = _re.compile(
+                    r"^(\d{2}:\d{2}:\d{2})\s+\[([^\]]+)\]\s+(\w+)\s+(.*)$")
+                rows = []
+                for line in text.splitlines():
+                    m = pat.match(line.strip())
+                    if m:
+                        rows.append([m.group(1), m.group(2).strip(),
+                                     m.group(3), m.group(4)])
+                    elif line.strip() and rows:
+                        # continuation line — append to last message
+                        rows[-1][3] += " " + line.strip()
+                with open(path, "w", newline="", encoding="utf-8") as fp:
+                    w = _csv.writer(fp)
+                    w.writerow(["Time", "Module", "Level", "Message"])
+                    w.writerows(rows)
+                self._show_toast(
+                    "Log diekspor ke CSV ({} baris)".format(len(rows)),
+                    kind="success")
+            except Exception as ex:
+                self._show_toast("Gagal export: {}".format(ex), kind="error")
+
+        tk.Button(tb, text="Export CSV", bg=CARD, fg=GRN,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  padx=10, pady=3, cursor="hand2",
+                  command=_export_csv).pack(side="right", padx=(0, 4))
+        tk.Button(tb, text="Export TXT", bg=CARD, fg=ACC,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  padx=10, pady=3, cursor="hand2",
+                  command=_export_txt).pack(side="right", padx=(0, 4))
+
         # Log widget
         lf = tk.Frame(f, bg=CARD, padx=6, pady=6)
         lf.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -11126,9 +11203,22 @@ class SynthexApp:
 
         # Attach logger handler
         handler = _TkLogHandler(lw)
-        handler.setFormatter(logging.Formatter(
+        fmt = logging.Formatter(
             "%(asctime)s  [%(name)-12s]  %(levelname)-7s  %(message)s",
-            "%H:%M:%S"))
+            "%H:%M:%S")
+        handler.setFormatter(fmt)
+
+        # Patch emit: buffer all lines + respect level filter
+        _orig_emit = handler.emit
+        def _filtered_emit(record, _h=handler):
+            line = fmt.format(record)
+            lvl  = record.levelname  # "INFO", "WARNING", "ERROR", "DEBUG"
+            _all_lines.append((lvl, line))
+            filt = level_var.get()
+            if filt == "ALL" or filt == lvl:
+                _orig_emit(record)
+        handler.emit = _filtered_emit
+
         logging.getLogger().addHandler(handler)
 
         # Store ref so we can detach on page destroy
