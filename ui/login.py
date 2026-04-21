@@ -261,6 +261,7 @@ class LoginWindow:
         x  = (sw - W) // 2
         y  = (sh - H) // 2
         self._root.geometry("{W}x{H}+{x}+{y}".format(W=W, H=H, x=x, y=y))
+        self._root.attributes("-topmost", True)
         self._root.deiconify()
 
         self._build_ui()
@@ -597,13 +598,15 @@ class LoginWindow:
         try:
             self._root.overrideredirect(False)
             self._root.iconify()
-            def _restore_override():
+            def _restore_override(e=None):
                 try:
+                    self._root.unbind("<Map>")
                     self._root.overrideredirect(True)
+                    self._root.attributes("-topmost", True)
                     self._root.deiconify()
                 except Exception:
                     pass
-            self._root.bind("<Map>", lambda e: (_restore_override(), None))
+            self._root.bind("<Map>", _restore_override)
         except Exception:
             pass
 
@@ -857,6 +860,7 @@ class LoginWindow:
                 self.config.set("ui._clear_token_on_exit", True)
                 self.config.save()
             self._result = result
+            self._root.attributes("-topmost", False)
             # Fade out then destroy
             self._root.after(500, lambda: self._fade_out(self._root.destroy))
         else:
@@ -914,8 +918,12 @@ class LoginWindow:
         self._root.destroy()
 
     def _on_close(self):
-        self._animating       = False
-        self._spinner_running = False
+        self._animating        = False
+        self._spinner_running  = False
         self._progress_running = False
         self._result = {"success": False}
+        try:
+            self._root.attributes("-topmost", False)
+        except Exception:
+            pass
         self._fade_out(self._root.destroy)
