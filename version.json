@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.1.0",
+  "latest_version": "1.2.1",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.1.0/Synthex.exe",
-  "changelog": "Rate limit cek rekening, recorder window baru, shortcut Ctrl+Q, smart record lebih mudah",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.1/Synthex.exe",
+  "changelog": "Fix chat auto-refresh token, update domain API rekening, fix UIA macro recorder",
   "maintenance": false,
   "maintenance_msg": ""
 }
