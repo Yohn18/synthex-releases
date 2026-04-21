@@ -652,7 +652,18 @@ class SynthexApp:
     def _done(self):
         self._pc.create_rectangle(0, 0, 364, 4, fill=ACC, outline="", tags="bar")
         self._pv.set("All systems active.")
-        self._root.after(500, self._dashboard)
+        self._root.after(400, self._dashboard)
+
+    # ── Dashboard fade helper ──────────────────────────────────────────────────
+    def _fade_in_dashboard(self, step=0):
+        total = 20
+        alpha = min(0.97, step / total * 0.97)
+        try:
+            self._root.attributes("-alpha", alpha)
+        except Exception:
+            pass
+        if step < total:
+            self._root.after(16, self._fade_in_dashboard, step + 1)
 
     # -- Dashboard shell --
 
@@ -667,6 +678,15 @@ class SynthexApp:
         r.configure(bg=BG)
         r.protocol("WM_DELETE_WINDOW", self._quit)
         _apply_styles(r)
+        # Center on screen then fade in
+        sw = r.winfo_screenwidth()
+        sh = r.winfo_screenheight()
+        r.geometry("1180x720+{}+{}".format((sw - 1180) // 2, (sh - 720) // 2))
+        try:
+            r.attributes("-alpha", 0.0)
+        except Exception:
+            pass
+        r.after(50, self._fade_in_dashboard)
 
         # ── HEADER ────────────────────────────────────────────────────────────
         top = tk.Frame(r, bg=SIDE, height=54)
@@ -855,8 +875,6 @@ class SynthexApp:
         }
 
         self._show("home")
-        sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
-        r.geometry("1180x720+{}+{}".format((sw-1180)//2, (sh-720)//2))
         self._root.after(400, self._maybe_show_onboarding)
 
     def _set_chat_badge(self, count: int):
@@ -10949,10 +10967,27 @@ class SynthexApp:
             if getattr(self, "_scrcpy", None):
                 try: self._scrcpy.stop()
                 except Exception: pass
+
+            def _fade_and_exit(step=0):
+                total = 14
+                alpha = max(0.0, 1.0 - step / total)
+                try:
+                    self._root.attributes("-alpha", alpha)
+                except Exception:
+                    pass
+                if step < total:
+                    self._root.after(16, _fade_and_exit, step + 1)
+                else:
+                    try:
+                        self._root.destroy()
+                    except Exception:
+                        pass
+                    _os._exit(0)
+
             if self._root:
-                try: self._root.destroy()
-                except Exception: pass
-            _os._exit(0)
+                _fade_and_exit()
+            else:
+                _os._exit(0)
 
         tk.Button(btn_row, text="  Ya, Tutup  ", bg=RED,
                   fg="white", relief="flat", font=("Segoe UI", 10, "bold"),
