@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.2.8",
+  "latest_version": "1.2.9",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.8/Synthex.exe",
-  "changelog": "v1.2.8: Fix tombol X sekarang sembunyikan ke tray (bukan keluar); fix logout tidak hapus tray icon dan proses background",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.9/Synthex.exe",
+  "changelog": "v1.2.9: Tombol X munculkan popup pilihan (Sembunyikan ke Tray / Keluar & Logout); redesign toast notifikasi jadi slide-in animasi dengan progress bar dan ikon",
   "maintenance": false,
   "maintenance_msg": ""
 }

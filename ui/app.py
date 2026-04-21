@@ -344,6 +344,7 @@ class SynthexApp:
         self._pages  = {}
         self._nav    = {}
         self._cur    = ""
+        self._toasts : list = []   # active toast windows for stacking
 
         # Recording state
         self._rec        = False
@@ -685,7 +686,7 @@ class SynthexApp:
         r.minsize(920, 600)
         r.resizable(True, True)
         r.configure(bg=BG)
-        r.protocol("WM_DELETE_WINDOW", lambda: r.withdraw())
+        r.protocol("WM_DELETE_WINDOW", self._quit)
         _apply_styles(r)
         # Center on screen then fade in
         sw = r.winfo_screenwidth()
@@ -1029,40 +1030,7 @@ class SynthexApp:
         else:
             btn.configure(text="  \U0001f4ec  Inbox", fg=MUT)
 
-    def _show_toast(self, message: str, duration: int = 3000, action=None):
-        """Floating toast notification at bottom-right."""
-        try:
-            toast = tk.Toplevel(self._root)
-            toast.overrideredirect(True)
-            toast.attributes("-topmost", True)
-            toast.configure(bg="#1A1A2E")
-
-            rw = self._root.winfo_x() + self._root.winfo_width()
-            rh = self._root.winfo_y() + self._root.winfo_height()
-            tw, th = 320, 54
-            toast.geometry("{}x{}+{}+{}".format(tw, th, rw - tw - 20, rh - th - 60))
-
-            tk.Frame(toast, bg="#7C3AED", width=4).pack(side="left", fill="y")
-            inner = tk.Frame(toast, bg="#1A1A2E", padx=10, pady=8)
-            inner.pack(side="left", fill="both", expand=True)
-            lbl = tk.Label(inner, text=message, bg="#1A1A2E", fg="white",
-                           font=("Segoe UI", 9), anchor="w", wraplength=270)
-            lbl.pack(fill="x")
-
-            def _dismiss():
-                try:
-                    toast.destroy()
-                except Exception:
-                    pass
-
-            if action:
-                lbl.configure(cursor="hand2")
-                lbl.bind("<Button-1>", lambda e: (_dismiss(), action()))
-                toast.bind("<Button-1>", lambda e: (_dismiss(), action()))
-
-            toast.after(duration, _dismiss)
-        except Exception:
-            pass
+    # (old _show_toast removed — see new implementation below)
 
     _RC_FEATURE_MAP = {
         "rekening": "rekening_enabled",
@@ -9866,93 +9834,196 @@ class SynthexApp:
     #  Toast notification
     # ================================================================
 
-    def _show_toast(self, message, kind="info", details=None):
-        """
-        Show a toast notification in the bottom-right corner.
-
-        kind:
-          "info"    - accent colour (default)
-          "success" - green  (GRN)
-          "warning" - yellow (YEL)
-          "error"   - red    (RED)
-
-        details: optional technical string shown when user clicks 'Show Details'.
-        """
-        try:
-            from win10toast import ToastNotifier
-            toaster = ToastNotifier()
-            toaster.show_toast(
-                "Synthex",
-                message[:100],
-                duration=4,
-                threaded=True,
-                icon_path=None,
-            )
-        except Exception:
-            pass
+    def _show_toast(self, message, kind="info", details=None,
+                    duration: int = 0, action=None):
+        """Animated slide-in toast — bottom-right, stacking, progress bar countdown.
+        duration: override ms (0 = auto by kind). action: callable on click."""
+        import textwrap, math
 
         try:
             if not self._root or not self._root.winfo_exists():
                 return
-            colour_map = {
-                "success": GRN,
-                "warning": YEL,
-                "error":   RED,
-            }
-            bg = colour_map.get(kind, ACC)
-            fg = BG  # dark text on all backgrounds
 
+            # ── palette ──────────────────────────────────────────────────
+            _kind_map = {
+                "success": (GRN,  "#1A2E22"),
+                "warning": (YEL,  "#2A2010"),
+                "error":   (RED,  "#2A1010"),
+                "info":    (ACC,  CARD2),
+            }
+            stripe_col, card_col = _kind_map.get(kind, _kind_map["info"])
+
+            # ── PIL icon ──────────────────────────────────────────────────
+            def _make_icon(col, kind_):
+                s = 20
+                img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+                d = ImageDraw.Draw(img)
+                m = s // 2
+                if kind_ == "success":
+                    d.ellipse([1, 1, s-2, s-2], fill=col)
+                    d.line([(5, m), (8, m+4), (15, m-4)], fill="#0A1A10", width=2)
+                elif kind_ == "warning":
+                    d.polygon([(m, 2), (s-3, s-3), (3, s-3)], fill=col)
+                    d.text((m-2, m-3), "!", fill="#1A1000",
+                           font=None)
+                    d.rectangle([m-1, 8, m+1, 13], fill="#1A1000")
+                    d.rectangle([m-1, 15, m+1, 17], fill="#1A1000")
+                elif kind_ == "error":
+                    d.ellipse([1, 1, s-2, s-2], fill=col)
+                    d.line([(6, 6), (14, 14)], fill="#1A0000", width=2)
+                    d.line([(14, 6), (6, 14)], fill="#1A0000", width=2)
+                else:
+                    d.ellipse([1, 1, s-2, s-2], fill=col)
+                    d.rectangle([m-1, 8, m+1, 9], fill="#0A0A1A")
+                    d.rectangle([m-1, 11, m+1, 16], fill="#0A0A1A")
+                return img
+            icon_img = _make_icon(stripe_col, kind)
+
+            # ── window ───────────────────────────────────────────────────
+            TOAST_W = 320
             w = tk.Toplevel(self._root)
             w.overrideredirect(True)
             w.attributes("-topmost", True)
-            w.configure(bg=bg)
+            w.attributes("-alpha", 0.0)
+            w.configure(bg=card_col)
 
-            # Wrap long messages at 60 chars so the toast stays readable
+            # outer frame with border effect
+            outer = tk.Frame(w, bg=stripe_col, bd=0)
+            outer.pack(fill="both", expand=True)
+
+            inner = tk.Frame(outer, bg=card_col, bd=0)
+            inner.pack(fill="both", expand=True, padx=(3, 0))  # 3px left stripe
+
+            # top row: icon + message + close btn
+            top = tk.Frame(inner, bg=card_col)
+            top.pack(fill="x", padx=(10, 8), pady=(10, 4))
+
+            photo = ImageTk.PhotoImage(icon_img)
+            w._icon_photo = photo  # prevent GC
+            tk.Label(top, image=photo, bg=card_col).pack(side="left", padx=(0, 8))
+
             import textwrap
-            wrapped = "\n".join(textwrap.wrap(message[:200], width=60))
-            tk.Label(w, text=wrapped, bg=bg, fg=fg,
-                     font=("Segoe UI", 10, "bold"),
-                     padx=16, pady=10, justify="left").pack(anchor="w")
+            wrapped = "\n".join(textwrap.wrap(message[:220], width=42))
+            tk.Label(top, text=wrapped, bg=card_col, fg=FG,
+                     font=("Segoe UI", 9), justify="left",
+                     wraplength=230).pack(side="left", fill="x", expand=True, anchor="w")
 
+            def _dismiss():
+                _toast_close(w)
+
+            close_btn = tk.Label(top, text="✕", bg=card_col, fg=MUT,
+                                 font=("Segoe UI", 9), cursor="hand2")
+            close_btn.pack(side="right", anchor="n", padx=(4, 0))
+            close_btn.bind("<Button-1>", lambda e: _dismiss())
+            close_btn.bind("<Enter>", lambda e: close_btn.configure(fg=FG))
+            close_btn.bind("<Leave>", lambda e: close_btn.configure(fg=MUT))
+
+            # details row
             if details:
-                _details = details  # capture for lambda
-
-                def _show_details():
+                _det = details
+                def _show_det():
                     dw = tk.Toplevel(self._root)
                     dw.title("Error Details")
                     dw.configure(bg=BG)
                     dw.geometry("600x320")
-                    st = scrolledtext.ScrolledText(
-                        dw, bg=CARD, fg=MUT,
-                        font=("Consolas", 9), relief="flat")
+                    st = scrolledtext.ScrolledText(dw, bg=CARD, fg=MUT,
+                                                   font=("Consolas", 9), relief="flat")
                     st.pack(fill="both", expand=True, padx=12, pady=12)
-                    st.insert(tk.END, _details)
+                    st.insert(tk.END, _det)
                     st.configure(state="disabled")
-                    ttk.Button(dw, text="Close",
-                               command=dw.destroy).pack(pady=(0, 10))
+                    ttk.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
+                det_row = tk.Frame(inner, bg=card_col)
+                det_row.pack(fill="x", padx=12, pady=(0, 6))
+                tk.Label(det_row, text="Lihat Detail →", bg=card_col,
+                         fg=stripe_col, font=("Segoe UI", 8), cursor="hand2").pack(
+                    side="left").bind("<Button-1>", lambda e: _show_det())
 
-                btn_row = tk.Frame(w, bg=bg)
-                btn_row.pack(fill="x", padx=12, pady=(0, 8))
-                tk.Button(btn_row, text="Show Details",
-                          bg=bg, fg=fg,
-                          font=("Segoe UI", 8), relief="flat", bd=0,
-                          cursor="hand2",
-                          command=_show_details).pack(side="left")
-                tk.Button(btn_row, text="Dismiss",
-                          bg=bg, fg=fg,
-                          font=("Segoe UI", 8), relief="flat", bd=0,
-                          cursor="hand2",
-                          command=w.destroy).pack(side="right")
+            # action: make message clickable
+            if action:
+                for w_ in (top,):
+                    w_.configure(cursor="hand2")
+                    w_.bind("<Button-1>", lambda e: (_toast_close(w), action()))
 
+            # progress bar canvas
+            dur_ms  = duration if duration > 0 else (6000 if kind == "error" else 4000)
+            bar_h   = 3
+            pb = tk.Canvas(inner, bg=card_col, height=bar_h,
+                           highlightthickness=0, bd=0)
+            pb.pack(fill="x")
+            pb_bar = pb.create_rectangle(0, 0, TOAST_W, bar_h, fill=stripe_col, width=0)
+
+            # ── position ─────────────────────────────────────────────────
             w.update_idletasks()
             sw = self._root.winfo_screenwidth()
             sh = self._root.winfo_screenheight()
-            ww = w.winfo_reqwidth()
             wh = w.winfo_reqheight()
-            w.geometry("{}x{}+{}+{}".format(
-                ww, wh, sw - ww - 20, sh - wh - 60))
-            auto_close = 6000 if kind == "error" else 4000
-            w.after(auto_close, lambda: w.destroy() if w.winfo_exists() else None)
+
+            # clean up dead toasts from stack
+            self._toasts = [t for t in self._toasts if t.winfo_exists()]
+
+            # stack above previous toasts
+            stack_offset = sum(
+                t.winfo_height() + 8
+                for t in self._toasts
+                if t.winfo_exists()
+            )
+            base_y = sh - wh - 52 - stack_offset
+            final_x = sw - TOAST_W - 16
+            start_x = sw + 10  # starts off-screen right
+
+            w.geometry("{}x{}+{}+{}".format(TOAST_W, wh, start_x, base_y))
+            self._toasts.append(w)
+
+            # ── helpers ───────────────────────────────────────────────────
+            _closed = [False]
+
+            def _toast_close(win):
+                if _closed[0]: return
+                _closed[0] = True
+                def _fade(step=0):
+                    if not win.winfo_exists(): return
+                    a = max(0.0, 1.0 - step / 8)
+                    win.attributes("-alpha", a)
+                    if step < 8:
+                        win.after(18, _fade, step + 1)
+                    else:
+                        try: win.destroy()
+                        except Exception: pass
+                        if win in self._toasts:
+                            self._toasts.remove(win)
+                _fade()
+
+            # slide-in animation
+            def _slide_in(step=0):
+                if not w.winfo_exists(): return
+                total = 10
+                ratio = 1 - (1 - step / total) ** 2  # ease-out
+                x = int(start_x + (final_x - start_x) * ratio)
+                w.geometry("{}x{}+{}+{}".format(TOAST_W, wh, x, base_y))
+                w.attributes("-alpha", min(1.0, step / total * 1.2))
+                if step < total:
+                    w.after(16, _slide_in, step + 1)
+                else:
+                    w.attributes("-alpha", 1.0)
+                    w.geometry("{}x{}+{}+{}".format(TOAST_W, wh, final_x, base_y))
+
+            # progress bar countdown
+            _tick_ms  = 40
+            _ticks    = dur_ms // _tick_ms
+
+            def _progress(tick=0):
+                if _closed[0] or not w.winfo_exists(): return
+                ratio = 1 - tick / _ticks
+                bar_w = max(0, int(TOAST_W * ratio))
+                pb.coords(pb_bar, 0, 0, bar_w, bar_h)
+                if tick < _ticks:
+                    w.after(_tick_ms, _progress, tick + 1)
+                else:
+                    _toast_close(w)
+
+            w.after(20, _slide_in)
+            w.after(60, _progress)
+
         except Exception:
             pass
 
