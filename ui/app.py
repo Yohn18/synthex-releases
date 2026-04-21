@@ -2,7 +2,7 @@
 """ui/app.py - Synthex dashboard by Yohn18."""
 import json, logging, os, re, sys, threading, time, tkinter as tk
 from datetime import datetime
-from tkinter import ttk, scrolledtext, simpledialog, messagebox
+from tkinter import ttk, scrolledtext
 import pystray
 from PIL import Image, ImageDraw
 from core.config import Config
@@ -11,19 +11,23 @@ from core.logger import get_logger
 _ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_FILE = os.path.join(_ROOT, "data", "user_data.json")
 
-BG    = "#111118"
-CARD  = "#1A1A24"
-CARD2 = "#1A1A28"   # darker card / input background
-SIDE  = "#0D0D12"
-ACC   = "#6C4AFF"   # purple accent
-ACC2  = "#8880FF"   # lighter accent
-FG    = "#E0DFFF"
-MUT   = "#555575"
-GRN   = "#4CAF88"
-RED   = "#F06070"
-YEL   = "#F0C060"
-PRP   = "#9D5CF6"
-BLUE  = "#4A9EFF"
+_DARK_PALETTE  = ("#111118","#1A1A24","#1A1A28","#0D0D12",
+                   "#6C4AFF","#8880FF","#E0DFFF","#555575",
+                   "#4CAF88","#F06070","#F0C060","#9D5CF6","#4A9EFF")
+_LIGHT_PALETTE = ("#F4F4FA","#FFFFFF","#EEEEF6","#E8E8F2",
+                  "#6C4AFF","#8880FF","#1A1A30","#8888AA",
+                  "#2A8C5C","#D04050","#B07800","#7C3AED","#2A7EDD")
+
+def _get_theme_name() -> str:
+    try:
+        _cfg = os.path.join(_ROOT, "config.json")
+        with open(_cfg, encoding="utf-8") as _f:
+            return json.load(_f).get("ui", {}).get("theme", "dark")
+    except Exception:
+        return "dark"
+
+_pal = _LIGHT_PALETTE if _get_theme_name() == "light" else _DARK_PALETTE
+(BG, CARD, CARD2, SIDE, ACC, ACC2, FG, MUT, GRN, RED, YEL, PRP, BLUE) = _pal
 
 # Step type icons (ASCII, no emoji)
 _STEP_ICONS = {
@@ -44,6 +48,7 @@ _STEP_ICONS = {
     "if_contains":                  "[?]",
     "if_greater":                   "[>]",
     "notify":                       "[!]",
+    "ai_prompt":                    "[AI]",
     "sheet_get_pending_rows":       "[P]",
     "web_get_order_list":           "[O]",
     "validate_and_confirm_orders":  "[V]",
@@ -249,6 +254,8 @@ def _step_label(step):
         step.get("num1",""), step.get("num2",""))
     if t == "notify":           return "Notify: {}".format(
         step.get("message",""))
+    if t == "ai_prompt":        return "🤖 AI: {}… → {{{}}}".format(
+        step.get("prompt","")[:40], step.get("var","ai_result"))
     return t or "(empty step)"
 
 
@@ -282,20 +289,32 @@ def _extract_sheet_id(url):
 
 class SynthexApp:
     NAV = [
-        ("Home",          "home"),
-        ("Web",           "web"),
-        ("Spy",           "spy"),
-        ("Record",        "record"),
-        ("Schedule",      "schedule"),
-        ("Templates",     "templates"),
-        ("Sheet",         "sheet"),
-        ("Rekening",      "rekening"),
-        ("Dashboard Update", "monitor"),
-        ("Remote",        "remote"),
-        ("History",       "history"),
-        ("Logs",          "logs"),
-        ("Settings",      "settings"),
+        ("Home",             "home"),
+        ("AUTOMASI",         ""),
+        ("Web",              "web"),
+        ("Spy",              "spy"),
+        ("Record",           "record"),
+        ("Schedule",         "schedule"),
+        ("Templates",        "templates"),
+        ("DATA",             ""),
+        ("Sheet",            "sheet"),
+        ("Rekening",         "rekening"),
+        ("Monitor",          "monitor"),
+        ("KOMUNITAS",        ""),
+        ("Chat",             "chat"),
+        ("Inbox",            "inbox"),
+        ("Blog",             "blog"),
+        ("DEVICE",           ""),
+        ("Remote",           "remote"),
+        ("SISTEM",           ""),
+        ("History",          "history"),
+        ("Logs",             "logs"),
+        ("Settings",         "settings"),
+        ("MASTER",           ""),
+        ("Master Panel",     "master"),
     ]
+
+    MASTER_EMAIL = "yohanesnzzz777@gmail.com"
 
     def __init__(self, config, engine=None):
         self.config  = config
@@ -352,6 +371,12 @@ class SynthexApp:
         self._adb             = None   # AdbManager instance
         self._scrcpy          = None   # ScrcpyManager instance
         self._rem_poll_id     = None   # after() id for scrcpy status poll
+        # Chat
+        self._chat_poll_id    = None
+        self._chat_last_key   = None
+        self._chat_pres_id    = None
+        self._chat_unread     = 0      # unread message counter for badge
+        self._dm_unread       = 0      # inbox unread DM counter
 
         # Macro builder state
         self._mb_steps      = []      # list of step dicts
@@ -373,9 +398,190 @@ class SynthexApp:
         self._sheet_preview_frame = None
         self._sheet_quick_sheet   = None
 
-    def set_auth(self, email, token):
-        self._email = email
-        self._token = token
+    def set_auth(self, email, token, session_id=None):
+        self._email      = email
+        self._token      = token
+        self._session_id = session_id
+        threading.Thread(target=self._session_watcher, daemon=True).start()
+        def _mark_online():
+            try:
+                from modules.chat import update_presence
+                update_presence(email, token, online=True)
+            except Exception:
+                pass
+        threading.Thread(target=_mark_online, daemon=True).start()
+
+        # Fetch remote config and cache it
+        self._remote_config = {}
+        def _fetch_rc():
+            try:
+                from modules.master_config import get_remote_config
+                self._remote_config = get_remote_config(token)
+                # Update nav button appearance for disabled features
+                if self._root:
+                    self._root.after(0, self._apply_remote_config_to_nav)
+            except Exception:
+                pass
+        threading.Thread(target=_fetch_rc, daemon=True).start()
+
+        # Master: auto-deploy Firebase rules + init rekening URL on login
+        if email == self.MASTER_EMAIL:
+            def _master_init():
+                import time as _t2
+                _t2.sleep(3)
+                try:
+                    from auth.rules_deployer import deploy_rules
+                    deploy_rules()
+                except Exception:
+                    pass
+                try:
+                    from modules.master_config import get_rekening_url, set_rekening_url
+                    from modules.rekening import _BASE_DEFAULT
+                    existing = get_rekening_url(token)
+                    if existing == _BASE_DEFAULT:
+                        set_rekening_url(_BASE_DEFAULT, token)
+                except Exception:
+                    pass
+            threading.Thread(target=_master_init, daemon=True).start()
+
+        # All users: force update, changelog, DM check
+        def _post_login_checks():
+            import time as _t3
+            _t3.sleep(4)
+            try:
+                from modules.master_config import (get_min_version, get_changelog)
+                local_ver = self.config.get("app.version", "0")
+
+                # 1. Force update check
+                min_ver = get_min_version(token)
+                def _ver_tuple(v):
+                    try: return tuple(int(x) for x in v.lstrip("v").split("."))
+                    except: return (0,)
+                if _ver_tuple(min_ver) > _ver_tuple(local_ver):
+                    def _show_force():
+                        self._show_force_update_dialog(min_ver)
+                    if self._root:
+                        self._root.after(0, _show_force)
+                    return
+
+                # 2. Changelog popup (show once per version)
+                cl = get_changelog(token)
+                if cl:
+                    seen_key = "ui._last_changelog_seen"
+                    last_seen = self.config.get(seen_key, "")
+                    if cl.get("version","") != last_seen and cl.get("version","") != local_ver:
+                        def _show_cl(c=cl):
+                            self._show_changelog_popup(c)
+                            self.config.set(seen_key, c.get("version",""))
+                            self.config.save()
+                        if self._root:
+                            self._root.after(500, _show_cl)
+
+                # 3. DM check — set badge, toast if unread
+                from modules.master_config import count_unread_dm
+                n = count_unread_dm(email, token)
+                if self._root:
+                    self._root.after(0, lambda c=n: self._set_inbox_badge(c))
+                if n > 0:
+                    def _toast_dm(cnt=n):
+                        self._show_toast(
+                            "📬 {} pesan baru dari Admin".format(cnt),
+                            duration=5000,
+                            action=lambda: self._show("inbox"))
+                    if self._root:
+                        self._root.after(2000, _toast_dm)
+            except Exception:
+                pass
+        threading.Thread(target=_post_login_checks, daemon=True).start()
+
+        # Poll DM unread count every 90s
+        def _dm_poll():
+            if not self._root:
+                return
+            try:
+                from auth.firebase_auth import get_valid_token
+                from modules.master_config import count_unread_dm
+                tok = get_valid_token()
+                em  = self._email
+                if tok and em:
+                    n = count_unread_dm(em, tok)
+                    if self._root:
+                        self._root.after(0, lambda c=n: self._set_inbox_badge(c))
+            except Exception:
+                pass
+            if self._root:
+                self._root.after(90000, _dm_poll)
+        if self._root:
+            self._root.after(10000, _dm_poll)
+
+    def _session_watcher(self):
+        """Background thread: checks every 12s if another device claimed the session."""
+        import time as _t
+        from auth.firebase_auth import get_remote_session_id, get_valid_token
+
+        # Wait for the main window to be ready
+        for _ in range(60):
+            if getattr(self, "_root", None):
+                break
+            _t.sleep(1)
+
+        _t.sleep(5)  # extra grace after window opens
+
+        while True:
+            _t.sleep(12)
+            try:
+                tok = get_valid_token()
+                if not tok or not self._email or not self._session_id:
+                    continue
+                remote_sid = get_remote_session_id(self._email, tok)
+                if remote_sid is None:
+                    continue  # RTDB unreachable — skip
+                if remote_sid != self._session_id:
+                    # Another device logged in — force kick
+                    if getattr(self, "_root", None):
+                        self._root.after(0, self._on_session_kicked)
+                    return
+            except Exception:
+                continue
+
+    def _on_session_kicked(self):
+        """Called on main thread when another device has taken over the session."""
+        # Clear local token
+        from auth.firebase_auth import logout as _clear
+        try:
+            _clear()
+        except Exception:
+            pass
+
+        # Show full-screen dark overlay — not dismissable
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+        dlg.configure(bg="#0A0A0F")
+
+        W, H = 440, 230
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+
+        tk.Frame(dlg, bg=YEL, height=4).place(x=0, y=0, width=W)
+        tk.Label(dlg, text="Sesi Diakhiri", bg="#0A0A0F", fg=YEL,
+                 font=("Segoe UI", 15, "bold")).pack(pady=(28, 0))
+        tk.Label(dlg,
+                 text="Akun ini login dari perangkat lain.\nKamu telah otomatis logout.",
+                 bg="#0A0A0F", fg=FG, font=("Segoe UI", 10),
+                 justify="center").pack(pady=(10, 0))
+        tk.Label(dlg, text="Jika bukan kamu, segera ganti password.",
+                 bg="#0A0A0F", fg=MUT, font=("Segoe UI", 8)).pack(pady=(6, 0))
+        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=28, pady=(16, 0))
+        tk.Button(dlg, text="  OK, Tutup  ", bg=YEL, fg="#0A0A0F",
+                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=14, pady=7,
+                  command=lambda: self._root.destroy()).pack(pady=14)
+
+        dlg.grab_set()
+        dlg.focus_force()
 
     def run(self):
         self._start_tray()
@@ -386,12 +592,19 @@ class SynthexApp:
 
     def _splash(self):
         r = self._root = tk.Tk()
-        if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, 'assets', 'synthex.ico')
-        else:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'synthex.ico')
-        if os.path.exists(icon_path):
-            r.iconbitmap(icon_path)
+        def _resolve_icon():
+            base = sys._MEIPASS if hasattr(sys, '_MEIPASS') else \
+                   os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for candidate in [
+                os.path.join(base, 'assets', 'synthex.ico'),
+                os.path.join(base, 'synthex.ico'),
+            ]:
+                if os.path.exists(candidate):
+                    return candidate
+            return None
+        _icon_path = _resolve_icon()
+        if _icon_path:
+            r.iconbitmap(_icon_path)
         r.title("SYNTHEX")
         r.geometry("460x280")
         r.resizable(False, False)
@@ -477,6 +690,45 @@ class SynthexApp:
             tk.Label(top, text=self._email, bg=SIDE, fg=GRN,
                      font=("Segoe UI", 9)).pack(side="right", padx=10)
 
+        # ── ANNOUNCEMENT BAR (hidden by default, shown when active) ──────────
+        self._ann_bar = tk.Frame(r, bg="#B45309", padx=12, pady=5)
+        self._ann_lbl = tk.Label(self._ann_bar, text="", bg="#B45309",
+                                 fg="white", font=("Segoe UI", 9, "bold"),
+                                 wraplength=900, justify="left")
+        self._ann_lbl.pack(side="left", fill="x", expand=True)
+        tk.Button(self._ann_bar, text="✕", bg="#B45309", fg="white",
+                  relief="flat", bd=0, font=("Segoe UI", 9), cursor="hand2",
+                  command=lambda: self._ann_bar.pack_forget()).pack(side="right")
+
+        def _check_announcement():
+            import threading as _t2
+            def _bg():
+                try:
+                    from modules.master_config import get_announcement
+                    from auth.firebase_auth import get_valid_token
+                    tok = get_valid_token()
+                    if not tok:
+                        return
+                    ann = get_announcement(tok)
+                    if ann and ann.get("enabled") and ann.get("text"):
+                        clr = ann.get("color", "#B45309")
+                        txt = ann.get("text", "")
+                        def _show():
+                            self._ann_bar.configure(bg=clr)
+                            self._ann_lbl.configure(text=txt, bg=clr)
+                            self._ann_bar.pack(fill="x", after=top)
+                    else:
+                        _show = self._ann_bar.pack_forget
+                    if self._root:
+                        self._root.after(0, _show)
+                except Exception:
+                    pass
+                if self._root:
+                    self._root.after(60000, _check_announcement)
+            _t2.Thread(target=_bg, daemon=True).start()
+
+        self._root.after(2000, _check_announcement)
+
         # ── BODY ──────────────────────────────────────────────────────────────
         body = tk.Frame(r, bg=BG)
         body.pack(fill="both", expand=True)
@@ -486,26 +738,66 @@ class SynthexApp:
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
 
-        # Sidebar top divider
+        # Top divider + label (fixed, outside scroll area)
         tk.Frame(side, bg="#1A1A28", height=1).pack(fill="x")
-
         tk.Label(side, text="NAVIGATION", bg=SIDE, fg=MUT,
                  font=("Segoe UI", 7, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
+
+        # Bottom status bar (fixed at bottom, placed before canvas so it anchors)
+        self._sv = tk.StringVar(value="")
+        tk.Label(side, textvariable=self._sv, bg=SIDE, fg=MUT,
+                 font=("Segoe UI", 7), wraplength=180,
+                 justify="left").pack(side="bottom", anchor="w", padx=12, pady=(4, 4))
+
+        # Scrollable nav area
+        _side_sb = ttk.Scrollbar(side, orient="vertical")
+        _side_sb.pack(side="right", fill="y")
+        _side_cv = tk.Canvas(side, bg=SIDE, highlightthickness=0,
+                             yscrollcommand=_side_sb.set, width=196)
+        _side_cv.pack(side="left", fill="both", expand=True)
+        _side_sb.config(command=_side_cv.yview)
+        _side_inner = tk.Frame(_side_cv, bg=SIDE)
+        _side_win = _side_cv.create_window((0, 0), window=_side_inner, anchor="nw")
+        _side_inner.bind("<Configure>", lambda e: _side_cv.configure(
+            scrollregion=_side_cv.bbox("all")))
+        _side_cv.bind("<Configure>", lambda e: _side_cv.itemconfig(_side_win, width=e.width))
+        _side_cv.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+            int(-1*(e.delta/120)), "units"))
 
         NAV_ICONS = {
             "home":      "\U0001f3e0", "web":       "\U0001f310", "spy":      "\U0001f441",
             "record":    "\u23fa",     "schedule":  "\U0001f4c5", "sheet":    "\U0001f4ca",
             "rekening":  "\U0001f3e6", "history":   "\U0001f4cb", "settings": "\u2699\ufe0f",
             "templates": "\U0001f4da", "logs":      "\U0001f5d2", "monitor":  "\U0001f4b9",
-            "remote":    "\U0001f4f1",
+            "remote":    "\U0001f4f1", "chat":      "\U0001f4ac", "blog":     "\U0001f4f0",
+            "inbox":     "\U0001f4ec", "master":    "\U0001f451",
         }
+        _is_master = (self._email == self.MASTER_EMAIL)
         self._nav      = {}
         self._nav_bars = {}
 
         for label, key in self.NAV:
+            # Hide master-only items from non-master users
+            if key == "master" and not _is_master:
+                continue
+            if key == "" and label == "MASTER" and not _is_master:
+                continue
+
+            if key == "":
+                # Category separator
+                sep_f = tk.Frame(_side_inner, bg=SIDE)
+                sep_f.pack(fill="x", padx=14, pady=(10, 2))
+                tk.Frame(sep_f, bg="#2A2A3C", height=1).pack(fill="x", pady=(0, 4))
+                _sep_clr = "#6C4AFF" if label == "MASTER" else "#4A4A6A"
+                tk.Label(sep_f, text=label, bg=SIDE, fg=_sep_clr,
+                         font=("Segoe UI", 7, "bold"), anchor="w").pack(anchor="w")
+                continue
+
             icon = NAV_ICONS.get(key, "\u2022")
-            row = tk.Frame(side, bg=SIDE)
+            row = tk.Frame(_side_inner, bg=SIDE)
             row.pack(fill="x")
+            row.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+                int(-1*(e.delta/120)), "units"))
 
             bar = tk.Frame(row, bg=ACC, width=3)
             bar.pack(side="left", fill="y")
@@ -517,17 +809,13 @@ class SynthexApp:
                 text="  {}  {}".format(icon, label),
                 anchor="w", bg=SIDE, fg=MUT,
                 activebackground=CARD, activeforeground=FG,
-                font=("Segoe UI", 10), relief="flat", bd=0,
-                padx=14, pady=9, cursor="hand2",
+                font=("Segoe UI", 9), relief="flat", bd=0,
+                padx=14, pady=7, cursor="hand2",
                 command=lambda k=key: self._show(k))
             b.pack(fill="x", side="left", expand=True)
+            b.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
+                int(-1*(e.delta/120)), "units"))
             self._nav[key] = b
-
-        # Bottom status bar
-        self._sv = tk.StringVar(value="")
-        tk.Label(side, textvariable=self._sv, bg=SIDE, fg=MUT,
-                 font=("Segoe UI", 7), wraplength=180,
-                 justify="left").pack(side="bottom", anchor="w", padx=12, pady=(4, 4))
 
         # ── CONTENT ───────────────────────────────────────────────────────────
         self._content = tk.Frame(body, bg=BG)
@@ -549,9 +837,13 @@ class SynthexApp:
             "rekening":  self._pg_rekening,
             "monitor":   self._pg_monitor,
             "remote":    self._pg_remote,
+            "chat":      self._pg_chat,
+            "blog":      self._pg_blog,
+            "inbox":     self._pg_inbox,
             "history":   self._pg_history,
             "logs":      self._pg_logs,
             "settings":  self._pg_settings,
+            "master":    self._pg_master,
         }
 
         self._show("home")
@@ -559,7 +851,88 @@ class SynthexApp:
         r.geometry("1180x720+{}+{}".format((sw-1180)//2, (sh-720)//2))
         self._root.after(400, self._maybe_show_onboarding)
 
+    def _set_chat_badge(self, count: int):
+        """Update unread badge on Chat nav button."""
+        self._chat_unread = max(0, count)
+        btn = self._nav.get("chat")
+        if not btn:
+            return
+        if self._chat_unread > 0:
+            btn.configure(
+                text="  \U0001f4ac  Chat  \u2022{}".format(self._chat_unread),
+                fg="#7C3AED")
+        else:
+            btn.configure(text="  \U0001f4ac  Chat", fg=MUT)
+
+    def _set_inbox_badge(self, count: int):
+        """Update unread badge on Inbox nav button."""
+        self._dm_unread = max(0, count)
+        btn = self._nav.get("inbox")
+        if not btn:
+            return
+        if self._dm_unread > 0:
+            btn.configure(
+                text="  \U0001f4ec  Inbox  \u2022{}".format(self._dm_unread),
+                fg="#E11D48")
+        else:
+            btn.configure(text="  \U0001f4ec  Inbox", fg=MUT)
+
+    def _show_toast(self, message: str, duration: int = 3000, action=None):
+        """Floating toast notification at bottom-right."""
+        try:
+            toast = tk.Toplevel(self._root)
+            toast.overrideredirect(True)
+            toast.attributes("-topmost", True)
+            toast.configure(bg="#1A1A2E")
+
+            rw = self._root.winfo_x() + self._root.winfo_width()
+            rh = self._root.winfo_y() + self._root.winfo_height()
+            tw, th = 320, 54
+            toast.geometry("{}x{}+{}+{}".format(tw, th, rw - tw - 20, rh - th - 60))
+
+            tk.Frame(toast, bg="#7C3AED", width=4).pack(side="left", fill="y")
+            inner = tk.Frame(toast, bg="#1A1A2E", padx=10, pady=8)
+            inner.pack(side="left", fill="both", expand=True)
+            lbl = tk.Label(inner, text=message, bg="#1A1A2E", fg="white",
+                           font=("Segoe UI", 9), anchor="w", wraplength=270)
+            lbl.pack(fill="x")
+
+            def _dismiss():
+                try:
+                    toast.destroy()
+                except Exception:
+                    pass
+
+            if action:
+                lbl.configure(cursor="hand2")
+                lbl.bind("<Button-1>", lambda e: (_dismiss(), action()))
+                toast.bind("<Button-1>", lambda e: (_dismiss(), action()))
+
+            toast.after(duration, _dismiss)
+        except Exception:
+            pass
+
+    _RC_FEATURE_MAP = {
+        "rekening": "rekening_enabled",
+        "chat":     "chat_enabled",
+        "blog":     "blog_enabled",
+        "remote":   "remote_enabled",
+        "monitor":  "monitor_enabled",
+        "spy":      "spy_enabled",
+    }
+
     def _show(self, key):
+        # Remote config: block disabled features (non-master)
+        if (self._email != self.MASTER_EMAIL and
+                key in self._RC_FEATURE_MAP and
+                hasattr(self, "_remote_config")):
+            rc_key = self._RC_FEATURE_MAP[key]
+            if not self._remote_config.get(rc_key, True):
+                self._show_alert("Fitur Nonaktif",
+                    "Fitur ini sedang dinonaktifkan oleh admin.\n"
+                    "Coba lagi nanti.", kind="warning")
+                return
+
         if self._cur in self._pages:
             self._pages[self._cur].pack_forget()
         for k, b in self._nav.items():
@@ -574,6 +947,23 @@ class SynthexApp:
             self._pages[key] = self._page_builders[key]()
         self._pages[key].pack(fill="both", expand=True)
         self._cur = key
+        if key == "chat":
+            self._set_chat_badge(0)
+
+    def _apply_remote_config_to_nav(self):
+        """Dim nav buttons for features disabled by master remote config."""
+        if self._email == self.MASTER_EMAIL:
+            return
+        rc = getattr(self, "_remote_config", {})
+        for page_key, rc_key in self._RC_FEATURE_MAP.items():
+            btn = self._nav.get(page_key)
+            if not btn:
+                continue
+            enabled = rc.get(rc_key, True)
+            btn.configure(fg=MUT if not enabled else (
+                FG if self._cur == page_key else MUT))
+            if not enabled:
+                btn.configure(fg="#333355")
 
     def _navigate(self, key):
         """Navigate to a page, rebuilding it if already cached."""
@@ -644,182 +1034,221 @@ class SynthexApp:
     def _pg_home(self):
         f = tk.Frame(self._content, bg=BG)
 
-        name    = self._email.split("@")[0] if self._email else "User"
-        greet   = "{}, {}!".format(_greeting(), name)
-        today   = datetime.now().strftime("%A, %d %B %Y")
+        # ── Scrollable body ──────────────────────────────────────────────────
+        sb = ttk.Scrollbar(f, orient="vertical")
+        sb.pack(side="right", fill="y")
+        cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        sb.config(command=cv.yview)
+        body = tk.Frame(cv, bg=BG)
+        _wid = cv.create_window((0, 0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        cv.bind("<Configure>", lambda e: cv.itemconfig(_wid, width=e.width))
+        cv.bind_all("<MouseWheel>", lambda e: cv.yview_scroll(
+            int(-1 * (e.delta / 120)), "units"))
 
-        # Greeting
-        _lbl(f, greet, font=("Segoe UI", 18, "bold"),
-             fg=FG).pack(anchor="w", padx=24, pady=(22, 0))
-        _lbl(f, today, fg=MUT, font=("Segoe UI", 10)).pack(
-            anchor="w", padx=24, pady=(2, 16))
+        name  = self._email.split("@")[0].capitalize() if self._email else "User"
+        today = datetime.now().strftime("%A, %d %B %Y")
 
-        # Quick Status row
-        status_row = tk.Frame(f, bg=BG)
-        status_row.pack(fill="x", padx=20, pady=(0, 4))
-        browser_status = "Connected" if (
-            self.engine and self.engine.browser and
-            getattr(self.engine.browser, "_ready", False)
-        ) else "Standby"
-        sheet_count = len(self._ud.sheets)
+        # ── Hero banner ──────────────────────────────────────────────────────
+        hero = tk.Frame(body, bg="#12012E", padx=28, pady=22)
+        hero.pack(fill="x", padx=20, pady=(16, 0))
+        tk.Frame(hero, bg="#7C3AED", width=4).pack(side="left", fill="y", padx=(0, 16))
+        hero_text = tk.Frame(hero, bg="#12012E")
+        hero_text.pack(side="left", fill="both", expand=True)
+        tk.Label(hero_text,
+                 text="{}, {}!".format(_greeting(), name),
+                 bg="#12012E", fg="white",
+                 font=("Segoe UI", 20, "bold")).pack(anchor="w")
+        tk.Label(hero_text, text=today, bg="#12012E", fg="#8080A0",
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 0))
+        ver = self.config.get("app.version", "")
+        tk.Label(hero, text="v{}".format(ver), bg="#12012E", fg="#4A4A6A",
+                 font=("Segoe UI", 9)).pack(side="right", anchor="ne")
+
+        # ── Stat chips ───────────────────────────────────────────────────────
+        browser_ok = bool(self.engine and self.engine.browser and
+                          getattr(self.engine.browser, "_ready", False))
+        sheet_count  = len(self._ud.sheets)
         active_count = sum(1 for t in self._ud.tasks
                            if t.get("enabled", True) and
-                           t.get("schedule_type","manual") != "manual")
+                           t.get("schedule_type", "manual") != "manual")
+        chips_row = tk.Frame(body, bg=BG)
+        chips_row.pack(fill="x", padx=20, pady=(10, 0))
         for lbl, val, clr in [
-            ("Chrome",  browser_status,
-             GRN if browser_status == "Connected" else YEL),
-            ("Sheets",  "{} connected".format(sheet_count), GRN),
-            ("Tasks",   "{} active".format(active_count),   ACC),
-            ("Macros",  "{} saved".format(len(self._ud.tasks)), FG),
+            ("Chrome",  "Connected" if browser_ok else "Standby",
+             GRN if browser_ok else YEL),
+            ("Sheets",  "{} connected".format(sheet_count), GRN if sheet_count else MUT),
+            ("Tasks",   "{} aktif".format(active_count),    ACC),
+            ("Macros",  "{} tersimpan".format(len(self._ud.tasks)), FG),
         ]:
-            c = tk.Frame(status_row, bg=CARD, padx=14, pady=10)
-            c.pack(side="left", fill="both", expand=True, padx=3)
-            _lbl(c, lbl, fg=MUT, bg=CARD, font=("Segoe UI", 8)).pack(anchor="w")
-            _lbl(c, val, fg=clr, bg=CARD,
-                 font=("Segoe UI", 12, "bold")).pack(anchor="w")
+            chip = tk.Frame(chips_row, bg=CARD, padx=16, pady=10)
+            chip.pack(side="left", fill="both", expand=True, padx=(0, 6))
+            tk.Label(chip, text=lbl, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+            tk.Label(chip, text=val, bg=CARD, fg=clr,
+                     font=("Segoe UI", 12, "bold")).pack(anchor="w")
 
-        # ── Quick Action Bar ─────────────────────────────────────────────────
-        qa_bar = tk.Frame(f, bg=SIDE, padx=12, pady=8)
-        qa_bar.pack(fill="x", padx=20, pady=(6, 0))
-        _lbl(qa_bar, "QUICK ACTIONS", fg=MUT, bg=SIDE,
-             font=("Segoe UI", 7, "bold")).pack(side="left", padx=(0, 12))
-        for qa_label, qa_cmd, qa_color in [
-            ("+ New Macro",       lambda: self._show("schedule"),   ACC),
-            ("Start Recording",   self._start_simple_rec,            GRN),
-            ("Open Spy",          self._open_floating_spy,           BLUE),
-            ("Templates",         lambda: self._show("templates"),   PRP),
-            ("View Logs",         lambda: self._show("logs"),        MUT),
+        # ── Quick actions ────────────────────────────────────────────────────
+        qa = tk.Frame(body, bg=SIDE, padx=14, pady=8)
+        qa.pack(fill="x", padx=20, pady=(10, 0))
+        tk.Label(qa, text="AKSI CEPAT", bg=SIDE, fg="#4A4A6A",
+                 font=("Segoe UI", 7, "bold")).pack(side="left", padx=(0, 14))
+        for qa_lbl, qa_cmd, qa_clr in [
+            ("+ Macro Baru",    lambda: self._show("schedule"), ACC),
+            ("Mulai Record",    self._start_simple_rec,          GRN),
+            ("Buka Spy",        self._open_floating_spy,         BLUE),
+            ("Templates",       lambda: self._show("templates"), PRP),
+            ("Lihat Log",       lambda: self._show("logs"),      MUT),
         ]:
-            tk.Button(qa_bar, text=qa_label, bg=qa_color, fg=BG,
+            tk.Button(qa, text=qa_lbl, bg=qa_clr, fg=BG,
                       font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                       padx=10, pady=4, cursor="hand2",
-                      activebackground=CARD, activeforeground=FG,
                       command=qa_cmd).pack(side="left", padx=(0, 6))
 
-        # My Tasks Today
-        tasks_frame = _card(f, "My Tasks Today")
-        tasks_frame.pack(fill="x", padx=20, pady=(14, 0))
-        active_tasks = [t for t in self._ud.tasks
-                        if t.get("enabled", True) and
-                        t.get("schedule_type", "manual") != "manual"]
-        if active_tasks:
-            for task in active_tasks[:5]:
-                stype = task.get("schedule_type", "manual")
-                sval  = task.get("schedule_value", "")
-                stime = task.get("schedule_time", "")
-                if stype == "interval" and sval:
-                    sched = "Every {}m".format(sval)
-                elif stype == "daily" and stime:
-                    sched = "Daily {}".format(stime)
-                elif stype == "hourly":
-                    sched = "Hourly"
-                else:
-                    sched = "Manual"
+        # ── My Tasks ─────────────────────────────────────────────────────────
+        my_tasks = [t for t in self._ud.tasks][:5]
+        if my_tasks:
+            tk.Label(body, text="MY TASKS", bg=BG, fg="#4A4A6A",
+                     font=("Segoe UI", 8, "bold")).pack(
+                anchor="w", padx=22, pady=(14, 4))
+            mt_card = tk.Frame(body, bg=CARD)
+            mt_card.pack(fill="x", padx=20, pady=(0, 4))
+            for t in my_tasks:
+                enabled = t.get("enabled", True)
+                status  = t.get("last_status", "—")
+                sc_type = t.get("schedule_type", "manual")
+                sc_label = {"interval": "⏱ Interval",
+                            "cron":     "📅 Cron",
+                            "manual":   "▶ Manual"}.get(sc_type, sc_type)
+                status_clr = {
+                    "ok":      GRN, "success": GRN,
+                    "fail":    RED, "error":   RED,
+                    "running": YEL,
+                }.get(str(status).lower(), MUT)
 
-                tr = tk.Frame(tasks_frame, bg=CARD, pady=4)
-                tr.pack(fill="x")
-                tk.Frame(tr, bg=MUT, width=2).pack(side="left", fill="y",
-                                                     padx=(0, 8))
-                _lbl(tr, task.get("name", ""), bg=CARD,
-                     font=("Segoe UI", 9, "bold")).pack(side="left")
-                _lbl(tr, "|", fg=MUT, bg=CARD,
-                     font=("Segoe UI", 9)).pack(side="left", padx=6)
-                _lbl(tr, sched, fg=ACC, bg=CARD,
-                     font=("Segoe UI", 9)).pack(side="left")
-                status = task.get("last_status", "-")
-                _lbl(tr, task.get("last_run", "-"), fg=MUT, bg=CARD,
-                     font=("Segoe UI", 8)).pack(side="right", padx=(0, 8))
-                _lbl(tr, status,
-                     fg=GRN if status == "OK" else (RED if status == "FAIL" else MUT),
-                     bg=CARD, font=("Segoe UI", 8, "bold")).pack(
-                    side="right", padx=(0, 4))
+                row = tk.Frame(mt_card, bg=CARD, padx=14, pady=7, cursor="hand2")
+                row.pack(fill="x")
+                tk.Frame(mt_card, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
 
-                def _make_toggle(t=task):
-                    def _do():
-                        t["enabled"] = not t.get("enabled", True)
-                        self._ud.save()
-                        # Refresh home page
-                        if "home" in self._pages:
-                            self._pages["home"].destroy()
-                            del self._pages["home"]
-                        if self._cur == "home":
-                            self._show("home")
-                    return _do
-                on_off = "ON" if task.get("enabled", True) else "OFF"
-                btn_clr = GRN if task.get("enabled", True) else MUT
-                tk.Button(tr, text=on_off, bg=btn_clr, fg=BG,
+                # Status dot
+                tk.Label(row, text="●", bg=CARD,
+                         fg=GRN if enabled else "#3A3A5A",
+                         font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+                tk.Label(row, text=t.get("name", "Tanpa Nama")[:32], bg=CARD, fg=FG,
+                         font=("Segoe UI", 9, "bold")).pack(side="left")
+                tk.Label(row, text=sc_label, bg=CARD, fg=MUT,
+                         font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+                tk.Label(row, text=str(status).upper(), bg=CARD, fg=status_clr,
+                         font=("Segoe UI", 8, "bold")).pack(side="right", padx=(0, 8))
+                tk.Button(row, text="▶ Run", bg=ACC, fg="white",
                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                          padx=6, pady=2, cursor="hand2",
-                          command=_make_toggle()).pack(side="right", padx=(0, 8))
-        else:
-            _lbl(tasks_frame,
-                 "No scheduled tasks yet. Go to Schedule to create one.",
-                 fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+                          padx=8, pady=2, cursor="hand2",
+                          command=lambda idx=self._ud.tasks.index(t): (
+                              self._show("schedule"),
+                              self._root.after(200, lambda i=idx: self._run_task_by_idx(i))
+                          )).pack(side="right")
+            if len(self._ud.tasks) > 5:
+                tk.Label(mt_card,
+                         text="+ {} task lainnya — buka Schedule".format(
+                             len(self._ud.tasks) - 5),
+                         bg=CARD, fg=MUT, font=("Segoe UI", 8),
+                         padx=14, pady=6).pack(anchor="w")
 
-        # Quick Run
-        qr_frame = _card(f, "Quick Run")
-        qr_frame.pack(fill="x", padx=20, pady=(14, 0))
-        if self._ud.tasks:
-            card_row = tk.Frame(qr_frame, bg=CARD)
-            card_row.pack(fill="x")
-            for task in self._ud.tasks[:6]:
-                def _make_runner(t=task):
-                    def _run():
-                        if not self._confirm_run_dialog(t):
-                            return
-                        idx = self._ud.tasks.index(t)
-                        stop_ev = threading.Event()
-                        self._run_stop_flag = stop_ev
-                        if t.get("continuous_mode"):
-                            panel = self._show_continuous_progress_panel(t, stop_ev)
-                            threading.Thread(
-                                target=self._run_continuous_task_thread,
-                                args=(t, idx, stop_ev, panel), daemon=True).start()
-                        else:
-                            panel = self._show_run_progress_panel(t, stop_ev)
-                            threading.Thread(
-                                target=self._run_task_thread,
-                                args=(t, idx, stop_ev, panel), daemon=True).start()
-                        self._sv.set("Running: {}...".format(t["name"]))
-                    return _run
-                tc = tk.Frame(card_row, bg=BG, padx=10, pady=8, cursor="hand2",
-                              relief="flat", bd=1)
-                tc.pack(side="left", padx=4, pady=2)
-                _lbl(tc, task.get("name","")[:18], bg=BG,
-                     font=("Segoe UI", 9, "bold")).pack(anchor="w")
-                last = task.get("last_run", "-")
-                stat = task.get("last_status", "-")
-                _lbl(tc, "Last: {}".format(last), fg=MUT, bg=BG,
-                     font=("Segoe UI", 7)).pack(anchor="w")
-                tk.Button(tc, text="Run Now", bg=ACC, fg=BG,
-                          font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                          padx=8, pady=3, cursor="hand2",
-                          command=_make_runner()).pack(anchor="w", pady=(4, 0))
-        else:
-            _lbl(qr_frame, "No macros saved yet. Create one in Schedule.",
-                 fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+        # ── Feature grid ─────────────────────────────────────────────────────
+        tk.Label(body, text="SEMUA FITUR", bg=BG, fg="#4A4A6A",
+                 font=("Segoe UI", 8, "bold")).pack(
+            anchor="w", padx=22, pady=(18, 6))
 
-        # Recent Activity
-        ac = _card(f, "Recent Activity")
-        ac.pack(fill="x", padx=20, pady=(14, 20))
-        acts = self._ud.activity[:5]
+        FEATURES = [
+            ("web",       "\U0001f310", "Web Scraping",    "Otomasi browser & scraping"),
+            ("spy",       "\U0001f441", "Spy Vision",      "Deteksi elemen layar"),
+            ("record",    "\u23fa",     "Record Macro",    "Rekam & putar ulang aksi"),
+            ("schedule",  "\U0001f4c5", "Scheduler",       "Jadwal tugas otomatis"),
+            ("templates", "\U0001f4da", "Templates",       "Library template siap pakai"),
+            ("sheet",     "\U0001f4ca", "Google Sheet",    "Sinkronisasi spreadsheet"),
+            ("rekening",  "\U0001f3e6", "Rekening",        "Validasi nomor rekening"),
+            ("monitor",   "\U0001f4b9", "Monitor",         "Dashboard auto-update"),
+            ("remote",    "\U0001f4f1", "Mirror HP",       "Mirror & kontrol Android"),
+            ("chat",      "\U0001f4ac", "Chat",            "Ngobrol dengan user online"),
+            ("blog",      "\U0001f4f0", "Blog",            "Baca & tulis artikel"),
+            ("history",   "\U0001f4cb", "History",         "Riwayat aktivitas"),
+            ("logs",      "\U0001f5d2", "Logs",            "Log sistem real-time"),
+            ("settings",  "\u2699\ufe0f","Settings",       "Konfigurasi aplikasi"),
+        ]
+
+        ACCENT_PALETTE = [
+            "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B",
+            "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16",
+            "#F97316", "#EC4899", "#6366F1", "#14B8A6",
+            "#A855F7", "#64748B",
+        ]
+
+        grid_frame = tk.Frame(body, bg=BG)
+        grid_frame.pack(fill="x", padx=20, pady=(0, 8))
+
+        COLS = 4
+        for i, (key, icon, title, desc) in enumerate(FEATURES):
+            row_idx = i // COLS
+            col_idx = i % COLS
+            accent = ACCENT_PALETTE[i % len(ACCENT_PALETTE)]
+
+            cell = tk.Frame(grid_frame, bg=CARD, cursor="hand2")
+            cell.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
+            grid_frame.columnconfigure(col_idx, weight=1)
+
+            # Top accent bar
+            tk.Frame(cell, bg=accent, height=3).pack(fill="x")
+
+            inner = tk.Frame(cell, bg=CARD, padx=14, pady=12)
+            inner.pack(fill="both", expand=True)
+
+            tk.Label(inner, text=icon, bg=CARD, fg=accent,
+                     font=("Segoe UI", 20)).pack(anchor="w")
+            tk.Label(inner, text=title, bg=CARD, fg=FG,
+                     font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(4, 0))
+            tk.Label(inner, text=desc, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 8), wraplength=140,
+                     justify="left").pack(anchor="w", pady=(2, 8))
+
+            btn = tk.Button(inner, text="Buka  →",
+                            bg=accent, fg="white",
+                            font=("Segoe UI", 8, "bold"),
+                            padx=10, pady=4, relief="flat", bd=0, cursor="hand2",
+                            command=lambda k=key: self._show(k))
+            btn.pack(anchor="w")
+
+            # Make entire cell clickable
+            for w in (cell, inner):
+                w.bind("<Button-1>", lambda e, k=key: self._show(k))
+                w.bind("<Enter>", lambda e, c=cell, a=accent: c.configure(bg=CARD))
+                w.bind("<Leave>", lambda e, c=cell: c.configure(bg=CARD))
+
+        # ── Recent Activity ──────────────────────────────────────────────────
+        tk.Label(body, text="AKTIVITAS TERAKHIR", bg=BG, fg="#4A4A6A",
+                 font=("Segoe UI", 8, "bold")).pack(
+            anchor="w", padx=22, pady=(16, 6))
+
+        ac = tk.Frame(body, bg=CARD)
+        ac.pack(fill="x", padx=20, pady=(0, 20))
+        acts = self._ud.activity[:6]
         if acts:
             for e in acts:
                 ok = e.get("ok")
-                r2 = tk.Frame(ac, bg=CARD)
-                r2.pack(fill="x", pady=1)
-                _lbl(r2, e["time"], fg=MUT, bg=CARD,
-                     font=("Segoe UI", 8), width=19, anchor="w").pack(side="left")
-                _lbl(r2, e["task"][:28], bg=CARD,
-                     font=("Segoe UI", 9)).pack(side="left", padx=6)
-                _lbl(r2, "OK" if ok else "FAIL",
-                     fg=GRN if ok else RED,
-                     bg=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
-                _lbl(r2, e.get("result","")[:30], fg=MUT, bg=CARD,
-                     font=("Segoe UI", 8)).pack(side="right", padx=6)
+                row = tk.Frame(ac, bg=CARD, padx=14, pady=5)
+                row.pack(fill="x")
+                tk.Frame(ac, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
+                tk.Label(row, text=e["time"], fg=MUT, bg=CARD,
+                         font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
+                tk.Label(row, text=e["task"][:30], bg=CARD, fg=FG,
+                         font=("Segoe UI", 9)).pack(side="left", padx=8)
+                tk.Label(row, text="✓ OK" if ok else "✗ FAIL",
+                         fg=GRN if ok else RED,
+                         bg=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
         else:
-            _lbl(ac, "No activity yet.", fg=MUT, bg=CARD,
-                 font=("Segoe UI", 9)).pack(anchor="w")
+            tk.Label(ac, text="Belum ada aktivitas.", fg=MUT, bg=CARD,
+                     font=("Segoe UI", 9), padx=14, pady=10).pack(anchor="w")
+
         return f
 
     # ================================================================
@@ -1508,6 +1937,7 @@ class SynthexApp:
             ("if_equals",        "If Condition"),
             ("if_contains",      "If Contains"),
             ("notify",           "Notify"),
+            ("ai_prompt",        "🤖 AI Prompt"),
         ]
         display_names = [d for _, d in TYPE_OPTIONS]
         type_to_key   = {d: k for k, d in TYPE_OPTIONS}
@@ -1755,6 +2185,66 @@ class SynthexApp:
                                activebackground=BG, activeforeground=ACC,
                                font=("Segoe UI", 9)).pack(anchor="w")
 
+        elif step_type == "ai_prompt":
+            # Info strip
+            _ai_cfg_prov = self.config.get("ai.provider", "openai")
+            _ai_cfg_model = self.config.get("ai.model", "") or "default"
+            _ai_has_key = bool(self.config.get("ai.api_key", "").strip())
+            info_fr = tk.Frame(parent, bg="#0A1A0A" if _ai_has_key else "#1A0A0A",
+                               padx=10, pady=6)
+            info_fr.pack(fill="x", pady=(0, 10))
+            status_txt = ("✓ AI dikonfigurasi: {} ({})".format(
+                _ai_cfg_prov.upper(), _ai_cfg_model)
+                if _ai_has_key else
+                "⚠ API key belum diset. Buka Settings → AI Integration dulu.")
+            tk.Label(info_fr, text=status_txt,
+                     bg=info_fr["bg"],
+                     fg=GRN if _ai_has_key else YEL,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+            # Prompt (user message)
+            _field("Prompt untuk AI", "prompt", existing.get("prompt", ""),
+                   multiline=True, height=4,
+                   helper="Dukung {variabel} dari step sebelumnya. "
+                          "Contoh: Ringkas teks ini: {page_text}")
+
+            # System prompt override (optional)
+            f_sys = tk.Frame(parent, bg=BG)
+            f_sys.pack(fill="x", pady=(0, 10))
+            _lbl(f_sys, "System Prompt (opsional — override default):",
+                 fg=MUT, bg=BG, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+            sys_txt_w = tk.Text(f_sys, bg=CARD, fg=FG, insertbackground=FG,
+                                font=("Segoe UI", 9), relief="flat",
+                                height=2, wrap="word")
+            sys_txt_w.insert("1.0", existing.get("system", ""))
+            sys_txt_w.pack(fill="x")
+            self._mb_field_vars["system"] = sys_txt_w
+
+            # Save-as variable + max tokens row
+            sv_row = tk.Frame(parent, bg=BG)
+            sv_row.pack(fill="x", pady=(0, 10))
+            _lbl(sv_row, "Simpan hasil sebagai:", fg=MUT, bg=BG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+            sv_var = tk.StringVar(value=existing.get("var", "ai_result"))
+            sv_entry = tk.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
+                                insertbackground=FG, relief="flat",
+                                font=("Segoe UI", 9), width=16)
+            sv_entry.pack(side="left")
+            self._mb_field_vars["var"] = sv_var
+            _lbl(sv_row, "  Max tokens:", fg=MUT, bg=BG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(12, 4))
+            mt_var = tk.StringVar(value=str(existing.get("max_tokens",
+                                            self.config.get("ai.max_tokens", 800))))
+            tk.Entry(sv_row, textvariable=mt_var, bg=CARD, fg=FG,
+                     insertbackground=FG, relief="flat",
+                     font=("Segoe UI", 9), width=6).pack(side="left")
+            self._mb_field_vars["max_tokens"] = mt_var
+
+            _lbl(parent,
+                 "Hasil AI tersimpan di {ai_result} (atau nama variabel di atas) "
+                 "dan bisa dipakai di step berikutnya.",
+                 fg=MUT, bg=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+
         else:
             _field("Value / Selector", "value", existing.get("value",""))
 
@@ -1794,9 +2284,7 @@ class SynthexApp:
         """Save macro and return to list."""
         name = self._mb_name_var.get().strip() if self._mb_name_var else ""
         if not name:
-            messagebox.showwarning("Macro Name",
-                                   "Please enter a macro name.",
-                                   parent=self._root)
+            self._show_alert("Macro Name", "Please enter a macro name.", "warning")
             return
         stype = self._mb_sched_type.get() if self._mb_sched_type else "manual"
         sval  = self._mb_sched_val.get()  if self._mb_sched_val  else ""
@@ -1834,14 +2322,13 @@ class SynthexApp:
     def _mb_dry_run(self):
         """Run the current macro in dry-run mode with per-step confirmation."""
         if not self._mb_steps:
-            messagebox.showinfo("Test Run", "No steps to run.",
-                                parent=self._root)
+            self._show_alert("Test Run", "No steps to run.")
             return
         if not self.engine:
-            messagebox.showwarning("Test Run",
-                                   "Engine not connected. Browser/Sheets "
-                                   "steps will fail, but logic steps will work.",
-                                   parent=self._root)
+            self._show_alert("Test Run",
+                             "Engine not connected. Browser/Sheets "
+                             "steps will fail, but logic steps will work.",
+                             "warning")
 
         task = {"name": self._mb_name_var.get() or "Dry Run",
                 "steps": list(self._mb_steps)}
@@ -2286,9 +2773,7 @@ class SynthexApp:
         def _done(entry):
             for s in self._ud.sheets:
                 if s.get("spreadsheet_id") == entry.get("spreadsheet_id"):
-                    messagebox.showinfo("Already Connected",
-                                       "This sheet is already connected.",
-                                       parent=self._root)
+                    self._show_alert("Already Connected", "This sheet is already connected.")
                     return
             self._ud.sheets.append(entry)
             self._ud.save()
@@ -2317,8 +2802,7 @@ class SynthexApp:
             return
         sel = self._sheets_tree.selection()
         if not sel:
-            messagebox.showinfo("Preview", "Select a sheet first.",
-                                parent=self._root)
+            self._show_alert("Preview", "Select a sheet first.")
             return
         idx = self._sheets_tree.index(sel[0])
         if idx >= len(self._ud.sheets):
@@ -2371,8 +2855,7 @@ class SynthexApp:
             return
         sel = self._sheets_tree.selection()
         if not sel:
-            messagebox.showinfo("Test", "Select a sheet first.",
-                                parent=self._root)
+            self._show_alert("Test", "Select a sheet first.")
             return
         idx = self._sheets_tree.index(sel[0])
         if idx >= len(self._ud.sheets):
@@ -2398,8 +2881,7 @@ class SynthexApp:
         name = self._prev_sheet_var.get()
         cell = self._prev_cell_var.get().strip() or "A1"
         if not name:
-            messagebox.showinfo("Read Cell", "Select a sheet first.",
-                                parent=self._root)
+            self._show_alert("Read Cell", "Select a sheet first.")
             return
         self._cell_result_lbl.configure(text="Reading...", fg=MUT)
 
@@ -2419,8 +2901,7 @@ class SynthexApp:
             return
         sheet_name = self._prev_sheet_var.get()
         if not sheet_name:
-            messagebox.showinfo("Preview", "Select a sheet first.",
-                                parent=self._root)
+            self._show_alert("Preview", "Select a sheet first.")
             return
 
         # If user picked a different worksheet tab, update entry temporarily
@@ -2482,8 +2963,7 @@ class SynthexApp:
         name = self._rc_sheet_var.get()
         cell = self._rc_cell_var.get().strip() or "A1"
         if not name:
-            messagebox.showwarning("Read Cell", "Select a sheet first.",
-                                   parent=self._root)
+            self._show_alert("Read Cell", "Select a sheet first.", "warning")
             return
         self._rc_result_lbl.configure(text="Reading...", fg=MUT)
 
@@ -2503,9 +2983,7 @@ class SynthexApp:
         cell  = self._wc_cell_var.get().strip()
         value = self._wc_val_var.get()
         if not name or not cell:
-            messagebox.showwarning("Write Cell",
-                                   "Select a sheet and enter a cell address.",
-                                   parent=self._root)
+            self._show_alert("Write Cell", "Select a sheet and enter a cell address.", "warning")
             return
         now = datetime.now()
         value = value.replace("{current_date}", now.strftime("%Y-%m-%d"))
@@ -2539,9 +3017,7 @@ class SynthexApp:
         name   = self._ar_sheet_var.get()
         values = self._ar_vals_var.get().strip()
         if not name or not values:
-            messagebox.showwarning("Append Row",
-                                   "Select a sheet and enter values.",
-                                   parent=self._root)
+            self._show_alert("Append Row", "Select a sheet and enter values.", "warning")
             return
         vals_list = [v.strip() for v in values.split(",")]
 
@@ -2655,10 +3131,100 @@ class SynthexApp:
                   relief="flat", bd=0, padx=12, pady=6,
                   cursor="hand2", command=_do_clear).pack(side="left")
 
+        # Import row
+        import_row = tk.Frame(left, bg=CARD)
+        import_row.pack(fill="x", pady=(8, 0))
+
+        def _import_file():
+            from tkinter import filedialog as _fd
+            path = _fd.askopenfilename(
+                title="Pilih file CSV / Excel",
+                filetypes=[("CSV files", "*.csv"),
+                           ("Excel files", "*.xlsx *.xls"),
+                           ("All files", "*.*")])
+            if not path:
+                return
+            rows = []
+            try:
+                if path.lower().endswith(".csv"):
+                    import csv
+                    with open(path, newline="", encoding="utf-8-sig") as fh:
+                        reader = csv.reader(fh)
+                        for row in reader:
+                            rows.append(row)
+                else:
+                    try:
+                        import openpyxl
+                        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+                        ws = wb.active
+                        for row in ws.iter_rows(values_only=True):
+                            rows.append([str(c) if c is not None else "" for c in row])
+                        wb.close()
+                    except ImportError:
+                        self._show_alert("Error",
+                            "openpyxl tidak terinstall.\nGunakan file CSV atau jalankan:\npip install openpyxl",
+                            kind="error")
+                        return
+            except Exception as ex:
+                self._show_alert("Error Baca File", str(ex), kind="error")
+                return
+
+            # Try to find bank & nomor columns automatically
+            # Expected: first text col = provider/bank, second numeric col = account number
+            # OR single col with "BANK NOMOR" format
+            lines = []
+            for row in rows:
+                non_empty = [str(c).strip() for c in row if str(c).strip()]
+                if not non_empty:
+                    continue
+                if len(non_empty) >= 2:
+                    # First col = bank, second = nomor
+                    lines.append("{} {}".format(non_empty[0], non_empty[1]))
+                elif len(non_empty) == 1:
+                    lines.append(non_empty[0])
+
+            if not lines:
+                self._show_alert("File Kosong", "Tidak ada data yang bisa dibaca.", kind="info")
+                return
+
+            txt.delete("1.0", tk.END)
+            txt.insert("1.0", "\n".join(lines))
+            import_status.configure(
+                text="{} baris diimpor dari {}".format(len(lines), path.split("/")[-1]))
+
+        def _export_results():
+            from tkinter import filedialog as _fd
+            path = _fd.asksaveasfilename(
+                title="Simpan hasil sebagai CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV files", "*.csv")])
+            if not path:
+                return
+            import csv
+            rows = [tree.item(iid, "values") for iid in tree.get_children()]
+            with open(path, "w", newline="", encoding="utf-8-sig") as fh:
+                w = csv.writer(fh)
+                w.writerow(["Provider", "Nomor", "Nama Pemilik", "Status"])
+                w.writerows(rows)
+            import_status.configure(text="Hasil disimpan ke: {}".format(path.split("/")[-1]))
+
+        tk.Button(import_row, text="📂 Import CSV/Excel",
+                  bg="#1A3A1A", fg=GRN, font=("Segoe UI", 8, "bold"),
+                  relief="flat", bd=0, padx=10, pady=4,
+                  cursor="hand2", command=_import_file).pack(side="left", padx=(0, 6))
+        tk.Button(import_row, text="💾 Export Hasil",
+                  bg="#1A1A3A", fg="#4A9EFF", font=("Segoe UI", 8, "bold"),
+                  relief="flat", bd=0, padx=10, pady=4,
+                  cursor="hand2", command=_export_results).pack(side="left")
+
+        import_status = tk.Label(left, text="", bg=CARD, fg=MUT,
+                                 font=("Segoe UI", 7), anchor="w", wraplength=380)
+        import_status.pack(anchor="w", pady=(4, 0))
+
         # Hint
         tk.Label(left, text="Double-klik baris untuk menyalin nama",
                  bg=CARD, fg=MUT, font=("Segoe UI", 7),
-                 anchor="w").pack(anchor="w", pady=(8, 0))
+                 anchor="w").pack(anchor="w", pady=(4, 0))
 
         # ── RIGHT: results ────────────────────────────────────────────────────
         right = tk.Frame(body, bg=BG)
@@ -2967,13 +3533,11 @@ class SynthexApp:
             """Read config vars and create/reconfigure PriceMonitor."""
             url = v_url.get().strip()
             if not url:
-                messagebox.showwarning("Dashboard Update",
-                                       "URL wajib diisi.", parent=self._root)
+                self._show_alert("Dashboard Update", "URL wajib diisi.", "warning")
                 return None
             if not url.startswith(("http://", "https://")):
-                messagebox.showwarning("Dashboard Update",
-                                       "URL harus dimulai dengan http:// atau https://",
-                                       parent=self._root)
+                self._show_alert("Dashboard Update",
+                                 "URL harus dimulai dengan http:// atau https://", "warning")
                 return None
 
             try:
@@ -3067,7 +3631,7 @@ class SynthexApp:
         return f
 
     # ================================================================
-    #  REMOTE PAGE  (ADB Mirror via scrcpy)
+    #  REMOTE PAGE  (ADB Mirror via scrcpy) — multi-device
     # ================================================================
 
     def _pg_remote(self):
@@ -3076,15 +3640,14 @@ class SynthexApp:
 
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "Mirror HP",
-                  "\"Your phone, your screen — anywhere you work.\"")
+                  "Mirror & control multiple Android devices simultaneously")
 
         _FB = dict(relief="flat", bd=0, cursor="hand2")
 
         # ── scrollable body ──────────────────────────────────────────────────
         sb = ttk.Scrollbar(f, orient="vertical")
         sb.pack(side="right", fill="y")
-        cv = tk.Canvas(f, bg=BG, highlightthickness=0,
-                       yscrollcommand=sb.set)
+        cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
         cv.pack(side="left", fill="both", expand=True)
         sb.config(command=cv.yview)
         body = tk.Frame(cv, bg=BG)
@@ -3094,42 +3657,132 @@ class SynthexApp:
         cv.bind("<Configure>",
                 lambda e: cv.itemconfig(_wid, width=e.width))
 
-        def _sec(title, accent=ACC):
+        def _sec(title, accent=ACC, subtitle=""):
             w = tk.Frame(body, bg=CARD)
             w.pack(fill="x", padx=20, pady=(0, 12))
-            h = tk.Frame(w, bg=accent, padx=14, pady=8)
+            h = tk.Frame(w, bg=accent, padx=14, pady=9)
             h.pack(fill="x")
             tk.Label(h, text=title, bg=accent, fg="white",
                      font=("Segoe UI", 10, "bold")).pack(side="left")
-            b = tk.Frame(w, bg=CARD, padx=14, pady=10)
+            if subtitle:
+                tk.Label(h, text=subtitle, bg=accent, fg="white",
+                         font=("Segoe UI", 8), opacity=0).pack(
+                    side="left", padx=(8, 0))
+            b = tk.Frame(w, bg=CARD, padx=14, pady=12)
             b.pack(fill="x")
             return b
 
-        # ── TOP SPACER ──────────────────────────────────────────────────────
         tk.Frame(body, bg=BG, height=8).pack()
 
-        # ═══════════════════════════════════════════════════════
-        # SECTION 1 — Koneksi HP
-        # ═══════════════════════════════════════════════════════
-        conn = _sec("Koneksi HP", accent="#2A1050")
+        # ══════════════════════════════════════════════════════════════
+        # SECTION 1 — Perangkat Terhubung
+        # ══════════════════════════════════════════════════════════════
+        conn = _sec("Perangkat", accent="#1A0840")
 
-        # status dot + label + combobox
+        # Status row
         st = tk.Frame(conn, bg=CARD)
-        st.pack(fill="x", pady=(0, 8))
+        st.pack(fill="x", pady=(0, 10))
         dot = tk.Label(st, text="\u25cf", bg=CARD, fg=MUT,
-                       font=("Segoe UI", 13))
+                       font=("Segoe UI", 14))
         dot.pack(side="left")
         status_var = tk.StringVar(value="Menginisialisasi...")
         tk.Label(st, textvariable=status_var, bg=CARD, fg=FG,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 14))
-        dev_var   = tk.StringVar(value="")
-        dev_combo = ttk.Combobox(st, textvariable=dev_var,
-                                 state="readonly", width=24)
-        dev_combo.pack(side="left", padx=(0, 8))
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+        tk.Button(st, text="  Refresh", bg=CARD2, fg=FG,
+                  font=("Segoe UI", 8), padx=10, pady=4,
+                  command=lambda: _thr.Thread(
+                      target=_refresh_devs, daemon=True).start(),
+                  **_FB).pack(side="right")
+
         msg_var = tk.StringVar(value="")
-        tk.Label(conn, textvariable=msg_var, bg=CARD, fg=MUT,
-                 font=("Segoe UI", 8), wraplength=560,
-                 justify="left").pack(anchor="w", pady=(0, 4))
+        msg_lbl = tk.Label(conn, textvariable=msg_var, bg=CARD, fg="#7B7B9B",
+                           font=("Segoe UI", 8), wraplength=560, justify="left")
+        msg_lbl.pack(anchor="w", pady=(0, 8))
+
+        # ── Device cards container ───────────────────────────────────────────
+        cards_frame = tk.Frame(conn, bg=CARD)
+        cards_frame.pack(fill="x", pady=(0, 4))
+
+        if not hasattr(self, "_scrcpy_map"):
+            self._scrcpy_map = {}
+
+        _card_widgets = {}
+
+        empty_lbl = tk.Label(cards_frame,
+                             text="Tidak ada perangkat — sambungkan HP via USB atau WiFi",
+                             bg=CARD, fg=MUT, font=("Segoe UI", 9, "italic"))
+        empty_lbl.pack(anchor="w", pady=6)
+
+        def _make_device_card(serial: str):
+            is_wifi = ":" in serial
+            accent_clr = "#7C3AED" if is_wifi else "#0EA5E9"
+
+            card = tk.Frame(cards_frame, bg="#16162A", bd=0)
+            card.pack(fill="x", pady=(0, 6))
+
+            tk.Frame(card, bg=accent_clr, width=4).pack(side="left", fill="y")
+
+            inner = tk.Frame(card, bg="#16162A", padx=12, pady=10)
+            inner.pack(side="left", fill="both", expand=True)
+
+            row = tk.Frame(inner, bg="#16162A")
+            row.pack(fill="x")
+
+            icon = "wifi" if is_wifi else "usb "
+            mir_dot = tk.Label(row, text="\u25cf", bg="#16162A", fg=MUT,
+                               font=("Segoe UI", 11))
+            mir_dot.pack(side="left")
+            tk.Label(row, text="[{}]  {}".format(icon, serial),
+                     bg="#16162A", fg=FG,
+                     font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+            mir_lbl = tk.Label(row, text="", bg="#16162A", fg=MUT,
+                               font=("Segoe UI", 8))
+            mir_lbl.pack(side="left", padx=(10, 0))
+
+            btn_f = tk.Frame(row, bg="#16162A")
+            btn_f.pack(side="right")
+
+            def _disc():
+                def _bg():
+                    if self._adb:
+                        ok2, m2 = self._adb.disconnect(serial)
+                        if self._root:
+                            self._root.after(0, lambda: msg_var.set(m2))
+                    _refresh_devs()
+                _thr.Thread(target=_bg, daemon=True).start()
+
+            stop_b = tk.Button(btn_f, text="\u25a0  Stop",
+                               bg="#7F1D1D", fg="white",
+                               font=("Segoe UI", 8, "bold"),
+                               padx=10, pady=5, state="disabled", **_FB,
+                               command=lambda: _stop_mirror_serial(
+                                   serial, start_b, stop_b, mir_dot, mir_lbl))
+            stop_b.pack(side="right", padx=(4, 0))
+
+            start_b = tk.Button(btn_f, text="\u25b6  Mirror",
+                                bg="#14532D", fg="white",
+                                font=("Segoe UI", 8, "bold"),
+                                padx=10, pady=5, **_FB,
+                                command=lambda: _start_mirror_serial(
+                                    serial, start_b, stop_b, mir_dot, mir_lbl))
+            start_b.pack(side="right", padx=(4, 0))
+
+            tk.Button(btn_f, text="Putuskan",
+                      bg=CARD, fg="#7B7B9B",
+                      font=("Segoe UI", 8), padx=8, pady=5,
+                      **_FB, command=_disc).pack(side="right", padx=(4, 0))
+
+            if serial in self._scrcpy_map and self._scrcpy_map[serial].running:
+                mir_dot.configure(fg=GRN)
+                mir_lbl.configure(text="Sedang mirror", fg=GRN)
+                start_b.configure(state="disabled", bg="#1A3A2A")
+                stop_b.configure(state="normal", bg=RED)
+
+            _card_widgets[serial] = {
+                "card": card, "mir_dot": mir_dot,
+                "mir_lbl": mir_lbl, "start_b": start_b, "stop_b": stop_b,
+            }
+            return card
 
         def _refresh_devs():
             if self._adb is None:
@@ -3138,13 +3791,22 @@ class SynthexApp:
                 devs = self._adb.list_devices()
                 vals = [d["serial"] for d in devs if d["state"] == "device"]
                 def _apply():
-                    dev_combo["values"] = vals
+                    for s in list(_card_widgets.keys()):
+                        if s not in vals:
+                            try:
+                                _card_widgets[s]["card"].destroy()
+                            except Exception:
+                                pass
+                            del _card_widgets[s]
+                    for s in vals:
+                        if s not in _card_widgets:
+                            _make_device_card(s)
                     if vals:
-                        dev_combo.set(vals[0])
-                        status_var.set("{} perangkat".format(len(vals)))
+                        empty_lbl.pack_forget()
+                        status_var.set("{} perangkat terhubung".format(len(vals)))
                         dot.configure(fg=GRN)
                     else:
-                        dev_combo.set("")
+                        empty_lbl.pack(anchor="w", pady=6)
                         status_var.set("Tidak ada perangkat")
                         dot.configure(fg=MUT)
                 if self._root:
@@ -3152,27 +3814,91 @@ class SynthexApp:
             except Exception:
                 pass
 
-        tk.Button(st, text="Refresh", bg=CARD2, fg=FG,
-                  font=("Segoe UI", 8), padx=8, pady=3,
-                  command=lambda: _thr.Thread(
-                      target=_refresh_devs, daemon=True).start(),
-                  **_FB).pack(side="left")
+        # ── Mirror logic per device ──────────────────────────────────────────
+        res_var   = tk.StringVar(value="1024")
+        br_var    = tk.StringVar(value="8M")
+        fps_var   = tk.StringVar(value="60")
+        ori_var   = tk.StringVar(value="Auto")
+        stay_var  = tk.BooleanVar(value=True)
+        touch_var = tk.BooleanVar(value=False)
+        top_var   = tk.BooleanVar(value=True)
+        audio_var = tk.BooleanVar(value=False)
 
-        # IP + Port row
+        def _start_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl):
+            from modules.remote_control import ScrcpyManager
+            if serial not in self._scrcpy_map:
+                self._scrcpy_map[serial] = ScrcpyManager(self._adb)
+                if self._scrcpy:
+                    self._scrcpy_map[serial].path = self._scrcpy.path
+            scr = self._scrcpy_map[serial]
+            if not scr.available:
+                msg_var.set("scrcpy belum ada — klik Download dulu.")
+                return
+            try:
+                max_size = int(res_var.get())
+            except (ValueError, TypeError):
+                max_size = 1024
+            ok, msg = scr.start(
+                serial=serial,
+                max_size=max_size,
+                bitrate=br_var.get(),
+                stay_awake=stay_var.get(),
+                show_touches=touch_var.get(),
+                always_on_top=top_var.get(),
+                no_audio=audio_var.get(),
+            )
+            msg_var.set(msg)
+            if ok:
+                start_b.configure(state="disabled", bg="#1A3A2A")
+                stop_b.configure(state="normal", bg=RED)
+                mir_dot.configure(fg=GRN)
+                mir_lbl.configure(text="Sedang mirror", fg=GRN)
+                _poll_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl)
+
+        def _stop_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl):
+            if serial in self._scrcpy_map:
+                self._scrcpy_map[serial].stop()
+            try:
+                start_b.configure(state="normal", bg="#14532D")
+                stop_b.configure(state="disabled", bg="#7F1D1D")
+                mir_dot.configure(fg=MUT)
+                mir_lbl.configure(text="", fg=MUT)
+            except Exception:
+                pass
+            msg_var.set("Mirror {} dihentikan.".format(serial))
+
+        def _poll_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl):
+            scr = self._scrcpy_map.get(serial)
+            if scr is None or not scr.running:
+                try:
+                    start_b.configure(state="normal", bg="#14532D")
+                    stop_b.configure(state="disabled", bg="#7F1D1D")
+                    mir_dot.configure(fg=MUT)
+                    mir_lbl.configure(text="Selesai", fg=MUT)
+                except Exception:
+                    pass
+                return
+            if self._root:
+                self._root.after(800, lambda: _poll_mirror_serial(
+                    serial, start_b, stop_b, mir_dot, mir_lbl))
+
+        # ── Add HP (IP connect) row ──────────────────────────────────────────
+        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(4, 10))
+
         ip_row = tk.Frame(conn, bg=CARD)
-        ip_row.pack(fill="x", pady=(0, 6))
+        ip_row.pack(fill="x", pady=(0, 4))
         tk.Label(ip_row, text="IP HP:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
         ip_var = tk.StringVar(value=self.config.get("remote.last_ip", ""))
         tk.Entry(ip_row, textvariable=ip_var,
-                 bg=CARD2, fg=FG, insertbackground=FG,
+                 bg="#16162A", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=18, bd=4).pack(side="left", padx=(6, 4))
         tk.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
         port_var = tk.StringVar(value=str(self.config.get("remote.last_port", "5555")))
         tk.Entry(ip_row, textvariable=port_var,
-                 bg=CARD2, fg=FG, insertbackground=FG,
+                 bg="#16162A", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=6, bd=4).pack(side="left", padx=(4, 10))
 
@@ -3200,38 +3926,35 @@ class SynthexApp:
                 self._root.after(0, lambda: msg_var.set(msg))
             _refresh_devs()
 
-        def _disconnect_bg():
-            if self._adb:
-                ok, msg = self._adb.disconnect(dev_var.get())
-                if self._root:
-                    self._root.after(0, lambda: msg_var.set(msg))
-            _refresh_devs()
-
-        tk.Button(ip_row, text="Hubungkan", bg=ACC, fg="white",
-                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+        tk.Button(ip_row, text="+ Tambah HP", bg=ACC, fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_connect_bg, daemon=True).start(),
-                  **_FB).pack(side="left", padx=(0, 6))
-        tk.Button(ip_row, text="Putuskan", bg=CARD2, fg=FG,
-                  font=("Segoe UI", 9), padx=10, pady=5,
-                  command=lambda: _thr.Thread(
-                      target=_disconnect_bg, daemon=True).start(),
                   **_FB).pack(side="left")
 
-        # USB one-time setup
-        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(8, 8))
-        tk.Label(conn,
-                 text="Setup sekali via USB — colok HP, klik tombol, "
-                      "cabut USB, lalu hubungkan via WiFi:",
-                 bg=CARD, fg=MUT, font=("Segoe UI", 8),
-                 wraplength=560, justify="left").pack(
-            anchor="w", pady=(0, 6))
+        # ── USB Wireless Setup ───────────────────────────────────────────────
+        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(10, 10))
+        usb_row = tk.Frame(conn, bg=CARD)
+        usb_row.pack(fill="x")
+        tk.Label(usb_row,
+                 text="Setup WiFi sekali via USB — colok HP, klik, cabut USB:",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(
+            side="left", padx=(0, 12))
+        tk.Button(usb_row, text="Setup Wireless via USB",
+                  bg="#3A1060", fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  command=lambda: _thr.Thread(
+                      target=_usb_setup_bg, daemon=True).start(),
+                  **_FB).pack(side="left")
 
         def _usb_setup_bg():
             if self._root:
                 self._root.after(0, lambda: msg_var.set(
                     "Menjalankan adb tcpip 5555..."))
             if self._adb is None:
+                if self._root:
+                    self._root.after(0, lambda: msg_var.set(
+                        "ADB tidak ditemukan — download ADB dulu."))
                 return
             ok, m = self._adb.tcpip(5555)
             if not ok:
@@ -3241,38 +3964,103 @@ class SynthexApp:
             import time as _t; _t.sleep(1)
             ip = self._adb.get_device_ip()
             if ip:
-                if self._root:
-                    self._root.after(0, lambda: ip_var.set(ip))
-                    self._root.after(0, lambda: msg_var.set(
-                        "Berhasil! IP: {}  — cabut USB, klik Hubungkan".format(ip)))
                 self.config.set("remote.last_ip", ip)
                 self.config.save()
+                if self._root:
+                    self._root.after(0, lambda: ip_var.set(ip))
+                    self._root.after(0, lambda: _show_unplug_dialog(ip))
             else:
                 if self._root:
                     self._root.after(0, lambda: msg_var.set(
-                        "tcpip OK, IP tidak terdeteksi — isi manual."))
+                        "tcpip OK, IP tidak terdeteksi — isi manual lalu klik Tambah HP."))
             _refresh_devs()
 
-        usb_row = tk.Frame(conn, bg=CARD)
-        usb_row.pack(anchor="w")
-        tk.Button(usb_row, text="Setup Wireless via USB",
-                  bg="#3A1060", fg="white",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
-                  command=lambda: _thr.Thread(
-                      target=_usb_setup_bg, daemon=True).start(),
-                  **_FB).pack(side="left", padx=(0, 10))
-        tk.Label(usb_row, text="Butuh USB Debugging aktif di HP",
-                 bg=CARD, fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="left")
+        def _show_unplug_dialog(ip: str):
+            dlg = tk.Toplevel(self._root)
+            dlg.overrideredirect(True)
+            dlg.attributes("-topmost", True)
+            dlg.configure(bg="#0D0D14")
+            dlg.resizable(False, False)
+            tk.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
+            _b = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
+            _b.pack(fill="both", expand=True)
+            tk.Label(_b, text="WiFi Siap!", bg="#0D0D14", fg="white",
+                     font=("Segoe UI", 13, "bold")).pack(anchor="w")
+            tk.Label(_b, text="{}:5555".format(ip),
+                     bg="#0D0D14", fg="#7C3AED",
+                     font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(4, 2))
+            tk.Label(_b, text="Cabut kabel USB, lalu klik Mulai Mirror.",
+                     bg="#0D0D14", fg="#8080A0",
+                     font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 16))
+            br = tk.Frame(_b, bg="#0D0D14")
+            br.pack(anchor="e")
 
-        # ═══════════════════════════════════════════════════════
-        # SECTION 2 — Pengaturan Mirror
-        # ═══════════════════════════════════════════════════════
+            def _do_connect_mirror():
+                dlg.destroy()
+                msg_var.set("Memeriksa {}:5555...".format(ip))
+                def _bg():
+                    import time as _t2
+                    target = "{}:5555".format(ip)
+                    _t2.sleep(2)
+                    probe = self._adb.probe_port(ip, 5555, timeout=3.0)
+                    if probe == "refused":
+                        if self._root:
+                            self._root.after(0, lambda: msg_var.set(
+                                "Port 5555 ditolak HP. Aktifkan Wireless Debugging di Developer Options."))
+                        return
+                    if probe == "timeout":
+                        if self._root:
+                            self._root.after(0, lambda: msg_var.set(
+                                "Timeout. Cek: HP & PC di jaringan sama? "
+                                "Router AP Isolation aktif?"))
+                        return
+                    ok2 = False; m2 = ""
+                    for attempt in range(4):
+                        ok2, m2 = self._adb.connect(ip, 5555)
+                        if ok2:
+                            break
+                        if self._root:
+                            self._root.after(0, lambda a=attempt: msg_var.set(
+                                "Mencoba... ({}/4)".format(a + 1)))
+                        _t2.sleep(1.5)
+                    if self._root:
+                        self._root.after(0, lambda: msg_var.set(m2))
+                    if ok2:
+                        _refresh_devs()
+                        _t2.sleep(0.6)
+                        if self._root:
+                            self._root.after(0, lambda: _auto_mirror(target))
+                import threading as _thr2
+                _thr2.Thread(target=_bg, daemon=True).start()
+
+            def _auto_mirror(serial):
+                w = _card_widgets.get(serial)
+                if w:
+                    _start_mirror_serial(
+                        serial, w["start_b"], w["stop_b"],
+                        w["mir_dot"], w["mir_lbl"])
+
+            tk.Button(br, text="Mulai Mirror",
+                      bg="#7C3AED", fg="white",
+                      font=("Segoe UI", 9, "bold"), padx=18, pady=7,
+                      relief="flat", cursor="hand2",
+                      command=_do_connect_mirror).pack(side="left", padx=(0, 8))
+            tk.Button(br, text="Tutup",
+                      bg="#1A1A2E", fg="#8080A0",
+                      font=("Segoe UI", 9), padx=12, pady=7,
+                      relief="flat", cursor="hand2",
+                      command=dlg.destroy).pack(side="left")
+            dlg.update_idletasks()
+            sw = dlg.winfo_screenwidth(); sh = dlg.winfo_screenheight()
+            dlg.geometry("+{}+{}".format(
+                (sw - dlg.winfo_width()) // 2,
+                (sh - dlg.winfo_height()) // 2))
+            dlg.grab_set()
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION 2 — Pengaturan Mirror (shared untuk semua HP)
+        # ══════════════════════════════════════════════════════════════
         mir = _sec("Pengaturan Mirror", accent="#0A2A18")
-
-        # Row 1: Resolusi Bitrate FPS Orientasi
-        row1 = tk.Frame(mir, bg=CARD)
-        row1.pack(fill="x", pady=(0, 8))
 
         def _lbl_cb(parent, lbl, var, vals, w=8):
             tk.Label(parent, text=lbl, bg=CARD, fg=MUT,
@@ -3281,10 +4069,8 @@ class SynthexApp:
                          state="readonly", width=w).pack(
                 side="left", padx=(4, 14))
 
-        res_var = tk.StringVar(value="1024")
-        br_var  = tk.StringVar(value="8M")
-        fps_var = tk.StringVar(value="60")
-        ori_var = tk.StringVar(value="Auto")
+        row1 = tk.Frame(mir, bg=CARD)
+        row1.pack(fill="x", pady=(0, 10))
         _lbl_cb(row1, "Resolusi:", res_var,
                 ["480", "720", "1024", "1280", "1920"], w=6)
         _lbl_cb(row1, "Bitrate:",  br_var,
@@ -3294,219 +4080,202 @@ class SynthexApp:
         _lbl_cb(row1, "Orientasi:", ori_var,
                 ["Auto", "Portrait", "Landscape"],      w=9)
 
-        # Row 2: checkboxes
         row2 = tk.Frame(mir, bg=CARD)
-        row2.pack(fill="x", pady=(0, 10))
-        stay_var  = tk.BooleanVar(value=True)
-        touch_var = tk.BooleanVar(value=False)
-        top_var   = tk.BooleanVar(value=True)
-        full_var  = tk.BooleanVar(value=False)
-        audio_var = tk.BooleanVar(value=False)
-        bord_var  = tk.BooleanVar(value=True)
+        row2.pack(fill="x", pady=(0, 12))
         for _txt, _v in [
-            ("Stay Awake",    stay_var),
-            ("Show Touches",  touch_var),
-            ("Always On Top", top_var),
-            ("Fullscreen",    full_var),
-            ("No Audio",      audio_var),
-            ("Window Border", bord_var),
+            ("Stay Awake", stay_var), ("Show Touches", touch_var),
+            ("Always On Top", top_var), ("No Audio", audio_var),
         ]:
             tk.Checkbutton(row2, text=_txt, variable=_v,
                            bg=CARD, fg=FG, selectcolor=CARD2,
                            activebackground=CARD, activeforeground=FG,
-                           font=("Segoe UI", 9)).pack(
-                side="left", padx=(0, 12))
+                           font=("Segoe UI", 9)).pack(side="left", padx=(0, 14))
 
-        # scrcpy status bar
-        sbar = tk.Frame(mir, bg="#0E0E1C", padx=10, pady=7)
-        sbar.pack(fill="x", pady=(0, 10))
-        scrcpy_sv  = tk.StringVar(value="scrcpy: memeriksa...")
-        scrcpy_lbl = tk.Label(sbar, textvariable=scrcpy_sv,
-                              bg="#0E0E1C", fg=MUT,
-                              font=("Segoe UI", 8))
-        scrcpy_lbl.pack(side="left", fill="x", expand=True)
-        dl_sv = tk.StringVar(value="")
-        tk.Label(sbar, textvariable=dl_sv, bg="#0E0E1C", fg=YEL,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(6, 0))
-
-        def _upd_scrcpy():
-            if self._scrcpy and self._scrcpy.available:
-                scrcpy_sv.set("scrcpy: ditemukan")
-                scrcpy_lbl.configure(fg=GRN)
-            else:
-                scrcpy_sv.set("scrcpy: belum ada — klik Download")
-                scrcpy_lbl.configure(fg=YEL)
-
-        def _download_scrcpy():
-            dl_sv.set("Mengunduh...")
-
+        # ── Tool status bars ─────────────────────────────────────────────────
+        def _dl_zip(url, tdir, label_var, strip_root=True, on_done=None):
             def _do():
                 import urllib.request as _ur
                 import zipfile as _zf
-                import json as _js
                 import os as _o
-                import sys as _sy
-                base = (_o.path.dirname(_sy.executable)
-                        if getattr(_sy, "frozen", False)
-                        else _o.path.dirname(
-                            _o.path.dirname(_o.path.abspath(__file__))))
-                tdir = _o.path.join(base, "tools", "scrcpy")
                 _o.makedirs(tdir, exist_ok=True)
+                zpath = _o.path.join(tdir, "_download.zip")
                 try:
-                    req = _ur.Request(
-                        "https://api.github.com/repos/Genymobile/scrcpy"
-                        "/releases/latest",
-                        headers={"User-Agent": "Synthex"})
-                    with _ur.urlopen(req, timeout=15) as r:
-                        info = _js.loads(r.read())
-                    asset = next(
-                        (a for a in info.get("assets", [])
-                         if "win64" in a["name"]
-                         and a["name"].endswith(".zip")), None)
-                    if not asset:
-                        if self._root:
-                            self._root.after(
-                                0, lambda: dl_sv.set("Asset tidak ditemukan."))
-                        return
-                    url  = asset["browser_download_url"]
-                    name = asset["name"]
-                    size = asset.get("size", 0)
+                    def _reporthook(count, bs, total):
+                        if total > 0 and self._root:
+                            pct = min(int(count * bs * 100 / total), 99)
+                            self._root.after(0, lambda p=pct:
+                                label_var.set("Mengunduh {}%...".format(p)))
+                    _ur.urlretrieve(url, zpath, reporthook=_reporthook)
                     if self._root:
-                        self._root.after(0, lambda: dl_sv.set(
-                            "Mengunduh {:.0f} MB...".format(
-                                size / 1024 / 1024)))
-                    zpath = _o.path.join(tdir, name)
-                    _ur.urlretrieve(url, zpath)
-                    if self._root:
-                        self._root.after(0, lambda: dl_sv.set(
-                            "Mengekstrak..."))
+                        self._root.after(0, lambda: label_var.set("Mengekstrak..."))
                     with _zf.ZipFile(zpath, "r") as z:
                         for m in z.namelist():
                             parts = m.split("/", 1)
-                            tgt = parts[1] if len(parts) > 1 else parts[0]
+                            tgt = (parts[1] if strip_root and len(parts) > 1
+                                   else parts[0])
                             if not tgt:
                                 continue
                             dest = _o.path.join(tdir, tgt)
                             if m.endswith("/"):
                                 _o.makedirs(dest, exist_ok=True)
                             else:
-                                _o.makedirs(_o.path.dirname(dest),
-                                            exist_ok=True)
-                                with z.open(m) as src, \
-                                     open(dest, "wb") as out:
+                                _o.makedirs(_o.path.dirname(dest), exist_ok=True)
+                                with z.open(m) as src, open(dest, "wb") as out:
                                     out.write(src.read())
                     _o.remove(zpath)
-                    from modules.remote_control import _find_scrcpy
-                    if self._scrcpy:
-                        self._scrcpy.path = _find_scrcpy()
                     if self._root:
-                        self._root.after(0, _upd_scrcpy)
-                        self._root.after(
-                            0, lambda: dl_sv.set("Selesai!"))
+                        self._root.after(0, lambda: label_var.set("Selesai!"))
+                    if on_done:
+                        on_done()
                 except Exception as ex:
-                    _msg = str(ex)[:60]
                     if self._root:
-                        self._root.after(
-                            0, lambda: dl_sv.set("Gagal: " + _msg))
-
+                        self._root.after(0, lambda e=str(ex)[:60]:
+                                         label_var.set("Gagal: " + e))
             _thr.Thread(target=_do, daemon=True).start()
 
-        tk.Button(sbar, text="Download scrcpy otomatis",
+        def _tools_base():
+            import sys as _sy, os as _o
+            return (_o.path.dirname(_sy.executable)
+                    if getattr(_sy, "frozen", False)
+                    else _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
+
+        tools_bar = tk.Frame(mir, bg="#0E0E1C", padx=10, pady=8)
+        tools_bar.pack(fill="x")
+
+        scrcpy_sv = tk.StringVar(value="scrcpy: memeriksa...")
+        scrcpy_lbl = tk.Label(tools_bar, textvariable=scrcpy_sv,
+                              bg="#0E0E1C", fg=MUT, font=("Segoe UI", 8))
+        scrcpy_lbl.pack(side="left")
+
+        dl_sv = tk.StringVar(value="")
+        tk.Label(tools_bar, textvariable=dl_sv,
+                 bg="#0E0E1C", fg=YEL,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+
+        adb_sv = tk.StringVar(value="  |  ADB: memeriksa...")
+        adb_lbl = tk.Label(tools_bar, textvariable=adb_sv,
+                           bg="#0E0E1C", fg=MUT, font=("Segoe UI", 8))
+        adb_lbl.pack(side="left", padx=(6, 0))
+
+        def _upd_scrcpy():
+            if self._scrcpy and self._scrcpy.available:
+                scrcpy_sv.set("scrcpy: siap")
+                scrcpy_lbl.configure(fg=GRN)
+                for sm in self._scrcpy_map.values():
+                    sm.path = self._scrcpy.path
+            else:
+                scrcpy_sv.set("scrcpy: belum ada")
+                scrcpy_lbl.configure(fg=YEL)
+
+        def _download_scrcpy():
+            dl_sv.set("Mengunduh scrcpy...")
+            SCRCPY_URL = ("https://github.com/Genymobile/scrcpy/releases/"
+                          "download/v3.1/scrcpy-win64-v3.1.zip")
+            tdir = os.path.join(_tools_base(), "tools", "scrcpy")
+            def _after():
+                from modules.remote_control import _find_scrcpy
+                if self._scrcpy:
+                    self._scrcpy.path = _find_scrcpy()
+                if self._root:
+                    self._root.after(0, _upd_scrcpy)
+            _dl_zip(SCRCPY_URL, tdir, dl_sv, strip_root=True, on_done=_after)
+
+        def _download_adb():
+            adb_sv.set("  |  ADB: mengunduh...")
+            ADB_URL = ("https://dl.google.com/android/repository/"
+                       "platform-tools-latest-windows.zip")
+            tdir = os.path.join(_tools_base(), "tools", "platform-tools")
+            def _after():
+                from modules.remote_control import _find_adb
+                if self._adb:
+                    self._adb.adb = _find_adb()
+                if self._root:
+                    self._root.after(0, lambda: [
+                        adb_sv.set("  |  ADB: siap"),
+                        adb_lbl.configure(fg=GRN),
+                        _refresh_devs() if self._adb and self._adb.available else None,
+                    ])
+            _dl_zip(ADB_URL, tdir, adb_sv, strip_root=True, on_done=_after)
+
+        dl_btns = tk.Frame(tools_bar, bg="#0E0E1C")
+        dl_btns.pack(side="right")
+        tk.Button(dl_btns, text="Download scrcpy",
                   bg="#2A1050", fg="white",
-                  font=("Segoe UI", 8, "bold"),
-                  padx=10, pady=4,
-                  command=_download_scrcpy, **_FB).pack(side="right")
+                  font=("Segoe UI", 8), padx=8, pady=4,
+                  command=_download_scrcpy, **_FB).pack(side="left", padx=(0, 4))
+        tk.Button(dl_btns, text="Download ADB",
+                  bg="#103020", fg="white",
+                  font=("Segoe UI", 8), padx=8, pady=4,
+                  command=_download_adb, **_FB).pack(side="left")
 
-        # Mirror start / stop buttons
-        ctrl = tk.Frame(mir, bg=CARD)
-        ctrl.pack(fill="x")
-        mir_sv = tk.StringVar(value="")
-        tk.Label(mir, textvariable=mir_sv, bg=CARD, fg=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
+        # ── Screenshot button ────────────────────────────────────────────────
+        ss_row = tk.Frame(mir, bg=CARD)
+        ss_row.pack(fill="x", pady=(8, 0))
+        ss_sv = tk.StringVar(value="")
+        tk.Label(ss_row, textvariable=ss_sv, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left")
 
-        start_btn = tk.Button(ctrl, text="  Mulai Mirror",
-                              bg=GRN, fg="white",
-                              font=("Segoe UI", 12, "bold"),
-                              padx=22, pady=10, **_FB)
-        start_btn.pack(side="left", padx=(0, 10))
-        stop_btn = tk.Button(ctrl, text="  Stop",
-                             bg=RED, fg="white",
-                             font=("Segoe UI", 12, "bold"),
-                             padx=18, pady=10,
-                             state="disabled", **_FB)
-        stop_btn.pack(side="left")
-
-        def _start_mirror():
-            if self._scrcpy is None or not self._scrcpy.available:
-                mir_sv.set("scrcpy belum ada — klik Download dulu.")
+        def _take_screenshot():
+            if not self._adb or not self._adb.available:
+                ss_sv.set("ADB tidak tersedia.")
                 return
-            rot_map = {"Auto": None, "Portrait": 0, "Landscape": 1}
-            rot = rot_map.get(ori_var.get())
-            if rot is not None and hasattr(self._scrcpy, '_extra_args'):
-                pass  # orientation handled via start() override below
-            serial = dev_var.get()
-            try:
-                max_size = int(res_var.get())
-            except (ValueError, TypeError):
-                max_size = 1080
-            ok, msg = self._scrcpy.start(
-                serial=serial,
-                max_size=max_size,
-                bitrate=br_var.get(),
-                stay_awake=stay_var.get(),
-                show_touches=touch_var.get(),
-                always_on_top=top_var.get(),
-                no_audio=audio_var.get(),
-            )
-            mir_sv.set(msg)
-            if ok:
-                start_btn.configure(state="disabled")
-                stop_btn.configure(state="normal")
-                _poll_mirror()
-
-        def _stop_mirror():
-            if self._scrcpy:
-                self._scrcpy.stop()
-            start_btn.configure(state="normal")
-            stop_btn.configure(state="disabled")
-            mir_sv.set("Mirror dihentikan.")
-            if self._rem_poll_id:
-                try:
-                    self._root.after_cancel(self._rem_poll_id)
-                except Exception:
-                    pass
-                self._rem_poll_id = None
-
-        def _poll_mirror():
-            if self._scrcpy is None or not self._scrcpy.running:
-                try:
-                    start_btn.configure(state="normal")
-                    stop_btn.configure(state="disabled")
-                    mir_sv.set("Mirror selesai.")
-                except Exception:
-                    pass
+            devs_now = self._adb.list_devices()
+            serials = [d["serial"] for d in devs_now if d["state"] == "device"]
+            if not serials:
+                ss_sv.set("Tidak ada perangkat terhubung.")
                 return
-            self._rem_poll_id = self._root.after(800, _poll_mirror)
+            serial = serials[0]
+            import datetime as _dt2, os as _os2
+            ss_dir = os.path.join(os.path.expanduser("~"), "Pictures", "Synthex Screenshots")
+            _os2.makedirs(ss_dir, exist_ok=True)
+            fname = "ss_{}.png".format(
+                _dt2.datetime.now().strftime("%Y%m%d_%H%M%S"))
+            local = _os2.path.join(ss_dir, fname)
+            ss_sv.set("Mengambil screenshot...")
+            def _bg():
+                rc, _, err = self._adb._run(
+                    "-s", serial, "shell",
+                    "screencap", "-p", "/sdcard/_sx_ss.png")
+                if rc != 0:
+                    if self._root:
+                        self._root.after(0, lambda: ss_sv.set("Gagal: " + err[:60]))
+                    return
+                rc2, _, err2 = self._adb._run(
+                    "-s", serial, "pull", "/sdcard/_sx_ss.png", local,
+                    timeout=15)
+                if rc2 == 0:
+                    if self._root:
+                        self._root.after(0, lambda: ss_sv.set(
+                            "Tersimpan: {}".format(local)))
+                    import subprocess as _sp
+                    _sp.Popen(["explorer", "/select,", local],
+                              creationflags=_sp.CREATE_NO_WINDOW)
+                else:
+                    if self._root:
+                        self._root.after(0, lambda: ss_sv.set("Pull gagal: " + err2[:60]))
+            _thr.Thread(target=_bg, daemon=True).start()
 
-        start_btn.configure(command=_start_mirror)
-        stop_btn.configure(command=_stop_mirror)
-        if self._scrcpy and self._scrcpy.running:
-            start_btn.configure(state="disabled")
-            stop_btn.configure(state="normal")
-            _poll_mirror()
+        tk.Button(ss_row, text="\U0001f4f7  Screenshot HP",
+                  bg="#1A3A5A", fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_take_screenshot).pack(side="right")
 
-        # ── Init ADB in background (no lag) ────────────────────────────────
+        # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
             from modules.remote_control import AdbManager, ScrcpyManager
             if self._adb is None:
                 self._adb    = AdbManager()
                 self._scrcpy = ScrcpyManager(self._adb)
-            # Update UI on main thread
             def _after():
                 if self._adb.available:
+                    adb_sv.set("  |  ADB: siap")
+                    adb_lbl.configure(fg=GRN)
                     _refresh_devs()
                 else:
-                    status_var.set("adb tidak ditemukan")
+                    adb_sv.set("  |  ADB: tidak ditemukan")
+                    adb_lbl.configure(fg=YEL)
+                    status_var.set("ADB tidak ditemukan — klik Download")
                     dot.configure(fg=RED)
                 _upd_scrcpy()
             if self._root:
@@ -3514,6 +4283,695 @@ class SynthexApp:
 
         _thr.Thread(target=_init_adb, daemon=True).start()
 
+        return f
+
+    # ================================================================
+    #  CHAT PAGE
+    # ================================================================
+
+    def _pg_chat(self):
+        import threading as _thr
+        from datetime import datetime as _dt
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Chat", "Ngobrol dengan pengguna Synthex yang sedang online")
+
+        # ── Layout: sidebar kiri (online users) + area chat kanan ───────────
+        body = tk.Frame(f, bg=BG)
+        body.pack(fill="both", expand=True, padx=20, pady=(8, 16))
+
+        # ── Left: online users ───────────────────────────────────────────────
+        left = tk.Frame(body, bg=CARD, width=190)
+        left.pack(side="left", fill="y", padx=(0, 12))
+        left.pack_propagate(False)
+
+        tk.Frame(left, bg="#7C3AED", height=4).pack(fill="x")
+        tk.Label(left, text="Online Sekarang", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9, "bold"),
+                 padx=12, pady=8).pack(anchor="w")
+        tk.Frame(left, bg=CARD2, height=1).pack(fill="x")
+
+        users_frame = tk.Frame(left, bg=CARD)
+        users_frame.pack(fill="both", expand=True, pady=4)
+
+        online_count_var = tk.StringVar(value="")
+        tk.Label(left, textvariable=online_count_var, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 7), padx=12, pady=4).pack(anchor="w")
+
+        # ── Right: messages + input ──────────────────────────────────────────
+        right = tk.Frame(body, bg=CARD)
+        right.pack(side="left", fill="both", expand=True)
+
+        tk.Frame(right, bg="#1A0840", height=4).pack(fill="x")
+
+        # Messages area (Text widget, read-only)
+        msg_area = tk.Text(right, bg="#0F0F1C", fg=FG,
+                           font=("Segoe UI", 9),
+                           relief="flat", bd=0,
+                           wrap="word", state="disabled",
+                           padx=12, pady=8,
+                           selectbackground=ACC)
+        msg_sb = ttk.Scrollbar(right, command=msg_area.yview)
+        msg_area.configure(yscrollcommand=msg_sb.set)
+        msg_sb.pack(side="right", fill="y")
+        msg_area.pack(fill="both", expand=True)
+
+        # Tags for message styling
+        msg_area.tag_configure("time",    foreground=MUT,        font=("Segoe UI", 7))
+        msg_area.tag_configure("me",      foreground="#7C3AED",  font=("Segoe UI", 9, "bold"))
+        msg_area.tag_configure("other",   foreground="#0EA5E9",  font=("Segoe UI", 9, "bold"))
+        msg_area.tag_configure("system",  foreground=YEL,        font=("Segoe UI", 8, "italic"))
+        msg_area.tag_configure("text",    foreground=FG,         font=("Segoe UI", 9))
+        msg_area.tag_configure("err",     foreground=RED,        font=("Segoe UI", 8, "italic"))
+        msg_area.tag_configure("mention", foreground="#FFD700",  font=("Segoe UI", 9, "bold"),
+                               background="#2A1A00")
+
+        # Input row
+        inp_row = tk.Frame(right, bg="#16162A", padx=10, pady=8)
+        inp_row.pack(fill="x")
+        inp_var = tk.StringVar()
+        inp_entry = tk.Entry(inp_row, textvariable=inp_var,
+                             bg="#0F0F1C", fg=FG, insertbackground=FG,
+                             relief="flat", font=("Segoe UI", 10),
+                             bd=6)
+        inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        send_btn = tk.Button(inp_row, text="Kirim",
+                             bg="#7C3AED", fg="white",
+                             font=("Segoe UI", 9, "bold"),
+                             padx=16, pady=5,
+                             relief="flat", bd=0, cursor="hand2")
+        send_btn.pack(side="left")
+
+        status_var = tk.StringVar(value="")
+        tk.Label(right, textvariable=status_var, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 7), pady=2).pack(anchor="e", padx=8)
+
+        # ── Helpers ─────────────────────────────────────────────────────────
+        _my_email = self._email or ""
+        _shown_keys = set()
+        _online_names = []  # list of username strings (email prefix) currently online
+
+        # @mention autocomplete popup
+        _mention_popup = [None]  # mutable container for the Toplevel
+
+        def _close_mention_popup():
+            if _mention_popup[0]:
+                try: _mention_popup[0].destroy()
+                except Exception: pass
+                _mention_popup[0] = None
+
+        def _on_inp_key(event):
+            val = inp_var.get()
+            # Find last @ token
+            import re as _re2
+            m = _re2.search(r'@(\w*)$', val)
+            if not m:
+                _close_mention_popup()
+                return
+            prefix = m.group(1).lower()
+            matches = [n for n in _online_names
+                       if n.lower().startswith(prefix) and n != _my_email.split("@")[0]]
+            if not matches:
+                _close_mention_popup()
+                return
+            _close_mention_popup()
+            popup = tk.Toplevel(self._root)
+            popup.overrideredirect(True)
+            popup.configure(bg="#1A1A2E")
+            _mention_popup[0] = popup
+            x = inp_entry.winfo_rootx()
+            y = inp_entry.winfo_rooty() - len(matches) * 26 - 4
+            popup.geometry("+{}+{}".format(x, y))
+            for name in matches[:5]:
+                def _pick(n=name):
+                    cur = inp_var.get()
+                    new_val = _re2.sub(r'@\w*$', "@{} ".format(n), cur)
+                    inp_var.set(new_val)
+                    inp_entry.icursor(len(new_val))
+                    _close_mention_popup()
+                    inp_entry.focus_set()
+                btn = tk.Button(popup, text="@{}".format(name),
+                                bg="#1A1A2E", fg="#FFD700",
+                                font=("Segoe UI", 9), relief="flat", bd=0,
+                                padx=10, pady=3, cursor="hand2",
+                                command=_pick)
+                btn.pack(fill="x")
+        inp_entry.bind("<KeyRelease>", _on_inp_key)
+        inp_entry.bind("<Escape>", lambda e: _close_mention_popup())
+
+        def _append(sender, text, ts, key, is_me=False, system=False, error=False):
+            if key in _shown_keys:
+                return
+            _shown_keys.add(key)
+            msg_area.configure(state="normal")
+            try:
+                t = _dt.fromtimestamp(ts).strftime("%H:%M")
+            except Exception:
+                t = ""
+            if system:
+                msg_area.insert("end", "  [{}] {}\n".format(t, text), "system")
+            elif error:
+                msg_area.insert("end", "  {}\n".format(text), "err")
+            else:
+                import re as _re
+                name_tag = "me" if is_me else "other"
+                msg_area.insert("end", "[{}] ".format(t), "time")
+                msg_area.insert("end", "{}: ".format(sender), name_tag)
+                _my_name = _my_email.split("@")[0].lower()
+                # Inline @mention parsing
+                _segs = _re.split(r'(@\w+)', text)
+                for _seg in _segs:
+                    if _seg.startswith("@") and _seg[1:].lower() == _my_name:
+                        msg_area.insert("end", _seg, "mention")
+                    else:
+                        msg_area.insert("end", _seg, "text")
+                msg_area.insert("end", "\n")
+            msg_area.configure(state="disabled")
+            msg_area.see("end")
+
+        def _update_users(users):
+            _online_names.clear()
+            for u in users:
+                _online_names.append(u["email"].split("@")[0])
+            for w in users_frame.winfo_children():
+                w.destroy()
+            me_found = False
+            for u in users:
+                em = u["email"]
+                is_me = (em == _my_email)
+                if is_me:
+                    me_found = True
+                dot_clr = "#7C3AED" if is_me else GRN
+                name = em.split("@")[0]
+                label = "{} (kamu)".format(name) if is_me else name
+                row = tk.Frame(users_frame, bg=CARD)
+                row.pack(fill="x", padx=8, pady=2)
+                tk.Label(row, text="\u25cf", bg=CARD, fg=dot_clr,
+                         font=("Segoe UI", 10)).pack(side="left")
+                tk.Label(row, text=label, bg=CARD, fg=FG,
+                         font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
+            if not me_found and _my_email:
+                row = tk.Frame(users_frame, bg=CARD)
+                row.pack(fill="x", padx=8, pady=2)
+                tk.Label(row, text="\u25cf", bg=CARD, fg="#7C3AED",
+                         font=("Segoe UI", 10)).pack(side="left")
+                tk.Label(row, text="{} (kamu)".format(_my_email.split("@")[0]),
+                         bg=CARD, fg=FG,
+                         font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
+            online_count_var.set("{} online".format(
+                len(users) + (0 if me_found else 1)))
+
+        def _fetch_messages_bg():
+            from modules.chat import fetch_messages
+            from auth.firebase_auth import get_valid_token, refresh_id_token
+            token = get_valid_token()
+            if not token:
+                return
+            msgs = fetch_messages(token, limit=80)
+            if msgs == "AUTH_EXPIRED":
+                refreshed = refresh_id_token()
+                if refreshed:
+                    msgs = fetch_messages(refreshed["idToken"], limit=80)
+            if not isinstance(msgs, list):
+                return
+            if self._root:
+                self._root.after(0, lambda m=msgs: _apply_messages(m))
+
+        def _apply_messages(msgs):
+            for m in msgs:
+                key  = m.get("_key", str(m.get("ts", "")))
+                em   = m.get("from", "")
+                name = m.get("name", em.split("@")[0] if em else "?")
+                text = m.get("text", "")
+                ts   = m.get("ts", 0)
+                if text:
+                    _append(name, text, ts, key, is_me=(em == _my_email))
+
+        def _fetch_users_bg():
+            from modules.chat import fetch_online_users, update_presence
+            from auth.firebase_auth import get_valid_token
+            token = get_valid_token()
+            if not token:
+                return
+            if _my_email:
+                update_presence(_my_email, token, online=True)
+            users = fetch_online_users(token)
+            if self._root:
+                self._root.after(0, lambda u=users: _update_users(u))
+
+        def _poll_messages():
+            if not self._root:
+                return
+            _thr.Thread(target=_fetch_messages_bg, daemon=True).start()
+            self._chat_poll_id = self._root.after(3000, _poll_messages)
+
+        def _poll_users():
+            if not self._root:
+                return
+            _thr.Thread(target=_fetch_users_bg, daemon=True).start()
+            self._chat_pres_id = self._root.after(20000, _poll_users)
+
+        # Broadcast watcher — check every 30s for master broadcasts
+        _last_broadcast_ts = [0.0]
+        def _fetch_broadcast_bg():
+            from modules.master_config import get_broadcast
+            from auth.firebase_auth import get_valid_token
+            tok = get_valid_token()
+            if not tok:
+                return
+            bc = get_broadcast(tok)
+            if not bc:
+                return
+            bc_ts = bc.get("ts", 0)
+            if bc_ts > _last_broadcast_ts[0] and bc_ts > _session_start:
+                _last_broadcast_ts[0] = bc_ts
+                msg = "📢 BROADCAST: {}".format(bc.get("message", ""))
+                if self._root:
+                    self._root.after(0, lambda m=msg, t=bc_ts: _append(
+                        "Master", m, t, "bc_{}".format(bc_ts), system=True))
+
+        def _poll_broadcast():
+            if not self._root:
+                return
+            _thr.Thread(target=_fetch_broadcast_bg, daemon=True).start()
+            self._root.after(30000, _poll_broadcast)
+
+        self._root.after(5000, _poll_broadcast)
+
+        def _send():
+            text = inp_var.get().strip()
+            if not text:
+                return
+            inp_var.set("")
+            inp_entry.focus()
+            def _bg():
+                from modules.chat import send_message
+                from auth.firebase_auth import get_valid_token
+                token = get_valid_token()
+                if not token:
+                    return
+                ok = send_message(_my_email, text, token)
+                if self._root:
+                    self._root.after(0, lambda: status_var.set(
+                        "" if ok else "Gagal kirim — cek koneksi"))
+
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        send_btn.configure(command=_send)
+        inp_entry.bind("<Return>", lambda e: _send())
+
+        # Stop polls when page is destroyed
+        def _on_destroy(e):
+            if e.widget is not f:
+                return
+            if self._chat_poll_id:
+                try:
+                    self._root.after_cancel(self._chat_poll_id)
+                except Exception:
+                    pass
+            if self._chat_pres_id:
+                try:
+                    self._root.after_cancel(self._chat_pres_id)
+                except Exception:
+                    pass
+        f.bind("<Destroy>", _on_destroy)
+
+        # ── Kick off ─────────────────────────────────────────────────────────
+        import time as _time_mod
+        _session_start = _time_mod.time()
+
+        # Wrap _apply_messages: filter ephemeral + badge + toast
+        _orig_apply = _apply_messages
+        _toaster = None
+        def _apply_messages(msgs):  # noqa: F811
+            nonlocal _toaster
+            new_msgs = []
+            for m in msgs:
+                key = m.get("_key", str(m.get("ts", "")))
+                if m.get("ts", 0) < _session_start:
+                    _shown_keys.add(key)
+                    continue
+                if key not in _shown_keys:
+                    new_msgs.append(m)
+            _orig_apply(msgs)
+            # Badge + toast only for messages while away from chat page
+            if new_msgs and self._cur != "chat":
+                new_count = len(new_msgs)
+                if self._root:
+                    self._root.after(0, lambda n=new_count: self._set_chat_badge(
+                        self._chat_unread + n))
+                # Windows toast notification
+                last = new_msgs[-1]
+                sender = last.get("name", last.get("from", "?").split("@")[0])
+                text   = last.get("text", "")[:60]
+                def _toast(s=sender, t=text, n=new_count):
+                    try:
+                        nonlocal _toaster
+                        if _toaster is None:
+                            from win10toast import ToastNotifier
+                            _toaster = ToastNotifier()
+                        title = "Chat Synthex ({} pesan baru)".format(n) if n > 1 \
+                                else "Chat Synthex"
+                        _toaster.show_toast(title, "{}: {}".format(s, t),
+                                            duration=5, threaded=True)
+                    except Exception:
+                        pass
+                _thr.Thread(target=_toast, daemon=True).start()
+
+        _append("Synthex", "Selamat datang di chat! Hanya pesan baru yang tampil.",
+                0, "__welcome__", system=True)
+        _thr.Thread(target=_fetch_messages_bg, daemon=True).start()
+        _thr.Thread(target=_fetch_users_bg,    daemon=True).start()
+        self._root.after(3000,  _poll_messages)
+        self._root.after(20000, _poll_users)
+        inp_entry.focus()
+
+        return f
+
+    # ================================================================
+    #  BLOG PAGE
+    # ================================================================
+
+    def _pg_blog(self):
+        import threading as _thr
+        from datetime import datetime as _dt
+
+        ADMIN = "yohanesnzzz777@gmail.com"
+        _is_admin = (self._email == ADMIN)
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "Blog", "Artikel & update dari komunitas Synthex")
+
+        body = tk.Frame(f, bg=BG)
+        body.pack(fill="both", expand=True, padx=20, pady=(8, 16))
+
+        # ── Left: post list ──────────────────────────────────────────────────
+        left = tk.Frame(body, bg=CARD, width=260)
+        left.pack(side="left", fill="y", padx=(0, 12))
+        left.pack_propagate(False)
+
+        tk.Frame(left, bg="#0EA5E9", height=4).pack(fill="x")
+
+        top_bar = tk.Frame(left, bg=CARD, padx=12, pady=8)
+        top_bar.pack(fill="x")
+        tk.Label(top_bar, text="Semua Post", bg=CARD, fg=FG,
+                 font=("Segoe UI", 10, "bold")).pack(side="left")
+        if _is_admin:
+            tk.Button(top_bar, text="+ Tulis",
+                      bg="#0EA5E9", fg="white",
+                      font=("Segoe UI", 8, "bold"), padx=8, pady=3,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda: _open_editor()).pack(side="right")
+
+        tk.Frame(left, bg=CARD2, height=1).pack(fill="x")
+
+        list_canvas = tk.Canvas(left, bg=CARD, highlightthickness=0)
+        list_sb = ttk.Scrollbar(left, command=list_canvas.yview)
+        list_sb.pack(side="right", fill="y")
+        list_canvas.pack(fill="both", expand=True)
+        list_canvas.configure(yscrollcommand=list_sb.set)
+        list_frame = tk.Frame(list_canvas, bg=CARD)
+        list_wid = list_canvas.create_window((0, 0), window=list_frame, anchor="nw")
+        list_frame.bind("<Configure>",
+                        lambda e: list_canvas.configure(scrollregion=list_canvas.bbox("all")))
+        list_canvas.bind("<Configure>",
+                         lambda e: list_canvas.itemconfig(list_wid, width=e.width))
+
+        # ── Right: post reader ───────────────────────────────────────────────
+        right = tk.Frame(body, bg=CARD)
+        right.pack(side="left", fill="both", expand=True)
+        tk.Frame(right, bg="#7C3AED", height=4).pack(fill="x")
+
+        reader = tk.Text(right, bg="#0A0A18", fg=FG,
+                         font=("Segoe UI", 10),
+                         relief="flat", bd=0, wrap="word",
+                         state="disabled", padx=20, pady=16,
+                         selectbackground=ACC)
+        reader_sb = ttk.Scrollbar(right, command=reader.yview)
+        reader.configure(yscrollcommand=reader_sb.set)
+        reader_sb.pack(side="right", fill="y")
+        reader.pack(fill="both", expand=True)
+
+        reader.tag_configure("title",  foreground="white",      font=("Segoe UI", 16, "bold"))
+        reader.tag_configure("meta",   foreground=MUT,          font=("Segoe UI", 8))
+        reader.tag_configure("h1",     foreground="white",      font=("Segoe UI", 14, "bold"))
+        reader.tag_configure("h2",     foreground="#C0C0F0",    font=("Segoe UI", 12, "bold"))
+        reader.tag_configure("body",   foreground="#D0D0E0",    font=("Segoe UI", 10))
+        reader.tag_configure("bold",   foreground="white",      font=("Segoe UI", 10, "bold"))
+        reader.tag_configure("italic", foreground="#C8C8F0",    font=("Segoe UI", 10, "italic"))
+        reader.tag_configure("code",   foreground="#A0F0A0",    font=("Consolas", 9),
+                             background="#0A1A0A")
+        reader.tag_configure("link",   foreground="#4A9EFF",    font=("Segoe UI", 10, "underline"))
+        reader.tag_configure("empty",  foreground=MUT,          font=("Segoe UI", 10, "italic"))
+
+        def _render_markdown(text: str):
+            """Insert markdown-formatted text into the reader widget."""
+            import re as _re
+            for raw_line in text.split("\n"):
+                line = raw_line
+                if line.startswith("## "):
+                    reader.insert("end", line[3:] + "\n", "h2")
+                    continue
+                if line.startswith("# "):
+                    reader.insert("end", line[2:] + "\n", "h1")
+                    continue
+                # Inline: bold, italic, code, link — parse segment by segment
+                pattern = _re.compile(
+                    r'(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|\[([^\]]+)\]\([^)]+\))')
+                pos = 0
+                for m in pattern.finditer(line):
+                    if m.start() > pos:
+                        reader.insert("end", line[pos:m.start()], "body")
+                    full = m.group(0)
+                    if full.startswith("**"):
+                        reader.insert("end", m.group(2), "bold")
+                    elif full.startswith("*"):
+                        reader.insert("end", m.group(3), "italic")
+                    elif full.startswith("`"):
+                        reader.insert("end", m.group(4), "code")
+                    else:
+                        reader.insert("end", m.group(5), "link")
+                    pos = m.end()
+                reader.insert("end", line[pos:] + "\n", "body")
+
+        _posts = []
+
+        def _show_post(post):
+            reader.configure(state="normal")
+            reader.delete("1.0", "end")
+            ts = post.get("ts", 0)
+            try:
+                date_str = _dt.fromtimestamp(ts).strftime("%d %B %Y  %H:%M")
+            except Exception:
+                date_str = ""
+            reader.insert("end", post.get("title", "Tanpa Judul") + "\n", "title")
+            reader.insert("end", "oleh {}  ·  {}\n\n".format(
+                post.get("author_name", "?"), date_str), "meta")
+            _render_markdown(post.get("content", ""))
+            reader.configure(state="disabled")
+
+            # Admin: Edit + Delete buttons
+            for w in right.winfo_children():
+                if getattr(w, "_is_admin_btn", False):
+                    w.destroy()
+            if _is_admin:
+                admin_bar = tk.Frame(right, bg=CARD)
+                admin_bar._is_admin_btn = True
+                admin_bar.place(relx=1.0, rely=0.0, anchor="ne", x=-8, y=8)
+                edit_btn = tk.Button(admin_bar, text=" Edit ",
+                                     bg="#1D4E8F", fg="white",
+                                     font=("Segoe UI", 8), padx=8, pady=4,
+                                     relief="flat", bd=0, cursor="hand2",
+                                     command=lambda p=post: _open_editor(p))
+                edit_btn.pack(side="left", padx=(0, 4))
+                del_btn = tk.Button(admin_bar, text=" Hapus ",
+                                    bg="#7F1D1D", fg="white",
+                                    font=("Segoe UI", 8), padx=8, pady=4,
+                                    relief="flat", bd=0, cursor="hand2",
+                                    command=lambda p=post: _delete_post(p))
+                del_btn.pack(side="left")
+
+        def _show_empty():
+            reader.configure(state="normal")
+            reader.delete("1.0", "end")
+            reader.insert("end", "\n\nBelum ada post.\n", "empty")
+            if _is_admin:
+                reader.insert("end", "Klik '+ Tulis' untuk membuat post pertama.", "empty")
+            reader.configure(state="disabled")
+
+        def _render_list():
+            for w in list_frame.winfo_children():
+                w.destroy()
+            if not _posts:
+                tk.Label(list_frame, text="Belum ada post.", bg=CARD, fg=MUT,
+                         font=("Segoe UI", 9, "italic"),
+                         padx=12, pady=10).pack(anchor="w")
+                _show_empty()
+                return
+            for p in _posts:
+                ts = p.get("ts", 0)
+                try:
+                    date_s = _dt.fromtimestamp(ts).strftime("%d %b %Y")
+                except Exception:
+                    date_s = ""
+                card = tk.Frame(list_frame, bg=CARD, cursor="hand2")
+                card.pack(fill="x", pady=(0, 1))
+                tk.Frame(card, bg=CARD2, height=1).pack(fill="x")
+                inner = tk.Frame(card, bg=CARD, padx=12, pady=8)
+                inner.pack(fill="x")
+                tk.Label(inner, text=p.get("title", "")[:36],
+                         bg=CARD, fg=FG,
+                         font=("Segoe UI", 9, "bold"),
+                         wraplength=220, justify="left").pack(anchor="w")
+                tk.Label(inner, text=p.get("summary", "")[:70],
+                         bg=CARD, fg=MUT,
+                         font=("Segoe UI", 8),
+                         wraplength=220, justify="left").pack(anchor="w", pady=(2, 0))
+                tk.Label(inner, text=date_s, bg=CARD, fg="#5A5A7A",
+                         font=("Segoe UI", 7)).pack(anchor="w", pady=(4, 0))
+                for w in (card, inner):
+                    w.bind("<Button-1>", lambda e, post=p: _show_post(post))
+                    w.bind("<Enter>", lambda e, c=card: c.configure(bg="#18183A"))
+                    w.bind("<Leave>", lambda e, c=card: c.configure(bg=CARD))
+            # Auto-open first post
+            _show_post(_posts[0])
+
+        def _load_posts():
+            from modules.blog import fetch_posts
+            from auth.firebase_auth import get_valid_token
+            token = get_valid_token()
+            if not token:
+                return
+            posts = fetch_posts(token)
+            if self._root:
+                self._root.after(0, lambda p=posts: _apply_posts(p))
+
+        def _apply_posts(posts):
+            _posts.clear()
+            _posts.extend(posts)
+            _render_list()
+
+        def _delete_post(post):
+            from modules.blog import delete_post
+            from auth.firebase_auth import get_valid_token
+            def _bg():
+                token = get_valid_token()
+                if token:
+                    delete_post(post.get("_id", ""), token)
+                if self._root:
+                    self._root.after(0, lambda: _thr.Thread(
+                        target=_load_posts, daemon=True).start())
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _open_editor(post=None):
+            dlg = tk.Toplevel(self._root)
+            dlg.title("Tulis Post" if not post else "Edit Post")
+            dlg.configure(bg="#0D0D14")
+            dlg.geometry("640x520")
+            dlg.resizable(True, True)
+            dlg.attributes("-topmost", True)
+            tk.Frame(dlg, bg="#0EA5E9", height=4).pack(fill="x")
+            ed = tk.Frame(dlg, bg="#0D0D14", padx=20, pady=16)
+            ed.pack(fill="both", expand=True)
+            tk.Label(ed, text="Judul", bg="#0D0D14", fg=MUT,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+            title_var = tk.StringVar(value=post.get("title", "") if post else "")
+            tk.Entry(ed, textvariable=title_var,
+                     bg="#16162A", fg=FG, insertbackground=FG,
+                     relief="flat", font=("Segoe UI", 11), bd=6).pack(
+                fill="x", pady=(2, 10))
+            tk.Label(ed, text="Ringkasan (tampil di daftar)", bg="#0D0D14", fg=MUT,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+            sum_var = tk.StringVar(value=post.get("summary", "") if post else "")
+            tk.Entry(ed, textvariable=sum_var,
+                     bg="#16162A", fg=FG, insertbackground=FG,
+                     relief="flat", font=("Segoe UI", 9), bd=6).pack(
+                fill="x", pady=(2, 10))
+            tk.Label(ed, text="Isi Artikel", bg="#0D0D14", fg=MUT,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+            # Formatting toolbar
+            fmt_bar = tk.Frame(ed, bg="#1A1A2E")
+            fmt_bar.pack(fill="x", pady=(2, 0))
+
+            content_box = tk.Text(ed, bg="#16162A", fg=FG, insertbackground=FG,
+                                  relief="flat", font=("Segoe UI", 10),
+                                  bd=6, wrap="word", height=14)
+            content_box.pack(fill="both", expand=True, pady=(0, 12))
+            if post:
+                content_box.insert("1.0", post.get("content", ""))
+
+            def _wrap_sel(prefix, suffix=""):
+                try:
+                    sel = content_box.get(tk.SEL_FIRST, tk.SEL_LAST)
+                    content_box.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                    content_box.insert(tk.INSERT, prefix + sel + (suffix or prefix))
+                except tk.TclError:
+                    content_box.insert(tk.INSERT, prefix + (suffix or prefix))
+                content_box.focus_set()
+
+            def _insert_link():
+                try:
+                    sel = content_box.get(tk.SEL_FIRST, tk.SEL_LAST)
+                    content_box.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                    content_box.insert(tk.INSERT, "[{}](url)".format(sel))
+                except tk.TclError:
+                    content_box.insert(tk.INSERT, "[teks](url)")
+                content_box.focus_set()
+
+            for lbl, cmd in [
+                ("B",   lambda: _wrap_sel("**")),
+                ("I",   lambda: _wrap_sel("*")),
+                ("`",   lambda: _wrap_sel("`")),
+                ("H1",  lambda: _wrap_sel("# ", "")),
+                ("H2",  lambda: _wrap_sel("## ", "")),
+                ("🔗",  _insert_link),
+            ]:
+                tk.Button(fmt_bar, text=lbl, bg="#222236", fg=FG,
+                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          padx=9, pady=3, cursor="hand2",
+                          command=cmd).pack(side="left", padx=(0, 2), pady=3)
+
+            tk.Label(fmt_bar, text="Markdown didukung",
+                     bg="#1A1A2E", fg="#4A4A6A",
+                     font=("Segoe UI", 7)).pack(side="right", padx=8)
+            btn_row = tk.Frame(ed, bg="#0D0D14")
+            btn_row.pack(anchor="e")
+            def _submit():
+                title   = title_var.get().strip()
+                summary = sum_var.get().strip()
+                content = content_box.get("1.0", "end").strip()
+                if not title or not content:
+                    return
+                def _bg():
+                    from auth.firebase_auth import get_valid_token
+                    token = get_valid_token()
+                    if token:
+                        if post:
+                            from modules.blog import update_post
+                            update_post(post["_id"], title, content, summary, token)
+                        else:
+                            from modules.blog import create_post
+                            create_post(title, content, summary, ADMIN, token)
+                    if self._root:
+                        self._root.after(0, lambda: _thr.Thread(
+                            target=_load_posts, daemon=True).start())
+                dlg.destroy()
+                _thr.Thread(target=_bg, daemon=True).start()
+            btn_label = "Simpan Perubahan" if post else "Publikasikan"
+            tk.Button(btn_row, text=btn_label,
+                      bg="#0EA5E9", fg="white",
+                      font=("Segoe UI", 9, "bold"), padx=16, pady=6,
+                      relief="flat", cursor="hand2",
+                      command=_submit).pack(side="left", padx=(0, 8))
+            tk.Button(btn_row, text="Batal", bg="#1A1A2E", fg=MUT,
+                      font=("Segoe UI", 9), padx=12, pady=6,
+                      relief="flat", cursor="hand2",
+                      command=dlg.destroy).pack(side="left")
+            dlg.grab_set()
+
+        _show_empty()
+        _thr.Thread(target=_load_posts, daemon=True).start()
         return f
 
     def _pg_history(self):
@@ -3573,7 +5031,7 @@ class SynthexApp:
         backups = ab.list_backups()
 
         if not backups:
-            messagebox.showinfo("Restore", "No backups found.")
+            self._show_alert("Restore", "No backups found.")
             return
 
         dlg = tk.Toplevel(self._root)
@@ -3662,49 +5120,253 @@ class SynthexApp:
         rak = _card(f, "Rekening API")
         rak.pack(fill="x", padx=20, pady=(12, 0))
 
-        _lbl(rak, "API Key Validasi Rekening (Unlimited API)",
-             fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
-
-        rak_row = tk.Frame(rak, bg=CARD)
-        rak_row.pack(fill="x")
-
-        _cur_key = self.config.get("rekening_api_key", "")
-        rak_var  = tk.StringVar(value=_cur_key)
-        rak_entry = ttk.Entry(rak_row, textvariable=rak_var,
-                              font=("Segoe UI", 10), show="*", width=36)
-        rak_entry.pack(side="left", padx=(0, 6))
-
-        _show_key = {"v": False}
-        def _toggle_show():
-            _show_key["v"] = not _show_key["v"]
-            rak_entry.configure(show="" if _show_key["v"] else "*")
-            show_btn.configure(text="Hide" if _show_key["v"] else "Show")
-        show_btn = ttk.Button(rak_row, text="Show", command=_toggle_show, width=5)
-        show_btn.pack(side="left", padx=(0, 6))
-
-        rak_status = tk.StringVar(
-            value="Tersimpan" if _cur_key else "Belum diisi")
-        rak_status_lbl = _lbl(rak, "", fg=GRN if _cur_key else MUT,
-                              bg=CARD, font=("Segoe UI", 9))
-        rak_status_lbl.configure(textvariable=rak_status)
-        rak_status_lbl.pack(anchor="w", pady=(4, 0))
-
-        def _save_rak_key():
-            val = rak_var.get().strip()
-            self.config.set("rekening_api_key", val)
-            self.config.save()
-            if val:
-                rak_status.set("Tersimpan")
-                rak_status_lbl.configure(fg=GRN)
-            else:
-                rak_status.set("Belum diisi")
-                rak_status_lbl.configure(fg=MUT)
-
-        ttk.Button(rak, text="Save", style="Accent.TButton",
-                   command=_save_rak_key).pack(anchor="w", pady=(8, 0))
+        _rak_row = tk.Frame(rak, bg=CARD)
+        _rak_row.pack(anchor="w", fill="x")
+        _rak_has_key = bool(self.config.get("rekening_api_key", ""))
+        tk.Label(_rak_row, text="[*]", bg=CARD, fg=GRN if _rak_has_key else MUT,
+                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
+        _rak_info = tk.Frame(_rak_row, bg=CARD)
+        _rak_info.pack(side="left")
+        tk.Label(_rak_info, text="API Validasi Rekening",
+                 bg=CARD, fg=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        tk.Label(_rak_info,
+                 text="Aktif — disediakan oleh Synthex" if _rak_has_key else "Tidak aktif",
+                 bg=CARD, fg=GRN if _rak_has_key else RED,
+                 font=("Segoe UI", 9)).pack(anchor="w")
 
         # ---- Google Accounts card ------------------------------------
         self._build_google_accounts_card(f)
+
+        # ---- AI card --------------------------------------------------
+        from modules.ai_client import PROVIDER_LABELS, PROVIDER_NAMES
+        aic = _card(f, "🤖 AI Integration")
+        aic.pack(fill="x", padx=20, pady=(8, 0))
+
+        _ai_provider_var = tk.StringVar(
+            value=self.config.get("ai.provider", "openai"))
+        _ai_key_var = tk.StringVar(
+            value=self.config.get("ai.api_key", ""))
+        _ai_model_var = tk.StringVar(
+            value=self.config.get("ai.model", ""))
+        _ai_tokens_var = tk.StringVar(
+            value=str(self.config.get("ai.max_tokens", 800)))
+        _ai_sys_var = tk.StringVar(
+            value=self.config.get("ai.system_prompt",
+                "You are a helpful automation assistant. Answer concisely."))
+
+        # Provider row
+        pr_row = tk.Frame(aic, bg=CARD)
+        pr_row.pack(fill="x", pady=(0, 6))
+        tk.Label(pr_row, text="Provider:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+        _prov_disp = [PROVIDER_LABELS[PROVIDER_NAMES.index(
+            self.config.get("ai.provider", "openai")
+            if self.config.get("ai.provider", "openai") in PROVIDER_NAMES
+            else "openai")]]
+        _prov_mb = ttk.Combobox(pr_row, values=PROVIDER_LABELS,
+                                state="readonly", width=24,
+                                font=("Segoe UI", 9))
+        _prov_mb.set(_prov_disp[0])
+        _prov_mb.pack(side="left")
+
+        def _on_prov_change(*_):
+            idx = PROVIDER_LABELS.index(_prov_mb.get())
+            _ai_provider_var.set(PROVIDER_NAMES[idx])
+        _prov_mb.bind("<<ComboboxSelected>>", _on_prov_change)
+
+        # API Key row
+        key_row = tk.Frame(aic, bg=CARD)
+        key_row.pack(fill="x", pady=(0, 6))
+        tk.Label(key_row, text="API Key:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+        _key_entry = tk.Entry(key_row, textvariable=_ai_key_var,
+                              bg=CARD2, fg=FG, insertbackground=FG,
+                              relief="flat", font=("Segoe UI", 9), show="*",
+                              width=34)
+        _key_entry.pack(side="left")
+        _show_key = [False]
+        def _toggle_show():
+            _show_key[0] = not _show_key[0]
+            _key_entry.configure(show="" if _show_key[0] else "*")
+        tk.Button(key_row, text="👁", bg=CARD2, fg=MUT,
+                  relief="flat", bd=0, font=("Segoe UI", 9),
+                  padx=4, cursor="hand2",
+                  command=_toggle_show).pack(side="left", padx=(4, 0))
+
+        # Model + max tokens row
+        mod_row = tk.Frame(aic, bg=CARD)
+        mod_row.pack(fill="x", pady=(0, 6))
+        tk.Label(mod_row, text="Model (opsional):", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+        tk.Entry(mod_row, textvariable=_ai_model_var,
+                 bg=CARD2, fg=FG, insertbackground=FG,
+                 relief="flat", font=("Segoe UI", 9),
+                 width=22).pack(side="left")
+        tk.Label(mod_row, text="  Max tokens:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 4))
+        tk.Entry(mod_row, textvariable=_ai_tokens_var,
+                 bg=CARD2, fg=FG, insertbackground=FG,
+                 relief="flat", font=("Segoe UI", 9), width=6).pack(side="left")
+
+        # System prompt
+        tk.Label(aic, text="System Prompt default:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 2))
+        _sys_txt = tk.Text(aic, bg=CARD2, fg=FG, insertbackground=FG,
+                           relief="flat", font=("Segoe UI", 9),
+                           height=2, wrap="word")
+        _sys_txt.insert("1.0", _ai_sys_var.get())
+        _sys_txt.pack(fill="x", pady=(0, 8))
+
+        # Buttons row
+        ai_btn_row = tk.Frame(aic, bg=CARD)
+        ai_btn_row.pack(anchor="w", pady=(0, 4))
+        _ai_status = tk.StringVar(value="")
+        tk.Label(aic, textvariable=_ai_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        def _save_ai():
+            self.config.set("ai.provider", _ai_provider_var.get())
+            self.config.set("ai.api_key",  _ai_key_var.get().strip())
+            self.config.set("ai.model",    _ai_model_var.get().strip())
+            try:
+                self.config.set("ai.max_tokens", int(_ai_tokens_var.get()))
+            except ValueError:
+                pass
+            self.config.set("ai.system_prompt", _sys_txt.get("1.0", "end").strip())
+            self.config.save()
+            _ai_status.set("✓ Tersimpan")
+
+        def _test_ai():
+            _save_ai()
+            _ai_status.set("Menguji koneksi AI…")
+            def _bg():
+                try:
+                    from modules.ai_client import call_ai
+                    resp = call_ai(
+                        prompt="Reply with exactly: SYNTHEX_OK",
+                        provider=self.config.get("ai.provider", "openai"),
+                        api_key=self.config.get("ai.api_key", ""),
+                        model=self.config.get("ai.model", ""),
+                        system="",
+                        max_tokens=20,
+                    )
+                    msg = "✓ Terhubung! Response: {}".format(resp[:60])
+                except Exception as e:
+                    msg = "✗ Gagal: {}".format(str(e)[:80])
+                if self._root:
+                    self._root.after(0, lambda m=msg: _ai_status.set(m))
+            threading.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(ai_btn_row, text="💾 Simpan",
+                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_save_ai).pack(side="left", padx=(0, 8))
+        tk.Button(ai_btn_row, text="🔌 Test Koneksi",
+                  bg=CARD2, fg=FG, font=("Segoe UI", 9),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_test_ai).pack(side="left")
+
+        # ---- Update card ----------------------------------------------
+        upc = _card(f, "Pembaruan Aplikasi")
+        upc.pack(fill="x", padx=20, pady=(8, 0))
+        _cur_ver = self.config.get("app.version", "?")
+        _upd_status = tk.StringVar(value="Versi saat ini: v{}".format(_cur_ver))
+        _upd_lbl = tk.Label(upc, textvariable=_upd_status, bg=CARD, fg=MUT,
+                            font=("Segoe UI", 9))
+        _upd_lbl.pack(anchor="w", pady=(0, 6))
+        _upd_bar_frame = tk.Frame(upc, bg=CARD)
+        _upd_bar_frame.pack(anchor="w", fill="x", pady=(0, 4))
+        _upd_prog = ttk.Progressbar(_upd_bar_frame, mode="determinate",
+                                    length=200, maximum=100)
+
+        def _do_check_update(auto=False):
+            _upd_status.set("Memeriksa pembaruan…")
+            def _bg():
+                from modules.updater import get_latest_release, is_newer
+                rel = get_latest_release()
+                if not rel:
+                    if self._root:
+                        self._root.after(0, lambda: _upd_status.set(
+                            "Tidak bisa cek — periksa koneksi internet."))
+                    return
+                tag = rel["tag"]
+                local = self.config.get("app.version", "0")
+                if not is_newer(tag, local):
+                    if self._root:
+                        self._root.after(0, lambda: _upd_status.set(
+                            "✓ Kamu sudah pakai versi terbaru (v{})".format(local)))
+                    return
+                # Newer version available
+                if auto:
+                    if self._root:
+                        self._root.after(0, lambda t=tag: _prompt_update(t, rel["url"]))
+                    return
+                if self._root:
+                    self._root.after(0, lambda t=tag, u=rel["url"]: _prompt_update(t, u))
+            threading.Thread(target=_bg, daemon=True).start()
+
+        def _prompt_update(tag, url):
+            _upd_status.set("Versi baru tersedia: {} — unduh sekarang?".format(tag))
+            if self._show_confirm("Update Tersedia",
+                    "Versi {} sudah tersedia.\n"
+                    "Unduh dan install sekarang?\n\n"
+                    "Synthex akan restart otomatis setelah selesai.".format(tag)):
+                _do_download(url, tag)
+
+        def _do_download(url, tag):
+            _upd_status.set("Mengunduh {}…".format(tag))
+            _upd_prog.pack(side="left", padx=(0, 8))
+            _upd_prog["value"] = 0
+
+            def _prog(ratio):
+                if self._root:
+                    self._root.after(0, lambda r=ratio: _upd_prog.configure(
+                        value=int(r * 100)))
+
+            def _bg():
+                from modules.updater import download_and_replace
+                ok = download_and_replace(url, progress_cb=_prog)
+                if self._root:
+                    if ok:
+                        self._root.after(0, lambda: _upd_status.set(
+                            "✓ Selesai! Synthex akan restart sekarang…"))
+                        self._root.after(1500, self._root.destroy)
+                    else:
+                        self._root.after(0, lambda: _upd_status.set(
+                            "Gagal mengunduh. Coba lagi atau unduh manual dari GitHub."))
+                        self._root.after(0, _upd_prog.pack_forget)
+            threading.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(upc, text="🔄 Cek Pembaruan",
+                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_do_check_update).pack(anchor="w")
+
+        # Auto-check update on first open of settings (silent)
+        threading.Thread(target=lambda: _do_check_update(auto=True),
+                         daemon=True).start()
+
+        # ---- Appearance card -----------------------------------------
+        apc = _card(f, "Tampilan")
+        apc.pack(fill="x", padx=20, pady=(12, 0))
+        _cur_theme = self.config.get("ui.theme", "dark")
+        _theme_lbl = tk.Label(apc,
+            text="Tema saat ini: {}".format("Gelap 🌙" if _cur_theme == "dark" else "Terang ☀️"),
+            bg=CARD, fg=FG, font=("Segoe UI", 9))
+        _theme_lbl.pack(anchor="w", pady=(0, 6))
+        def _toggle_theme():
+            new_t = "light" if self.config.get("ui.theme", "dark") == "dark" else "dark"
+            self.config.set("ui.theme", new_t)
+            self.config.save()
+            _theme_lbl.configure(
+                text="Tema saat ini: {}".format("Gelap 🌙" if new_t == "dark" else "Terang ☀️"))
+            self._show_alert("Tema Diubah",
+                "Tema berhasil disimpan ke '{}'.\nRestart Synthex untuk menerapkan tema baru.".format(
+                    new_t), kind="info")
+        tk.Button(apc, text="Toggle Gelap / Terang",
+                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_toggle_theme).pack(anchor="w")
 
         # ---- Account card ---------------------------------------------
         ac = _card(f, "Account")
@@ -3732,6 +5394,1035 @@ class SynthexApp:
         h.setFormatter(logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S"))
         logging.getLogger().addHandler(h)
+        return f
+
+    # ================================================================
+    #  INBOX PAGE  (DM — all users)
+    # ================================================================
+
+    def _pg_inbox(self):
+        import threading as _thr
+        from datetime import datetime as _dt
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "📬 Inbox",
+                  "Percakapan langsung dengan Admin Synthex")
+
+        email = self._email or ""
+        token = self._token or ""
+
+        # ── Main layout: messages top, input bottom ───────────────────────────
+        main = tk.Frame(f, bg=BG)
+        main.pack(fill="both", expand=True, padx=18, pady=(0, 12))
+
+        # Messages area (scrollable canvas)
+        msg_sb = ttk.Scrollbar(main, orient="vertical")
+        msg_sb.pack(side="right", fill="y")
+        msg_cv = tk.Canvas(main, bg=BG, highlightthickness=0,
+                           yscrollcommand=msg_sb.set)
+        msg_cv.pack(side="left", fill="both", expand=True)
+        msg_sb.config(command=msg_cv.yview)
+
+        msg_inner = tk.Frame(msg_cv, bg=BG)
+        _mwid = msg_cv.create_window((0, 0), window=msg_inner, anchor="nw")
+        msg_inner.bind("<Configure>",
+                       lambda e: msg_cv.configure(scrollregion=msg_cv.bbox("all")))
+        msg_cv.bind("<Configure>",
+                    lambda e: msg_cv.itemconfig(_mwid, width=e.width))
+        msg_cv.bind_all("<MouseWheel>",
+                        lambda e: msg_cv.yview_scroll(int(-1*(e.delta/120)), "units"))
+
+        # Status / loading label
+        _status = tk.StringVar(value="Memuat pesan…")
+        status_lbl = tk.Label(msg_inner, textvariable=_status,
+                              bg=BG, fg=MUT, font=("Segoe UI", 9))
+        status_lbl.pack(pady=20)
+
+        def _render_messages(msgs):
+            for w in msg_inner.winfo_children():
+                w.destroy()
+            if not msgs:
+                tk.Label(msg_inner,
+                         text="Belum ada pesan dari Admin.\nPesan akan muncul di sini.",
+                         bg=BG, fg=MUT, font=("Segoe UI", 10),
+                         justify="center").pack(pady=60)
+                return
+
+            for m in msgs:
+                is_master = (m.get("from", "") == self.MASTER_EMAIL)
+                ts = m.get("ts", 0)
+                try:
+                    t_str = _dt.fromtimestamp(ts).strftime("%d %b  %H:%M")
+                except Exception:
+                    t_str = ""
+
+                row = tk.Frame(msg_inner, bg=BG, pady=4)
+                row.pack(fill="x", padx=12)
+
+                if is_master:
+                    # Admin message — left side, purple tint
+                    bubble_bg = "#1E1B4B"
+                    name_clr  = "#A78BFA"
+                    side      = "left"
+                    name_txt  = "👑 Admin"
+                else:
+                    # User reply — right side, dark green tint
+                    bubble_bg = "#052e16"
+                    name_clr  = "#34D399"
+                    side      = "right"
+                    name_txt  = "Kamu"
+
+                wrap_row = tk.Frame(row, bg=BG)
+                wrap_row.pack(anchor="w" if side == "left" else "e")
+
+                bubble = tk.Frame(wrap_row, bg=bubble_bg, padx=12, pady=8)
+                bubble.pack(side="left" if side == "left" else "right")
+
+                tk.Label(bubble, text=name_txt, bg=bubble_bg, fg=name_clr,
+                         font=("Segoe UI", 7, "bold")).pack(anchor="w")
+                tk.Label(bubble, text=m.get("message", ""),
+                         bg=bubble_bg, fg=FG,
+                         font=("Segoe UI", 10), wraplength=420,
+                         justify="left").pack(anchor="w", pady=(2, 0))
+                tk.Label(bubble, text=t_str, bg=bubble_bg, fg=MUT,
+                         font=("Segoe UI", 7)).pack(anchor="e", pady=(2, 0))
+
+            # Scroll to bottom
+            msg_cv.update_idletasks()
+            msg_cv.yview_moveto(1.0)
+
+        def _load():
+            try:
+                from modules.master_config import get_dm, mark_all_dm_read
+                msgs = get_dm(email, token)
+                if self._root:
+                    self._root.after(0, lambda m=msgs: _render_messages(m))
+                # Mark all read + clear badge
+                mark_all_dm_read(email, token)
+                if self._root:
+                    self._root.after(0, lambda: self._set_inbox_badge(0))
+            except Exception as ex:
+                if self._root:
+                    self._root.after(0, lambda: _status.set("Gagal memuat: {}".format(ex)))
+
+        # ── Input area ────────────────────────────────────────────────────────
+        sep = tk.Frame(f, bg="#1A1A2E", height=1)
+        sep.pack(fill="x", padx=18)
+
+        inp_area = tk.Frame(f, bg=BG, padx=18, pady=10)
+        inp_area.pack(fill="x")
+
+        inp_box = tk.Text(inp_area, bg=CARD2, fg=FG, insertbackground=FG,
+                          relief="flat", font=("Segoe UI", 10), height=3,
+                          wrap="word", bd=8)
+        inp_box.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        inp_box.insert("1.0", "")
+
+        def _send_reply(event=None):
+            msg = inp_box.get("1.0", "end").strip()
+            if not msg:
+                return "break"
+            inp_box.delete("1.0", "end")
+            def _bg():
+                try:
+                    from modules.master_config import reply_dm, get_dm
+                    reply_dm(email, msg, token)
+                    msgs = get_dm(email, token)
+                    if self._root:
+                        self._root.after(0, lambda m=msgs: _render_messages(m))
+                except Exception:
+                    pass
+            _thr.Thread(target=_bg, daemon=True).start()
+            return "break"
+
+        inp_box.bind("<Return>", lambda e: _send_reply() if not (e.state & 0x1) else None)
+
+        btn_col = tk.Frame(inp_area, bg=BG)
+        btn_col.pack(side="right")
+        tk.Button(btn_col, text="📨 Kirim",
+                  bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, padx=16, pady=10, cursor="hand2",
+                  command=_send_reply).pack(fill="x")
+        tk.Label(btn_col, text="Enter = kirim\nShift+Enter = baris baru",
+                 bg=BG, fg=MUT, font=("Segoe UI", 7)).pack(pady=(4, 0))
+
+        # Refresh button
+        def _refresh():
+            _status.set("Memuat…")
+            for w in msg_inner.winfo_children():
+                w.destroy()
+            _thr.Thread(target=_load, daemon=True).start()
+
+        tk.Button(f, text="🔄 Refresh",
+                  bg=CARD2, fg=FG, font=("Segoe UI", 8),
+                  relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
+                  command=_refresh).place(relx=1.0, x=-30, y=10, anchor="ne")
+
+        _thr.Thread(target=_load, daemon=True).start()
+        return f
+
+    # ================================================================
+    #  MASTER PANEL PAGE
+    # ================================================================
+
+    def _pg_master(self):
+        import threading as _thr
+        from datetime import datetime as _dt
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "👑 Master Panel",
+                  "Kontrol eksklusif — hanya akun {}".format(self.MASTER_EMAIL))
+
+        if self._email != self.MASTER_EMAIL:
+            tk.Label(f, text="Akses ditolak.", bg=BG, fg=RED,
+                     font=("Segoe UI", 14, "bold")).pack(pady=40)
+            return f
+
+        def _tok():
+            from auth.firebase_auth import get_valid_token
+            return get_valid_token()
+
+        # Scrollable body
+        _msb = ttk.Scrollbar(f, orient="vertical")
+        _msb.pack(side="right", fill="y")
+        _mcv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_msb.set)
+        _mcv.pack(side="left", fill="both", expand=True)
+        _msb.config(command=_mcv.yview)
+        body = tk.Frame(_mcv, bg=BG)
+        _mwid = _mcv.create_window((0,0), window=body, anchor="nw")
+        body.bind("<Configure>", lambda e: _mcv.configure(scrollregion=_mcv.bbox("all")))
+        _mcv.bind("<Configure>", lambda e: _mcv.itemconfig(_mwid, width=e.width))
+        _mcv.bind_all("<MouseWheel>", lambda e: _mcv.yview_scroll(int(-1*(e.delta/120)),"units"))
+
+        # ── Firebase Rules ───────────────────────────────────────────────────
+        rules_card = _card(body, "🔒 Firebase Security Rules")
+        rules_card.pack(fill="x", pady=(0, 12))
+        _rules_status = tk.StringVar(value="Auto-deploy rules saat master login aktif.")
+        tk.Label(rules_card, textvariable=_rules_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8), wraplength=580, justify="left").pack(
+            anchor="w", pady=(0, 6))
+
+        def _deploy_rules():
+            _rules_status.set("Mendeploy rules ke Firebase…")
+            def _bg():
+                from auth.rules_deployer import deploy_rules
+                ok, msg = deploy_rules()
+                if self._root:
+                    self._root.after(0, lambda m=msg: _rules_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(rules_card, text="🔒 Deploy Firebase Rules Sekarang",
+                  bg="#1A3A1A", fg=GRN, font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_deploy_rules).pack(anchor="w")
+
+        # Auto-deploy on first open
+        _thr.Thread(target=lambda: (
+            __import__('time').sleep(1),
+            self._root.after(0, _deploy_rules) if self._root else None
+        ), daemon=True).start()
+
+        # ── Rekening API URL ─────────────────────────────────────────────────
+        rek_card = _card(body, "🔗 Rekening API URL")
+        rek_card.pack(fill="x", pady=(0, 12))
+
+        _url_status = tk.StringVar(value="Memuat URL dari Firebase…")
+        tk.Label(rek_card, textvariable=_url_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        _url_var = tk.StringVar()
+        url_row = tk.Frame(rek_card, bg=CARD)
+        url_row.pack(fill="x", pady=(0, 8))
+        url_entry = tk.Entry(url_row, textvariable=_url_var,
+                             bg=CARD2, fg=FG, insertbackground=FG,
+                             relief="flat", font=("Segoe UI", 10), bd=6)
+        url_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        def _load_url():
+            from modules.master_config import get_rekening_url
+            from auth.firebase_auth import get_valid_token
+            tok = get_valid_token()
+            if not tok:
+                return
+            url = get_rekening_url(tok)
+            if self._root:
+                self._root.after(0, lambda u=url: (
+                    _url_var.set(u),
+                    _url_status.set("URL saat ini (dari Firebase):")))
+
+        def _save_url():
+            new_url = _url_var.get().strip()
+            if not new_url.startswith("http"):
+                self._show_alert("Error", "URL harus diawali http/https", kind="error")
+                return
+            _url_status.set("Menyimpan…")
+            def _bg():
+                from modules.master_config import set_rekening_url
+                from auth.firebase_auth import get_valid_token
+                tok = get_valid_token()
+                ok = set_rekening_url(new_url, tok) if tok else False
+                msg = ("✓ URL berhasil diupdate! Semua user akan pakai URL baru."
+                       if ok else "✗ Gagal menyimpan ke Firebase.")
+                if self._root:
+                    self._root.after(0, lambda m=msg: _url_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(url_row, text="💾 Simpan",
+                  bg=GRN, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=_save_url).pack(side="left")
+
+        _thr.Thread(target=_load_url, daemon=True).start()
+
+        tk.Label(rek_card,
+                 text="URL ini dipakai oleh SEMUA user Synthex untuk validasi rekening.\n"
+                      "Ganti di sini → langsung berlaku tanpa perlu update app.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w")
+
+        # ── Broadcast ────────────────────────────────────────────────────────
+        bc_card = _card(body, "📢 Broadcast ke Semua User")
+        bc_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(bc_card, text="Pesan broadcast akan muncul di Chat semua user yang online.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        bc_txt = tk.Text(bc_card, bg=CARD2, fg=FG, insertbackground=FG,
+                         relief="flat", font=("Segoe UI", 10), height=3, wrap="word")
+        bc_txt.pack(fill="x", pady=(0, 8))
+
+        _bc_status = tk.StringVar(value="")
+        tk.Label(bc_card, textvariable=_bc_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _send_broadcast():
+            msg = bc_txt.get("1.0", "end").strip()
+            if not msg:
+                return
+            _bc_status.set("Mengirim…")
+            def _bg():
+                from modules.master_config import send_broadcast
+                from auth.firebase_auth import get_valid_token
+                tok = get_valid_token()
+                ok = send_broadcast(msg, tok) if tok else False
+                res = ("✓ Broadcast terkirim! Semua user akan melihat di Chat."
+                       if ok else "✗ Gagal mengirim broadcast.")
+                if self._root:
+                    self._root.after(0, lambda r=res: (
+                        _bc_status.set(r),
+                        bc_txt.delete("1.0", "end") if ok else None))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(bc_card, text="📢 Kirim Broadcast",
+                  bg="#7C3AED", fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, padx=16, pady=8, cursor="hand2",
+                  command=_send_broadcast).pack(anchor="w")
+
+        # ── Online Users ─────────────────────────────────────────────────────
+        ou_card = _card(body, "👥 User Online Sekarang")
+        ou_card.pack(fill="x", pady=(0, 12))
+
+        _ou_status = tk.StringVar(value="Memuat…")
+        tk.Label(ou_card, textvariable=_ou_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        ou_frame = tk.Frame(ou_card, bg=CARD)
+        ou_frame.pack(fill="x")
+
+        def _load_users():
+            from modules.chat import fetch_online_users
+            from auth.firebase_auth import get_valid_token
+            tok = get_valid_token()
+            if not tok:
+                return
+            users = fetch_online_users(tok, stale_sec=120)
+            def _upd():
+                for w in ou_frame.winfo_children():
+                    w.destroy()
+                _ou_status.set("{} user online (terakhir aktif < 2 menit):".format(len(users)))
+                for u in users:
+                    em = u.get("email", "")
+                    ts = u.get("last_seen", 0)
+                    try:
+                        t_str = _dt.fromtimestamp(ts).strftime("%H:%M:%S")
+                    except Exception:
+                        t_str = "-"
+                    row = tk.Frame(ou_frame, bg=CARD, padx=10, pady=4)
+                    row.pack(fill="x")
+                    tk.Label(row, text="●", bg=CARD, fg=GRN,
+                             font=("Segoe UI", 9)).pack(side="left")
+                    tk.Label(row, text=em, bg=CARD, fg=FG,
+                             font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+                    tk.Label(row, text="last seen {}".format(t_str),
+                             bg=CARD, fg=MUT,
+                             font=("Segoe UI", 8)).pack(side="right")
+                if not users:
+                    tk.Label(ou_frame, text="Tidak ada user lain yang online.",
+                             bg=CARD, fg=MUT, font=("Segoe UI", 9),
+                             padx=10, pady=6).pack(anchor="w")
+            if self._root:
+                self._root.after(0, _upd)
+
+        def _refresh_users():
+            _ou_status.set("Memuat…")
+            _thr.Thread(target=_load_users, daemon=True).start()
+
+        tk.Button(ou_card, text="🔄 Refresh",
+                  bg=CARD2, fg=FG, font=("Segoe UI", 8),
+                  relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
+                  command=_refresh_users).pack(anchor="w", pady=(0, 8))
+
+        _thr.Thread(target=_load_users, daemon=True).start()
+
+        # ── Announcement Bar ─────────────────────────────────────────────────
+        ann_card = _card(body, "📣 Announcement Bar")
+        ann_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(ann_card, text="Tampilkan pesan di bagian atas app semua user.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        _ann_en = tk.BooleanVar(value=False)
+        ann_row1 = tk.Frame(ann_card, bg=CARD)
+        ann_row1.pack(fill="x", pady=(0, 4))
+        tk.Label(ann_row1, text="Aktif:", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Checkbutton(ann_row1, variable=_ann_en, bg=CARD, fg=FG,
+                       selectcolor=CARD2, activebackground=CARD,
+                       font=("Segoe UI", 9)).pack(side="left", padx=4)
+
+        _ann_clr = tk.StringVar(value="#B45309")
+        clr_opts = ["#B45309", "#1E40AF", "#065F46", "#7C2D12", "#6B21A8", "#BE123C"]
+        ann_row2 = tk.Frame(ann_card, bg=CARD)
+        ann_row2.pack(fill="x", pady=(0, 4))
+        tk.Label(ann_row2, text="Warna:", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.OptionMenu(ann_row2, _ann_clr, *clr_opts).configure(
+            bg=CARD2, fg=FG, relief="flat", highlightthickness=0,
+            font=("Segoe UI", 9), activebackground=ACC)
+        tk.OptionMenu(ann_row2, _ann_clr, *clr_opts).pack(side="left", padx=4)
+
+        ann_txt = tk.Entry(ann_card, bg=CARD2, fg=FG, insertbackground=FG,
+                           relief="flat", font=("Segoe UI", 10), bd=6)
+        ann_txt.pack(fill="x", pady=(0, 6))
+        ann_txt.insert(0, "Tulis teks pengumuman di sini…")
+
+        _ann_status = tk.StringVar(value="")
+        tk.Label(ann_card, textvariable=_ann_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _set_ann():
+            txt  = ann_txt.get().strip()
+            clr  = _ann_clr.get()
+            enab = _ann_en.get()
+            if not txt:
+                _ann_status.set("✗ Teks tidak boleh kosong.")
+                return
+            _ann_status.set("Menyimpan…")
+            def _bg():
+                from modules.master_config import set_announcement
+                ok = set_announcement(txt, clr, enab, _tok())
+                m = "✓ Announcement diupdate!" if ok else "✗ Gagal."
+                if self._root:
+                    self._root.after(0, lambda: _ann_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _load_ann():
+            from modules.master_config import get_announcement
+            tok = _tok()
+            if not tok:
+                return
+            # Read raw (not filtered by enabled)
+            from auth.firebase_auth import get_valid_token
+            import requests, certifi
+            RTDB = "https://synthex-yohn18-default-rtdb.asia-southeast1.firebasedatabase.app"
+            try:
+                r = requests.get(f"{RTDB}/master_config/announcement.json?auth={tok}",
+                                 timeout=8, verify=certifi.where())
+                d = r.json() if r.ok else None
+            except Exception:
+                d = None
+            if d and isinstance(d, dict):
+                def _fill():
+                    ann_txt.delete(0, "end")
+                    ann_txt.insert(0, d.get("text", ""))
+                    _ann_clr.set(d.get("color", "#B45309"))
+                    _ann_en.set(bool(d.get("enabled", False)))
+                    _ann_status.set("Dimuat dari Firebase.")
+                if self._root:
+                    self._root.after(0, _fill)
+
+        tk.Button(ann_card, text="💾 Simpan Announcement",
+                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=_set_ann).pack(anchor="w")
+
+        _thr.Thread(target=_load_ann, daemon=True).start()
+
+        # ── Force Update ─────────────────────────────────────────────────────
+        fu_card = _card(body, "📦 Force Update / Min Version")
+        fu_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(fu_card, text="User dengan versi lebih lama akan dipaksa update.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        fu_row = tk.Frame(fu_card, bg=CARD)
+        fu_row.pack(fill="x", pady=(0, 6))
+        _fu_ver = tk.StringVar()
+        tk.Label(fu_row, text="Min Version:", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Entry(fu_row, textvariable=_fu_ver, bg=CARD2, fg=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI", 10),
+                 bd=6, width=12).pack(side="left", padx=6)
+
+        _fu_status = tk.StringVar(value="Memuat…")
+        tk.Label(fu_card, textvariable=_fu_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _load_fu():
+            from modules.master_config import get_min_version
+            v = get_min_version(_tok() or "")
+            if self._root:
+                self._root.after(0, lambda: (_fu_ver.set(v),
+                                              _fu_status.set("Min version saat ini: {}".format(v))))
+        def _set_fu():
+            v = _fu_ver.get().strip()
+            if not v:
+                return
+            _fu_status.set("Menyimpan…")
+            def _bg():
+                from modules.master_config import set_min_version
+                ok = set_min_version(v, _tok())
+                m = "✓ Min version diset ke {}!".format(v) if ok else "✗ Gagal."
+                if self._root:
+                    self._root.after(0, lambda: _fu_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(fu_row, text="✔ Set",
+                  bg=RED, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
+                  command=_set_fu).pack(side="left")
+
+        _thr.Thread(target=_load_fu, daemon=True).start()
+
+        # ── Remote Config Toggles ────────────────────────────────────────────
+        rc_card = _card(body, "⚙️ Remote Config — Toggle Fitur")
+        rc_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(rc_card, text="Toggle on/off fitur untuk SEMUA user secara realtime.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+
+        _RC_LABELS = {
+            "rekening_enabled": "💳 Cek Rekening",
+            "chat_enabled":     "💬 Chat",
+            "blog_enabled":     "📰 Blog",
+            "remote_enabled":   "🖥️ Remote Control",
+            "monitor_enabled":  "📊 Monitor",
+            "spy_enabled":      "👁️ Spy",
+        }
+        _rc_vars = {k: tk.BooleanVar(value=True) for k in _RC_LABELS}
+
+        rc_grid = tk.Frame(rc_card, bg=CARD)
+        rc_grid.pack(fill="x", pady=(0, 8))
+        for i, (k, lbl) in enumerate(_RC_LABELS.items()):
+            r_f = tk.Frame(rc_grid, bg=CARD)
+            r_f.grid(row=i // 2, column=i % 2, sticky="w", padx=8, pady=2)
+            tk.Checkbutton(r_f, text=lbl, variable=_rc_vars[k],
+                           bg=CARD, fg=FG, selectcolor=CARD2,
+                           activebackground=CARD,
+                           font=("Segoe UI", 9)).pack(side="left")
+
+        _rc_status = tk.StringVar(value="Memuat…")
+        tk.Label(rc_card, textvariable=_rc_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _load_rc():
+            from modules.master_config import get_remote_config
+            cfg = get_remote_config(_tok() or "")
+            def _fill():
+                for k, var in _rc_vars.items():
+                    var.set(cfg.get(k, True))
+                _rc_status.set("Remote config dimuat.")
+            if self._root:
+                self._root.after(0, _fill)
+
+        def _save_rc():
+            cfg = {k: v.get() for k, v in _rc_vars.items()}
+            _rc_status.set("Menyimpan…")
+            def _bg():
+                from modules.master_config import set_remote_config
+                ok = set_remote_config(cfg, _tok())
+                m = "✓ Remote config disimpan!" if ok else "✗ Gagal."
+                if self._root:
+                    self._root.after(0, lambda: _rc_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(rc_card, text="💾 Simpan Remote Config",
+                  bg="#0F766E", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=_save_rc).pack(anchor="w")
+
+        _thr.Thread(target=_load_rc, daemon=True).start()
+
+        # ── Whitelist ─────────────────────────────────────────────────────────
+        wl_card = _card(body, "🔑 Whitelist Akses")
+        wl_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(wl_card, text="Aktifkan whitelist → hanya email terdaftar yang bisa login.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        _wl_en = tk.BooleanVar(value=False)
+        wl_row = tk.Frame(wl_card, bg=CARD)
+        wl_row.pack(fill="x", pady=(0, 4))
+        tk.Checkbutton(wl_row, text="Whitelist Aktif", variable=_wl_en,
+                       bg=CARD, fg=FG, selectcolor=CARD2, activebackground=CARD,
+                       font=("Segoe UI", 9, "bold")).pack(side="left")
+
+        tk.Label(wl_card, text="Daftar email (satu per baris):",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 2))
+        wl_txt = tk.Text(wl_card, bg=CARD2, fg=FG, insertbackground=FG,
+                         relief="flat", font=("Segoe UI", 9), height=5, wrap="none")
+        wl_txt.pack(fill="x", pady=(0, 6))
+
+        _wl_status = tk.StringVar(value="Memuat…")
+        tk.Label(wl_card, textvariable=_wl_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _load_wl():
+            from modules.master_config import get_whitelist
+            d = get_whitelist(_tok() or "")
+            def _fill():
+                _wl_en.set(d.get("enabled", False))
+                emails = [k.replace(",", ".").replace("@at@", "@")
+                          for k in d.get("emails", {}).keys()]
+                wl_txt.delete("1.0", "end")
+                wl_txt.insert("1.0", "\n".join(emails))
+                _wl_status.set("Whitelist dimuat ({} email).".format(len(emails)))
+            if self._root:
+                self._root.after(0, _fill)
+
+        def _save_wl():
+            emails = [e.strip() for e in wl_txt.get("1.0", "end").splitlines() if e.strip()]
+            _wl_status.set("Menyimpan…")
+            def _bg():
+                from modules.master_config import set_whitelist
+                ok = set_whitelist(_wl_en.get(), emails, _tok())
+                m = "✓ Whitelist disimpan ({} email)!".format(len(emails)) if ok else "✗ Gagal."
+                if self._root:
+                    self._root.after(0, lambda: _wl_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(wl_card, text="💾 Simpan Whitelist",
+                  bg="#1D4ED8", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=_save_wl).pack(anchor="w")
+
+        _thr.Thread(target=_load_wl, daemon=True).start()
+
+        # ── Kick / Ban Management ─────────────────────────────────────────────
+        kb_card = _card(body, "🚫 Kick / Ban User")
+        kb_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(kb_card, text="Kick = paksa logout. Ban = blokir login permanen.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        # Manual email input
+        kb_inp_row = tk.Frame(kb_card, bg=CARD)
+        kb_inp_row.pack(fill="x", pady=(0, 6))
+        _kb_email = tk.StringVar()
+        tk.Label(kb_inp_row, text="Email:", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Entry(kb_inp_row, textvariable=_kb_email, bg=CARD2, fg=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI", 9),
+                 bd=6, width=28).pack(side="left", padx=6)
+
+        _kb_status = tk.StringVar(value="")
+        tk.Label(kb_card, textvariable=_kb_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _do_kick():
+            em = _kb_email.get().strip()
+            if not em:
+                _kb_status.set("✗ Email kosong.")
+                return
+            _kb_status.set("Kicking {}…".format(em))
+            def _bg():
+                from modules.master_config import kick_user
+                ok = kick_user(em, _tok())
+                m = "✓ {} di-kick!".format(em) if ok else "✗ Gagal kick."
+                if self._root:
+                    self._root.after(0, lambda: _kb_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _do_ban():
+            em = _kb_email.get().strip()
+            if not em:
+                _kb_status.set("✗ Email kosong.")
+                return
+            _kb_status.set("Banning {}…".format(em))
+            def _bg():
+                from modules.master_config import ban_user, kick_user
+                tok = _tok()
+                ban_user(em, tok)
+                kick_user(em, tok)
+                if self._root:
+                    self._root.after(0, lambda: _kb_status.set("✓ {} di-ban & di-kick!".format(em)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _do_unban():
+            em = _kb_email.get().strip()
+            if not em:
+                _kb_status.set("✗ Email kosong.")
+                return
+            _kb_status.set("Unbanning {}…".format(em))
+            def _bg():
+                from modules.master_config import unban_user
+                ok = unban_user(em, _tok())
+                m = "✓ {} di-unban!" .format(em) if ok else "✗ Gagal unban."
+                if self._root:
+                    self._root.after(0, lambda: _kb_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        kb_btn_row = tk.Frame(kb_card, bg=CARD)
+        kb_btn_row.pack(fill="x", pady=(0, 8))
+        tk.Button(kb_btn_row, text="👢 Kick", bg="#92400E", fg="white",
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=12, pady=5, cursor="hand2",
+                  command=_do_kick).pack(side="left", padx=(0, 6))
+        tk.Button(kb_btn_row, text="🚫 Ban + Kick", bg=RED, fg="white",
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=12, pady=5, cursor="hand2",
+                  command=_do_ban).pack(side="left", padx=(0, 6))
+        tk.Button(kb_btn_row, text="✅ Unban", bg=GRN, fg="white",
+                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  padx=12, pady=5, cursor="hand2",
+                  command=_do_unban).pack(side="left")
+
+        # Banned list
+        tk.Label(kb_card, text="Daftar user yang di-ban:",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
+        kb_list_frame = tk.Frame(kb_card, bg=CARD)
+        kb_list_frame.pack(fill="x")
+
+        def _load_banned():
+            from modules.master_config import get_banned_list
+            banned = get_banned_list(_tok() or "")
+            def _upd():
+                for w in kb_list_frame.winfo_children():
+                    w.destroy()
+                if not banned:
+                    tk.Label(kb_list_frame, text="Tidak ada user yang di-ban.",
+                             bg=CARD, fg=MUT, font=("Segoe UI", 8),
+                             padx=6).pack(anchor="w")
+                    return
+                for em in banned:
+                    row = tk.Frame(kb_list_frame, bg=CARD)
+                    row.pack(fill="x", pady=1)
+                    tk.Label(row, text="🚫 {}".format(em), bg=CARD, fg=RED,
+                             font=("Segoe UI", 8)).pack(side="left")
+                    tk.Button(row, text="Unban", bg=CARD2, fg=FG,
+                              font=("Segoe UI", 7), relief="flat", bd=0,
+                              padx=6, pady=2, cursor="hand2",
+                              command=lambda e=em: (_kb_email.set(e), _do_unban())
+                              ).pack(side="right")
+            if self._root:
+                self._root.after(0, _upd)
+
+        tk.Button(kb_card, text="🔄 Refresh Banned List",
+                  bg=CARD2, fg=FG, font=("Segoe UI", 8),
+                  relief="flat", bd=0, padx=10, pady=3, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_load_banned, daemon=True).start()
+                  ).pack(anchor="w", pady=(6, 4))
+
+        _thr.Thread(target=_load_banned, daemon=True).start()
+
+        # ── Changelog / Release Notes ────────────────────────────────────────
+        cl_card = _card(body, "📝 Changelog / Release Notes")
+        cl_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(cl_card, text="Popup akan muncul ke user saat versi berubah.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        cl_ver_row = tk.Frame(cl_card, bg=CARD)
+        cl_ver_row.pack(fill="x", pady=(0, 4))
+        tk.Label(cl_ver_row, text="Versi:", bg=CARD, fg=FG,
+                 font=("Segoe UI", 9)).pack(side="left")
+        _cl_ver = tk.StringVar()
+        tk.Entry(cl_ver_row, textvariable=_cl_ver, bg=CARD2, fg=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI", 9),
+                 bd=6, width=12).pack(side="left", padx=6)
+
+        tk.Label(cl_card, text="Release notes (markdown didukung):",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
+        cl_txt = tk.Text(cl_card, bg=CARD2, fg=FG, insertbackground=FG,
+                         relief="flat", font=("Segoe UI", 9), height=5, wrap="word")
+        cl_txt.pack(fill="x", pady=(0, 6))
+
+        _cl_status = tk.StringVar(value="Memuat…")
+        tk.Label(cl_card, textvariable=_cl_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _load_cl():
+            from modules.master_config import get_changelog
+            d = get_changelog(_tok() or "")
+            if d:
+                def _fill():
+                    _cl_ver.set(d.get("version", ""))
+                    cl_txt.delete("1.0", "end")
+                    cl_txt.insert("1.0", d.get("notes", ""))
+                    _cl_status.set("Changelog terakhir dimuat.")
+                if self._root:
+                    self._root.after(0, _fill)
+            else:
+                if self._root:
+                    self._root.after(0, lambda: _cl_status.set("Belum ada changelog."))
+
+        def _pub_cl():
+            ver = _cl_ver.get().strip()
+            notes = cl_txt.get("1.0", "end").strip()
+            if not ver or not notes:
+                _cl_status.set("✗ Versi dan notes wajib diisi.")
+                return
+            _cl_status.set("Mempublish…")
+            def _bg():
+                from modules.master_config import set_changelog
+                ok = set_changelog(ver, notes, _tok())
+                m = "✓ Changelog v{} dipublish!".format(ver) if ok else "✗ Gagal."
+                if self._root:
+                    self._root.after(0, lambda: _cl_status.set(m))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(cl_card, text="📤 Publish Changelog",
+                  bg="#7C3AED", fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
+                  command=_pub_cl).pack(anchor="w")
+
+        _thr.Thread(target=_load_cl, daemon=True).start()
+
+        # ── DM Conversations ─────────────────────────────────────────────────
+        dm_card = _card(body, "💬 DM — Percakapan dengan User")
+        dm_card.pack(fill="x", pady=(0, 12))
+
+        tk.Label(dm_card, text="Pilih user → lihat percakapan lengkap → balas.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+
+        # Two-column layout: thread list | conversation view
+        dm_split = tk.Frame(dm_card, bg=CARD)
+        dm_split.pack(fill="x")
+
+        # Left: thread list
+        dm_left = tk.Frame(dm_split, bg="#0D0D18", width=200)
+        dm_left.pack(side="left", fill="y", padx=(0, 8))
+        dm_left.pack_propagate(False)
+
+        tk.Label(dm_left, text="Inbox", bg="#0D0D18", fg=MUT,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
+
+        thread_frame = tk.Frame(dm_left, bg="#0D0D18")
+        thread_frame.pack(fill="both", expand=True)
+
+        # Right: conversation + reply
+        dm_right = tk.Frame(dm_split, bg=CARD2)
+        dm_right.pack(side="left", fill="both", expand=True)
+
+        _conv_title = tk.StringVar(value="← Pilih percakapan")
+        tk.Label(dm_right, textvariable=_conv_title, bg=CARD2, fg=ACC,
+                 font=("Segoe UI", 9, "bold"), anchor="w", padx=10, pady=6
+                 ).pack(fill="x")
+        tk.Frame(dm_right, bg="#1A1A2E", height=1).pack(fill="x")
+
+        # Messages scrollable
+        conv_sb = ttk.Scrollbar(dm_right, orient="vertical")
+        conv_sb.pack(side="right", fill="y")
+        conv_cv = tk.Canvas(dm_right, bg=CARD2, highlightthickness=0,
+                            height=220, yscrollcommand=conv_sb.set)
+        conv_cv.pack(side="top", fill="both", expand=True)
+        conv_sb.config(command=conv_cv.yview)
+
+        conv_inner = tk.Frame(conv_cv, bg=CARD2)
+        _cwid = conv_cv.create_window((0, 0), window=conv_inner, anchor="nw")
+        conv_inner.bind("<Configure>",
+                        lambda e: conv_cv.configure(scrollregion=conv_cv.bbox("all")))
+        conv_cv.bind("<Configure>",
+                     lambda e: conv_cv.itemconfig(_cwid, width=e.width))
+
+        # Reply area
+        tk.Frame(dm_right, bg="#1A1A2E", height=1).pack(fill="x")
+        dm_inp_row = tk.Frame(dm_right, bg=CARD2, padx=8, pady=6)
+        dm_inp_row.pack(fill="x")
+        dm_inp = tk.Text(dm_inp_row, bg="#0D0D18", fg=FG, insertbackground=FG,
+                         relief="flat", font=("Segoe UI", 9), height=2,
+                         wrap="word", bd=6)
+        dm_inp.pack(side="left", fill="x", expand=True, padx=(0, 6))
+
+        _dm_selected_email = [None]  # mutable ref
+        _dm_send_status = tk.StringVar(value="")
+        tk.Label(dm_right, textvariable=_dm_send_status, bg=CARD2, fg=MUT,
+                 font=("Segoe UI", 7)).pack(anchor="w", padx=8)
+
+        def _render_conv(msgs, target_email):
+            from datetime import datetime as _dt2
+            for w in conv_inner.winfo_children():
+                w.destroy()
+            if not msgs:
+                tk.Label(conv_inner, text="Belum ada pesan.", bg=CARD2,
+                         fg=MUT, font=("Segoe UI", 9), pady=20).pack()
+                return
+            for m in msgs:
+                is_master = (m.get("from", "") == self.MASTER_EMAIL)
+                ts = m.get("ts", 0)
+                try: t_str = _dt2.fromtimestamp(ts).strftime("%H:%M")
+                except: t_str = ""
+                row = tk.Frame(conv_inner, bg=CARD2, pady=2)
+                row.pack(fill="x", padx=6)
+                bub_bg = "#1E1B4B" if is_master else "#052e16"
+                bub_fg = FG
+                anchor = "w" if is_master else "e"
+                prefix = "👑 " if is_master else "↩ "
+                bub = tk.Frame(row, bg=bub_bg, padx=8, pady=5)
+                bub.pack(anchor=anchor)
+                tk.Label(bub, text="{}{}".format(prefix, m.get("message", "")),
+                         bg=bub_bg, fg=bub_fg, font=("Segoe UI", 9),
+                         wraplength=300, justify="left").pack(anchor="w")
+                tk.Label(bub, text=t_str, bg=bub_bg, fg=MUT,
+                         font=("Segoe UI", 7)).pack(anchor="e")
+            conv_cv.update_idletasks()
+            conv_cv.yview_moveto(1.0)
+
+        def _load_conv(target_email):
+            _dm_selected_email[0] = target_email
+            _conv_title.set("💬 {}".format(target_email))
+            def _bg():
+                from modules.master_config import get_dm
+                msgs = get_dm(target_email, _tok())
+                if self._root:
+                    self._root.after(0, lambda m=msgs, e=target_email: _render_conv(m, e))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _send_dm_reply():
+            to = _dm_selected_email[0]
+            msg = dm_inp.get("1.0", "end").strip()
+            if not to or not msg:
+                _dm_send_status.set("Pilih user dan tulis pesan dulu.")
+                return
+            dm_inp.delete("1.0", "end")
+            _dm_send_status.set("Mengirim…")
+            def _bg():
+                from modules.master_config import send_dm, get_dm
+                ok = send_dm(to, msg, _tok())
+                msgs = get_dm(to, _tok()) if ok else None
+                def _upd():
+                    if msgs is not None:
+                        _render_conv(msgs, to)
+                    _dm_send_status.set("✓ Terkirim!" if ok else "✗ Gagal.")
+                if self._root:
+                    self._root.after(0, _upd)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        tk.Button(dm_inp_row, text="📨 Kirim",
+                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
+                  relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
+                  command=_send_dm_reply).pack(side="right")
+
+        _dm_threads_status = tk.StringVar(value="Memuat thread…")
+        tk.Label(dm_left, textvariable=_dm_threads_status, bg="#0D0D18", fg=MUT,
+                 font=("Segoe UI", 7), wraplength=180).pack(anchor="w", padx=8)
+
+        def _load_threads():
+            from modules.master_config import get_all_dm_threads
+            threads = get_all_dm_threads(_tok() or "")
+            def _render_threads():
+                for w in thread_frame.winfo_children():
+                    w.destroy()
+                if not threads:
+                    tk.Label(thread_frame, text="Belum ada percakapan.",
+                             bg="#0D0D18", fg=MUT, font=("Segoe UI", 8),
+                             padx=8, pady=8).pack(anchor="w")
+                    _dm_threads_status.set("")
+                    return
+                _dm_threads_status.set("{} percakapan".format(len(threads)))
+                for t in threads:
+                    em   = t["email"]
+                    unrd = t["unread"]
+                    last = t["last_message"][:28] + "…" if len(t["last_message"]) > 28 else t["last_message"]
+                    btn_bg = "#1A1A30" if unrd == 0 else "#2A1A3A"
+                    trow = tk.Frame(thread_frame, bg=btn_bg, pady=5, padx=8,
+                                    cursor="hand2")
+                    trow.pack(fill="x", pady=1)
+                    name_lbl = tk.Label(trow, text=em.split("@")[0], bg=btn_bg,
+                                        fg=FG if unrd == 0 else "#A78BFA",
+                                        font=("Segoe UI", 8, "bold" if unrd else "normal"),
+                                        anchor="w")
+                    name_lbl.pack(anchor="w")
+                    if unrd:
+                        tk.Label(trow, text="● {} baru".format(unrd), bg=btn_bg,
+                                 fg="#E11D48", font=("Segoe UI", 7)).pack(anchor="w")
+                    tk.Label(trow, text=last or "(kosong)", bg=btn_bg, fg=MUT,
+                             font=("Segoe UI", 7), anchor="w").pack(anchor="w")
+                    trow.bind("<Button-1>", lambda e, em=em: _load_conv(em))
+                    for w in trow.winfo_children():
+                        w.bind("<Button-1>", lambda e, em=em: _load_conv(em))
+            if self._root:
+                self._root.after(0, _render_threads)
+
+        tk.Button(dm_left, text="🔄",
+                  bg="#0D0D18", fg=MUT, font=("Segoe UI", 8),
+                  relief="flat", bd=0, padx=6, pady=2, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_load_threads, daemon=True).start()
+                  ).pack(anchor="e", padx=4)
+
+        _thr.Thread(target=_load_threads, daemon=True).start()
+
+        # ── Statistics ───────────────────────────────────────────────────────
+        stat_card = _card(body, "📊 Statistik Pengguna")
+        stat_card.pack(fill="x", pady=(0, 20))
+
+        _stat_labels = {}
+        stat_grid = tk.Frame(stat_card, bg=CARD)
+        stat_grid.pack(fill="x", pady=(0, 8))
+
+        for col, (icon, key, lbl) in enumerate([
+            ("👥", "sessions", "Total Sesi Aktif"),
+            ("🟢", "online",   "Online Sekarang"),
+            ("🚫", "banned",   "Dibanned"),
+        ]):
+            box = tk.Frame(stat_grid, bg=CARD2, padx=16, pady=12)
+            box.grid(row=0, column=col, padx=6, sticky="nsew")
+            stat_grid.columnconfigure(col, weight=1)
+            tk.Label(box, text=icon, bg=CARD2, fg=FG,
+                     font=("Segoe UI", 20)).pack()
+            val_lbl = tk.Label(box, text="…", bg=CARD2, fg=FG,
+                               font=("Segoe UI", 18, "bold"))
+            val_lbl.pack()
+            tk.Label(box, text=lbl, bg=CARD2, fg=MUT,
+                     font=("Segoe UI", 7)).pack()
+            _stat_labels[key] = val_lbl
+
+        _stat_status = tk.StringVar(value="Memuat statistik…")
+        tk.Label(stat_card, textvariable=_stat_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+
+        def _load_stats():
+            from modules.master_config import get_all_sessions, get_online_count, get_banned_list
+            tok = _tok() or ""
+            sess    = get_all_sessions(tok)
+            online  = get_online_count(tok)
+            banned  = get_banned_list(tok)
+            def _upd():
+                _stat_labels["sessions"].config(text=str(len(sess)))
+                _stat_labels["online"].config(text=str(online))
+                _stat_labels["banned"].config(text=str(len(banned)))
+                _stat_status.set("Diperbarui. {} sesi, {} online, {} banned.".format(
+                    len(sess), online, len(banned)))
+            if self._root:
+                self._root.after(0, _upd)
+
+        tk.Button(stat_card, text="🔄 Refresh Statistik",
+                  bg=CARD2, fg=FG, font=("Segoe UI", 8),
+                  relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_load_stats, daemon=True).start()
+                  ).pack(anchor="w")
+
+        _thr.Thread(target=_load_stats, daemon=True).start()
+
         return f
 
     # ================================================================
@@ -3853,8 +6544,8 @@ class SynthexApp:
         }
         # Pakai nama dari entry kalau sudah ada (dari floating spy),
         # baru tanya kalau belum ada
-        name = info.get("name") or simpledialog.askstring(
-            "Simpan Elemen", "Nama untuk elemen ini:", parent=self._root)
+        name = info.get("name") or self._ask_input(
+            "Simpan Elemen", "Nama untuk elemen ini:")
         if not name:
             return
         # Hindari duplikat nama
@@ -3879,10 +6570,9 @@ class SynthexApp:
     def _save_spy_element(self):
         info = self._spy_current_info
         if not info or not info.get("tagName"):
-            messagebox.showwarning(
-                "Spy",
-                "No element selected.\nEnable Spy and hover over an element.",
-                parent=self._root)
+            self._show_alert("Spy",
+                             "No element selected.\nEnable Spy and hover over an element.",
+                             "warning")
             return
         self._on_spy_capture(info)
 
@@ -3911,9 +6601,8 @@ class SynthexApp:
         def _fetch():
             try:
                 text = self.engine.browser.get_text(selector)
-                self._root.after(0, lambda: messagebox.showinfo(
-                    "Element Value", "Current value:\n{}".format(text),
-                    parent=self._root))
+                self._root.after(0, lambda t=text: self._show_alert(
+                    "Element Value", "Current value:\n{}".format(t)))
             except Exception as e:
                 from utils.error_handler import friendly_message
                 msg = friendly_message(e)
@@ -3923,9 +6612,7 @@ class SynthexApp:
     def _scrape_spy_to_sheet(self):
         sel = self._spy_elements_tree.selection()
         if not sel:
-            messagebox.showwarning("Scrape ke Sheet",
-                                   "Pilih elemen terlebih dahulu.",
-                                   parent=self._root)
+            self._show_alert("Scrape ke Sheet", "Pilih elemen terlebih dahulu.", "warning")
             return
         idx = self._spy_elements_tree.index(sel[0])
         if idx >= len(self._ud.elements):
@@ -3933,17 +6620,17 @@ class SynthexApp:
         element  = self._ud.elements[idx]
         selector = element.get("selector", "")
         if not selector or not self.engine:
-            messagebox.showwarning("Scrape ke Sheet",
-                                   "Elemen tidak memiliki selector atau browser belum aktif.",
-                                   parent=self._root)
+            self._show_alert("Scrape ke Sheet",
+                             "Elemen tidak memiliki selector atau browser belum aktif.",
+                             "warning")
             return
 
         # -- dialog -------------------------------------------------------
         sheets = [s.get("name", "") for s in self._ud.sheets if s.get("name")]
         if not sheets:
-            messagebox.showwarning("Scrape ke Sheet",
-                                   "Belum ada sheet terhubung. Tambahkan di halaman Sheet.",
-                                   parent=self._root)
+            self._show_alert("Scrape ke Sheet",
+                             "Belum ada sheet terhubung. Tambahkan di halaman Sheet.",
+                             "warning")
             return
 
         dlg = tk.Toplevel(self._root)
@@ -4403,11 +7090,9 @@ class SynthexApp:
         import uuid as _uuid
 
         if not actions and edit_idx is None:
-            messagebox.showinfo(
-                "Rekaman Kosong",
-                "Tidak ada langkah yang terekam.\n"
-                "Coba rekam ulang — pastikan melakukan klik atau ketikan.",
-                parent=self._root)
+            self._show_alert("Rekaman Kosong",
+                             "Tidak ada langkah yang terekam.\n"
+                             "Coba rekam ulang — pastikan melakukan klik atau ketikan.")
             return
 
         # Existing recording metadata (if editing)
@@ -5236,8 +7921,7 @@ class SynthexApp:
 
         def _test_run():
             if not step_data:
-                messagebox.showinfo("Test Run", "Tidak ada langkah.",
-                                    parent=dlg)
+                self._show_alert("Test Run", "Tidak ada langkah.")
                 return
             try:
                 spd = float(speed_var.get())
@@ -5589,9 +8273,7 @@ class SynthexApp:
             return
         sel = self._recordings_tree.selection()
         if not sel:
-            messagebox.showinfo("Mainkan",
-                                "Pilih rekaman dari daftar terlebih dahulu.",
-                                parent=self._root)
+            self._show_alert("Mainkan", "Pilih rekaman dari daftar terlebih dahulu.")
             return
         idx = self._recordings_tree.index(sel[0])
         if idx >= len(self._ud.recordings):
@@ -5599,9 +8281,7 @@ class SynthexApp:
         rec   = self._ud.recordings[idx]
         steps = rec.get("steps", [])
         if not steps:
-            messagebox.showinfo("Mainkan",
-                                "Rekaman ini tidak memiliki langkah apapun.",
-                                parent=self._root)
+            self._show_alert("Mainkan", "Rekaman ini tidak memiliki langkah apapun.")
             return
 
         # Route to simple or smart playback
@@ -6212,13 +8892,30 @@ class SynthexApp:
                 pass
         self._root.after(30000, _tick)
 
+    def _run_task_by_idx(self, idx: int):
+        """Run a task by index — called from home page My Tasks quick-run."""
+        if idx < 0 or idx >= len(self._ud.tasks):
+            return
+        task = self._ud.tasks[idx]
+        if not self._confirm_run_dialog(task):
+            return
+        stop_ev = threading.Event()
+        self._run_stop_flag = stop_ev
+        if task.get("continuous_mode"):
+            panel = self._show_continuous_progress_panel(task, stop_ev)
+            threading.Thread(target=self._run_continuous_task_thread,
+                             args=(task, idx, stop_ev, panel), daemon=True).start()
+        else:
+            panel = self._show_run_progress_panel(task, stop_ev)
+            threading.Thread(target=self._run_task_thread,
+                             args=(task, idx, stop_ev, panel), daemon=True).start()
+
     def _run_selected_task(self):
         if not self._tasks_tree:
             return
         sel = self._tasks_tree.selection()
         if not sel:
-            messagebox.showinfo("Run Task", "Select a task first.",
-                                parent=self._root)
+            self._show_alert("Run Task", "Select a task first.")
             return
         idx = self._tasks_tree.index(sel[0])
         if idx >= len(self._ud.tasks):
@@ -6545,15 +9242,10 @@ class SynthexApp:
             csv_path = os.path.join(_ROOT, "data",
                                     "confirmation_report_{}.csv".format(date_str))
             if os.path.exists(csv_path):
-                messagebox.showinfo(
-                    "Export Report",
-                    "Report saved at:\n{}".format(csv_path),
-                    parent=w)
+                self._show_alert("Export Report",
+                                 "Report saved at:\n{}".format(csv_path))
             else:
-                messagebox.showinfo(
-                    "Export Report",
-                    "No report data yet for today.",
-                    parent=w)
+                self._show_alert("Export Report", "No report data yet for today.")
 
         stop_btn = tk.Button(btn_row, text="STOP", bg=RED, fg=BG,
                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
@@ -6897,6 +9589,194 @@ class SynthexApp:
         dlg.wait_window(dlg)
         return result.get()
 
+    def _show_force_update_dialog(self, min_ver: str):
+        """Blocking dialog: user must update, cannot dismiss."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Update Diperlukan")
+        dlg.configure(bg="#0D0D14")
+        dlg.resizable(False, False)
+        dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable close
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        dlg.geometry("440x260+{}+{}".format((sw-440)//2, (sh-260)//2))
+        tk.Frame(dlg, bg=RED, height=4).pack(fill="x")
+        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=24)
+        bd.pack(fill="both", expand=True)
+        tk.Label(bd, text="⚠ Update Wajib", bg="#0D0D14", fg=RED,
+                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(bd, text="Versi minimum yang diizinkan: v{}".format(min_ver),
+                 bg="#0D0D14", fg=FG, font=("Segoe UI", 10)).pack(anchor="w", pady=(8,0))
+        tk.Label(bd, text="Versi kamu saat ini terlalu lama dan tidak bisa digunakan.\n"
+                          "Download versi terbaru dari GitHub untuk melanjutkan.",
+                 bg="#0D0D14", fg=MUT, font=("Segoe UI", 9), justify="left").pack(
+            anchor="w", pady=(6,16))
+        def _open_gh():
+            import webbrowser
+            webbrowser.open("https://github.com/Yohn18/synthex-releases/releases/latest")
+        tk.Button(bd, text="⬇ Download Update",
+                  bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+                  command=_open_gh).pack(anchor="w")
+
+    def _show_changelog_popup(self, cl: dict):
+        """Show release notes popup (dismissable)."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Yang Baru di v{}".format(cl.get("version","")))
+        dlg.configure(bg="#0D0D14")
+        dlg.resizable(True, False)
+        dlg.attributes("-topmost", True)
+        sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        dlg.geometry("480x380+{}+{}".format((sw-480)//2, (sh-380)//2))
+        tk.Frame(dlg, bg=GRN, height=4).pack(fill="x")
+        bd = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=20)
+        bd.pack(fill="both", expand=True)
+        tk.Label(bd, text="🎉 Update v{}".format(cl.get("version","")),
+                 bg="#0D0D14", fg=GRN,
+                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(bd, text="Berikut perubahan terbaru:", bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(4,8))
+        txt = scrolledtext.ScrolledText(bd, bg=CARD, fg=FG, relief="flat",
+                                        font=("Segoe UI", 9), height=10, wrap="word",
+                                        state="normal")
+        txt.insert("1.0", cl.get("notes",""))
+        txt.configure(state="disabled")
+        txt.pack(fill="both", expand=True)
+        tk.Button(bd, text="Mengerti, Lanjutkan",
+                  bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+                  command=dlg.destroy).pack(anchor="e", pady=(12,0))
+        dlg.grab_set()
+
+    def _show_dm_popup(self, msgs: list, my_email: str, token: str):
+        """Show unread DM messages from master."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Pesan dari Master")
+        dlg.configure(bg="#0D0D14")
+        dlg.resizable(True, False)
+        dlg.attributes("-topmost", True)
+        sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        dlg.geometry("460x320+{}+{}".format((sw-460)//2, (sh-320)//2))
+        tk.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
+        bd = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
+        bd.pack(fill="both", expand=True)
+        tk.Label(bd, text="📬 {} Pesan Baru dari Admin".format(len(msgs)),
+                 bg="#0D0D14", fg=ACC, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        from datetime import datetime as _dt2
+        msg_frame = tk.Frame(bd, bg=CARD)
+        msg_frame.pack(fill="both", expand=True, pady=(10,0))
+        for m in msgs:
+            ts = m.get("ts", 0)
+            try: t_str = _dt2.fromtimestamp(ts).strftime("%d %b %Y  %H:%M")
+            except: t_str = ""
+            mf = tk.Frame(msg_frame, bg=CARD, padx=12, pady=8)
+            mf.pack(fill="x")
+            tk.Frame(msg_frame, bg="#1A1A2E", height=1).pack(fill="x")
+            tk.Label(mf, text=t_str, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 7)).pack(anchor="w")
+            tk.Label(mf, text=m.get("message",""), bg=CARD, fg=FG,
+                     font=("Segoe UI", 9), wraplength=380, justify="left").pack(anchor="w")
+        def _close():
+            from modules.master_config import mark_dm_read
+            for m in msgs:
+                threading.Thread(
+                    target=lambda k=m.get("_key",""):
+                        mark_dm_read(my_email, k, token),
+                    daemon=True).start()
+            dlg.destroy()
+        tk.Button(bd, text="Tandai Sudah Dibaca",
+                  bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
+                  relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
+                  command=_close).pack(anchor="e", pady=(12,0))
+        dlg.grab_set()
+
+    def _show_alert(self, title, message, kind="info"):
+        """Custom dark-theme alert dialog (info / warning). kind='info'|'warning'|'error'."""
+        accent = {
+            "warning": YEL,
+            "error":   RED,
+        }.get(kind, ACC)
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#0D0D14")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+
+        W, H = 380, 180
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+
+        tk.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+        tk.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 9), justify="center",
+                 wraplength=330).pack(pady=(8, 14))
+        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+        tk.Button(dlg, text="  OK  ", bg=accent, fg="white",
+                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=12, pady=6,
+                  command=dlg.destroy).pack(pady=14)
+
+        dlg.grab_set()
+        dlg.focus_force()
+        dlg.wait_window(dlg)
+
+    def _ask_input(self, title, prompt, initial=""):
+        """Custom dark-theme single-line input dialog. Returns string or None if cancelled."""
+        result = [None]
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#0D0D14")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+
+        W, H = 400, 210
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+
+        tk.Frame(dlg, bg=ACC, bd=0).place(x=0, y=0, width=W, height=3)
+        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+        tk.Label(dlg, text=prompt, bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 9)).pack(pady=(6, 4))
+        entry = tk.Entry(dlg, bg=CARD2, fg=FG, insertbackground=FG,
+                         relief="flat", font=("Segoe UI", 10),
+                         width=32, bd=6)
+        entry.insert(0, initial)
+        entry.pack(padx=24)
+        entry.focus_set()
+
+        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24, pady=(12, 0))
+        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        btn_row.pack(pady=12)
+
+        def _ok():
+            result[0] = entry.get()
+            dlg.destroy()
+
+        entry.bind("<Return>", lambda e: _ok())
+        entry.bind("<Escape>", lambda e: dlg.destroy())
+
+        tk.Button(btn_row, text="  OK  ", bg=ACC, fg="white",
+                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=12, pady=6,
+                  command=_ok).pack(side="left", padx=(0, 8))
+        tk.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
+                  relief="flat", font=("Segoe UI", 10),
+                  cursor="hand2", padx=12, pady=6,
+                  command=dlg.destroy).pack(side="left")
+
+        dlg.grab_set()
+        dlg.wait_window(dlg)
+        return result[0]
+
     def _logout(self):
         import os
         if not self._confirm_dialog(
@@ -6905,10 +9785,28 @@ class SynthexApp:
                 confirm_text="Ya, Logout", cancel_text="Batal",
                 accent=YEL):
             return
+        # Set presence offline before logout
+        try:
+            from modules.chat import update_presence
+            from auth.firebase_auth import get_valid_token
+            _tok = get_valid_token()
+            if _tok and self._email:
+                update_presence(self._email, _tok, online=False)
+        except Exception:
+            pass
+        # Clear RTDB session so another device can login cleanly
+        from auth.firebase_auth import logout as _fa_logout
+        try:
+            _fa_logout()
+        except Exception:
+            pass
         # Clear token file
         token_path = os.path.join(os.environ.get("APPDATA", ""), "Synthex", "token.json")
         if os.path.exists(token_path):
-            os.remove(token_path)
+            try:
+                os.remove(token_path)
+            except Exception:
+                pass
         # Clear stay-logged-in config
         self.config.set("ui.stay_logged_in", False)
         self.config.set("ui.last_email", "")

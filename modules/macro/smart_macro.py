@@ -320,6 +320,10 @@ class SmartMacro:
         if t == "notify":
             return self.notify(step.get("message", ""))
 
+        # -- AI Prompt -----------------------------------------------------
+        if t == "ai_prompt":
+            return self._run_ai_prompt(step, variables)
+
         self.logger.warning(f"Unknown step type: {t}")
         return f"unknown: {t}"
 
@@ -441,6 +445,55 @@ class SmartMacro:
         if self._notify_cb:
             self._notify_cb(message)
         return f"Notified: {message}"
+
+    # ------------------------------------------------------------------ #
+    #  AI Prompt                                                           #
+    # ------------------------------------------------------------------ #
+
+    def _run_ai_prompt(self, step: dict, variables: dict) -> str:
+        """Execute an ai_prompt step: call the configured AI and save result."""
+        import os as _os, json as _json
+
+        # Load AI config from config.json
+        _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(
+            _os.path.abspath(__file__))))
+        _cfg_path = _os.path.join(_root, "config.json")
+        try:
+            with open(_cfg_path, encoding="utf-8") as _f:
+                _cfg = _json.load(_f).get("ai", {})
+        except Exception:
+            _cfg = {}
+
+        provider   = _cfg.get("provider", "openai")
+        api_key    = _cfg.get("api_key", "")
+        model      = step.get("model", "") or _cfg.get("model", "")
+        system     = step.get("system", "").strip() or _cfg.get(
+            "system_prompt", "You are a helpful automation assistant.")
+        max_tokens = int(step.get("max_tokens", _cfg.get("max_tokens", 800)) or 800)
+
+        # Resolve {variables} in prompt
+        raw_prompt = step.get("prompt", "")
+        prompt = raw_prompt
+        for k, v in variables.items():
+            prompt = prompt.replace("{" + k + "}", str(v))
+
+        if not prompt.strip():
+            raise ValueError("ai_prompt: prompt kosong.")
+
+        from modules.ai_client import call_ai
+        response = call_ai(
+            prompt=prompt,
+            provider=provider,
+            api_key=api_key,
+            model=model,
+            system=system,
+            max_tokens=max_tokens,
+        )
+
+        var_name = step.get("var", "ai_result") or "ai_result"
+        variables[var_name] = response
+        self.logger.info("AI Prompt → %s = %s…", var_name, response[:60])
+        return "AI response saved to {{{}}}: {}…".format(var_name, response[:50])
 
     # ------------------------------------------------------------------ #
     #  Bulk Order Confirmation                                             #

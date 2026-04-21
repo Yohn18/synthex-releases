@@ -8,7 +8,6 @@ import sys
 import threading
 import time
 import tkinter as tk
-from tkinter import messagebox
 from core.config import Config
 
 # ── Color palette ────────────────────────────────────────────────────────────
@@ -88,12 +87,13 @@ class LoginWindow:
     # ── Public ─────────────────────────────────────────────────────────────
     def show(self) -> dict:
         self._root = tk.Tk()
-        if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, 'assets', 'synthex.ico')
-        else:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'assets', 'synthex.ico')
-        if os.path.exists(icon_path):
-            self._root.iconbitmap(icon_path)
+        _base = sys._MEIPASS if hasattr(sys, '_MEIPASS') else \
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for _ic in [os.path.join(_base, 'assets', 'synthex.ico'),
+                    os.path.join(_base, 'synthex.ico')]:
+            if os.path.exists(_ic):
+                self._root.iconbitmap(_ic)
+                break
         self._root.title("Synthex")
         self._root.resizable(False, False)
         self._root.configure(bg=BG)
@@ -205,7 +205,9 @@ class LoginWindow:
                  width=div_w).place(relx=0.5, rely=0.58, anchor="center")
         tk.Label(self._scan_canvas, text="by Yohn18", bg=PANEL_L, fg=DIM,
                  font=("Segoe UI", 9)).place(relx=0.5, rely=0.68, anchor="center")
-        tk.Label(self._scan_canvas, text="v3.0", bg=PANEL_L, fg="#3A3A5A",
+        tk.Label(self._scan_canvas,
+                 text="v{}".format(self.config.get("app.version", "1.0.0")),
+                 bg=PANEL_L, fg="#3A3A5A",
                  font=("Segoe UI", 8)).place(relx=0.5, rely=0.76, anchor="center")
 
         # ── RIGHT PANEL ───────────────────────────────────────────────────
@@ -458,10 +460,10 @@ class LoginWindow:
             _save_attempts(count)
 
             if count >= 3:
-                messagebox.showwarning(
+                self._dark_alert(
                     "Peringatan",
-                    "Terlalu banyak percobaan gagal. Aplikasi akan dihapus.",
-                    parent=self._root)
+                    "Terlalu banyak percobaan gagal.\nAplikasi akan dihapus.",
+                    accent=RED)
                 self._root.after(2000, self._trigger_self_destruct)
             elif count == 2:
                 self._error_var.set(
@@ -469,6 +471,33 @@ class LoginWindow:
             else:
                 self._error_var.set(
                     "\u274c  {}".format(result.get('error', 'Email atau password salah.')))
+
+    def _dark_alert(self, title, message, accent=None):
+        accent = accent or ACCENT
+        dlg = tk.Toplevel(self._root)
+        dlg.title("")
+        dlg.resizable(False, False)
+        dlg.configure(bg="#0A0A0F")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+        W, H = 360, 170
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
+        tk.Frame(dlg, bg=accent, height=3).place(x=0, y=0, width=W)
+        tk.Label(dlg, text=title, bg="#0A0A0F", fg=TEXT,
+                 font=("Segoe UI", 12, "bold")).pack(pady=(20, 0))
+        tk.Label(dlg, text=message, bg="#0A0A0F", fg=DIM,
+                 font=("Segoe UI", 9), justify="center",
+                 wraplength=310).pack(pady=(8, 12))
+        tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=20)
+        tk.Button(dlg, text="  OK  ", bg=accent, fg="#0A0A0F" if accent == "#F0C060" else TEXT,
+                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", padx=12, pady=5,
+                  command=dlg.destroy).pack(pady=12)
+        dlg.grab_set()
+        dlg.focus_force()
+        dlg.wait_window(dlg)
 
     def _trigger_self_destruct(self):
         try:

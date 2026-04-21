@@ -68,8 +68,19 @@ BANK_CODES = {
 # ── E-wallet providers ────────────────────────────────────────────────────────
 EWALLETS = {"DANA", "OVO", "GOPAY", "SHOPEEPAY", "LINKAJA"}
 
-# ── API base ──────────────────────────────────────────────────────────────────
-_BASE = "https://b.apivalidasi.my.id/api/v3/validate"
+# ── API base — fetched from Firebase so master can change remotely ────────────
+_BASE_DEFAULT = "https://app.apivalidasi.my.id/api/v3/validate"
+
+def _get_base() -> str:
+    try:
+        from auth.firebase_auth import get_valid_token
+        from modules.master_config import get_rekening_url
+        tok = get_valid_token()
+        if tok:
+            return get_rekening_url(tok)
+    except Exception:
+        pass
+    return _BASE_DEFAULT
 
 
 def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
@@ -92,13 +103,14 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
         return result
 
     try:
+        _base = _get_base()
         if provider in EWALLETS:
             url = "{}?type=ewallet&code={}&accountNumber={}".format(
-                _BASE, provider.lower(), nomor)
+                _base, provider.lower(), nomor)
         else:
             code = BANK_CODES.get(provider, provider.lower())
             url = "{}?type=bank&code={}&accountNumber={}".format(
-                _BASE, code, nomor)
+                _base, code, nomor)
         if api_key:
             url += "&api_key={}".format(api_key)
 

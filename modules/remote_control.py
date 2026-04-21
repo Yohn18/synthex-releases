@@ -20,16 +20,22 @@ from core.logger import get_logger
 logger = get_logger("remote_control")
 
 # ── Locate adb.exe ────────────────────────────────────────────────────────────
-_ADB_CANDIDATES = [
-    r"C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools\adb.exe",
-    r"C:\Program Files\Android\platform-tools\adb.exe",
-    r"C:\Program Files (x86)\Android\platform-tools\adb.exe",
-]
-
 def _find_adb() -> str:
     """Return path to adb.exe, or '' if not found."""
-    # Check hardcoded candidates
-    for p in _ADB_CANDIDATES:
+    import sys
+    # Bundled in tools/platform-tools/ next to exe or project root
+    base = (os.path.dirname(sys.executable)
+            if getattr(sys, "frozen", False)
+            else os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    candidates = [
+        os.path.join(base, "tools", "platform-tools", "adb.exe"),
+        os.path.join(base, "tools", "scrcpy", "adb.exe"),
+        os.path.join(base, "tools", "adb.exe"),
+        r"C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools\adb.exe",
+        r"C:\Program Files\Android\platform-tools\adb.exe",
+        r"C:\Program Files (x86)\Android\platform-tools\adb.exe",
+    ]
+    for p in candidates:
         if os.path.isfile(p):
             return p
     # Check PATH
@@ -137,17 +143,64 @@ class AdbManager:
         return (rc == 0, out or err)
 
     def get_device_ip(self) -> str:
-        """Try to read phone's WLAN IP from adb."""
-        _, out, _ = self._run("shell", "ip", "route")
-        # look for 'src <IP>'
-        m = re.search(r'src\s+([\d.]+)', out)
-        if m:
-            return m.group(1)
-        _, out2, _ = self._run("shell", "ip", "addr", "show", "wlan0")
-        m2 = re.search(r'inet\s+([\d.]+)/', out2)
-        if m2:
-            return m2.group(1)
+        """Return phone's WiFi (wlan0) IP, not USB/tethering IP."""
+        # Priority: wlan0 specifically — avoid USB tethering IPs (rndis0, usb0)
+
+        # Method 1: ip addr show wlan0 (most specific)
+        _, out1, _ = self._run("shell", "ip", "addr", "show", "wlan0")
+        m1 = re.search(r'inet\s+([\d.]+)/', out1)
+        if m1 and not m1.group(1).startswith("127."):
+            return m1.group(1)
+
+        # Method 2: getprop dhcp.wlan0.ipaddress (MIUI/Samsung friendly)
+        for prop in ("dhcp.wlan0.ipaddress", "dhcp.wlan0.result"):
+            _, out2, _ = self._run("shell", "getprop", prop)
+            out2 = out2.strip()
+            if re.match(r'\d+\.\d+\.\d+\.\d+', out2) and not out2.startswith("127."):
+                return out2
+
+        # Method 3: ifconfig wlan0
+        _, out3, _ = self._run("shell", "ifconfig", "wlan0")
+        m3 = re.search(r'inet\s+(?:addr:)?\s*([\d.]+)', out3)
+        if m3 and not m3.group(1).startswith("127."):
+            return m3.group(1)
+
+        # Method 4: ip -4 addr — filter only wlan lines
+        _, out4, _ = self._run("shell", "ip", "-4", "addr")
+        in_wlan = False
+        for line in out4.splitlines():
+            if re.search(r'^\d+:\s+wlan', line):
+                in_wlan = True
+            elif re.match(r'^\d+:', line):
+                in_wlan = False
+            if in_wlan:
+                m4 = re.search(r'inet\s+([\d.]+)/', line)
+                if m4 and not m4.group(1).startswith("127."):
+                    return m4.group(1)
+
+        # Method 5: ip route src — last resort, may return USB IP
+        _, out5, _ = self._run("shell", "ip", "route")
+        for line in out5.splitlines():
+            if "wlan" in line:
+                m5 = re.search(r'src\s+([\d.]+)', line)
+                if m5 and not m5.group(1).startswith("127."):
+                    return m5.group(1)
+
         return ""
+
+    def probe_port(self, ip: str, port: int = 5555, timeout: float = 2.0) -> str:
+        """Check if port is reachable. Returns: 'open', 'refused', 'timeout'."""
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(timeout)
+            result = s.connect_ex((ip, port))
+            s.close()
+            return "open" if result == 0 else "refused"
+        except socket.timeout:
+            return "timeout"
+        except Exception:
+            return "timeout"
 
 
 class NotifReader:

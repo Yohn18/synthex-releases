@@ -146,12 +146,6 @@ if __name__ == "__main__":
                          text="Versi minimum yang diperlukan: {}".format(ver["min_version"]),
                          bg="#0A0A0F", fg="#6A6A8A",
                          font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
-                if ver.get("changelog"):
-                    tk.Label(_body, text="Yang baru: " + ver["changelog"],
-                             bg="#0A0A0F", fg="#00D4AA",
-                             font=("Segoe UI", 9),
-                             wraplength=400, justify="left").pack(
-                                 anchor="w", pady=(8, 0))
                 tk.Label(_body,
                          text="Butuh bantuan? Hubungi: +62 82228885859",
                          bg="#0A0A0F", fg="#6A6A8A",
@@ -231,7 +225,8 @@ if __name__ == "__main__":
     # ── 3. Create engine, pass auth info, start (shows loading → dashboard) ──
     from core.engine import Engine
     engine = Engine(config)
-    engine.app.set_auth(auth_result["email"], auth_result.get("token", ""))
+    engine.app.set_auth(auth_result["email"], auth_result.get("token", ""),
+                        session_id=auth_result.get("session_id"))
 
     try:
         engine.start()

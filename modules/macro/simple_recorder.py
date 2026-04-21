@@ -141,34 +141,34 @@ def _uia_find_center(fingerprint):
         if elements is None or elements.Length == 0:
             return None
 
-        # Pick best element: prefer same process, then smallest bounding rect
-        # (most specific / innermost element)
         proc_id = fingerprint.get("proc", 0)
-        best    = None
+        best = None
         best_area = None
+        best_same_proc = False
+
         for i in range(elements.Length):
             el = elements.GetElement(i)
             if el is None:
                 continue
             try:
                 rect = el.CurrentBoundingRectangle
-                w = rect.right  - rect.left
+                w = rect.right - rect.left
                 h = rect.bottom - rect.top
                 if w <= 0 or h <= 0:
                     continue
                 area = w * h
-                same_proc = (el.CurrentProcessId == proc_id)
-                # Prefer same-process smaller element
+                same_proc = proc_id > 0 and (el.CurrentProcessId == proc_id)
+
                 if best is None:
+                    best = el; best_area = area; best_same_proc = same_proc
+                elif same_proc and not best_same_proc:
+                    best = el; best_area = area; best_same_proc = True
+                elif same_proc == best_same_proc and area < best_area:
                     best = el; best_area = area
-                else:
-                    if same_proc and (el.CurrentProcessId != best.CurrentProcessId
-                                      or area < best_area):
-                        best = el; best_area = area
             except Exception:
                 continue
 
-        if best is None:
+        if best is None or (not best_same_proc and proc_id > 0):
             return None
 
         rect = best.CurrentBoundingRectangle
@@ -418,10 +418,11 @@ class SimpleRecorder:
                 if atype == "click":
                     btn = action.get("button", "left")
                     cx, cy = action["x"], action["y"]
-                    # UIA coordinate override is disabled — always use the
-                    # exact coordinates captured during recording.  UIA lookup
-                    # can match same-named elements in other apps and redirect
-                    # clicks to wrong positions.
+                    uia_fp = action.get("uia", {})
+                    if uia_fp and uia_fp.get("proc"):
+                        found = _uia_find_center(uia_fp)
+                        if found:
+                            cx, cy = found
 
                     if silent_mode and silent_click_fn:
                         silent_click_fn(cx, cy, btn)

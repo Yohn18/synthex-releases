@@ -1,11 +1,13 @@
 """
 auth/firebase_auth.py - Firebase REST API authentication for Synthex.
 Supports auto-refresh via refresh token — no re-login needed.
+Single-session enforcement via Firebase Realtime Database.
 """
 
 import json
 import os
 import time
+import uuid
 import certifi
 import requests
 import urllib3
@@ -22,6 +24,7 @@ _REFRESH_MARGIN = 600         # refresh 10 min before expiry
 
 FIREBASE_SIGNIN_URL  = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
 FIREBASE_REFRESH_URL = "https://securetoken.googleapis.com/v1/token"
+_RTDB_BASE = "https://synthex-yohn18-default-rtdb.asia-southeast1.firebasedatabase.app"
 
 _session: dict = {
     "token":        None,
@@ -30,6 +33,7 @@ _session: dict = {
     "refresh_token": None,
     "token_issued": None,   # wall time when current ID token was issued
     "api_key":      None,
+    "session_id":   None,   # unique ID for this login instance
 }
 
 _ERROR_MAP = {
@@ -40,6 +44,69 @@ _ERROR_MAP = {
     "TOO_MANY_ATTEMPTS_TRY_LATER": "Too many attempts. Try again later.",
     "INVALID_EMAIL":             "Invalid email format.",
 }
+
+
+def _email_key(email: str) -> str:
+    """Convert email to a safe Firebase RTDB key (no . / $ # [ ])."""
+    return email.replace(".", "_").replace("@", "_at_")
+
+
+def _rtdb_put(path: str, data: dict, id_token: str) -> bool:
+    url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
+    for verify in (certifi.where(), False):
+        try:
+            r = requests.put(url, json=data, timeout=8, verify=verify)
+            return r.ok
+        except Exception:
+            continue
+    return False
+
+
+def _rtdb_get(path: str, id_token: str) -> dict | None:
+    url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
+    for verify in (certifi.where(), False):
+        try:
+            r = requests.get(url, timeout=8, verify=verify)
+            if r.ok:
+                return r.json()
+        except Exception:
+            continue
+    return None
+
+
+def _rtdb_delete(path: str, id_token: str):
+    url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
+    for verify in (certifi.where(), False):
+        try:
+            requests.delete(url, timeout=8, verify=verify)
+            return
+        except Exception:
+            continue
+
+
+def register_session(email: str, id_token: str) -> str:
+    """Write a new session_id to RTDB and return it."""
+    sid = str(uuid.uuid4())
+    _rtdb_put(
+        "sessions/{}".format(_email_key(email)),
+        {"session_id": sid, "ts": time.time()},
+        id_token,
+    )
+    _session["session_id"] = sid
+    return sid
+
+
+def get_remote_session_id(email: str, id_token: str) -> str | None:
+    """Read the active session_id from RTDB."""
+    data = _rtdb_get("sessions/{}".format(_email_key(email)), id_token)
+    if isinstance(data, dict):
+        return data.get("session_id")
+    return None
+
+
+def clear_session_rtdb(email: str, id_token: str):
+    """Remove session entry from RTDB on logout."""
+    _rtdb_delete("sessions/{}".format(_email_key(email)), id_token)
 
 
 def _http_post(url, params=None, json_body=None, data=None, timeout=10):
@@ -142,8 +209,22 @@ def sign_in_with_email_password(email: str, password: str, api_key: str) -> dict
     _session["token_issued"]  = now
     _session["api_key"]       = api_key
 
+    # Check ban status before allowing login
+    try:
+        from modules.master_config import is_banned, is_whitelisted
+        if is_banned(result_email, id_token):
+            return {"success": False, "error": "Akun kamu diblokir oleh admin. Hubungi admin untuk informasi lebih lanjut."}
+        if not is_whitelisted(result_email, id_token):
+            return {"success": False, "error": "Akses ditolak. Akunmu belum ada di daftar whitelist. Hubungi admin Synthex."}
+    except Exception:
+        pass
+
+    # Register single-session — overwrites any existing session on RTDB
+    sid = register_session(result_email, id_token)
+
     _save_token_file(id_token, refresh_tok, result_email, now, api_key)
-    return {"success": True, "token": id_token, "email": result_email}
+    return {"success": True, "token": id_token, "email": result_email,
+            "session_id": sid}
 
 
 def load_saved_session() -> dict | None:
@@ -182,15 +263,19 @@ def load_saved_session() -> dict | None:
 
     # Fresh token — use directly
     if age < (_ID_TOKEN_TTL - _REFRESH_MARGIN) and id_token:
-        return {"success": True, "token": id_token, "email": email}
+        sid = register_session(email, id_token)
+        return {"success": True, "token": id_token, "email": email,
+                "session_id": sid}
 
     # Stale token — try refresh
     if refresh_tok:
         refreshed = refresh_id_token(api_key=api_key, refresh_token=refresh_tok)
         if refreshed:
+            sid = register_session(email, refreshed["idToken"])
             return {"success": True,
                     "token": refreshed["idToken"],
-                    "email": email}
+                    "email": email,
+                    "session_id": sid}
 
     # No refresh token and token too old → force login
     return None
@@ -209,8 +294,15 @@ def is_authenticated() -> bool:
 
 
 def logout() -> None:
+    email    = _session.get("email")
+    id_token = _session.get("token")
+    if email and id_token:
+        try:
+            clear_session_rtdb(email, id_token)
+        except Exception:
+            pass
     for k in ("token", "email", "login_time", "refresh_token",
-              "token_issued", "api_key"):
+              "token_issued", "api_key", "session_id"):
         _session[k] = None
     if os.path.exists(_TOKEN_FILE):
         try:
