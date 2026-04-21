@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.2.9",
+  "latest_version": "1.3.0",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.9/Synthex.exe",
-  "changelog": "v1.2.9: Tombol X munculkan popup pilihan (Sembunyikan ke Tray / Keluar & Logout); redesign toast notifikasi jadi slide-in animasi dengan progress bar dan ikon",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.0/Synthex.exe",
+  "changelog": "v1.3.0: Command palette Ctrl+K — cari & navigasi fitur dengan keyboard; search bar di header; tombol X kembali ke konfirmasi logout; redesign toast notifikasi slide-in",
   "maintenance": false,
   "maintenance_msg": ""
 }

@@ -773,6 +773,16 @@ class SynthexApp:
         _help_btn.bind("<Enter>", lambda e: _help_btn.configure(bg=ACC, fg=BG))
         _help_btn.bind("<Leave>", lambda e: _help_btn.configure(bg=CARD, fg=ACC))
 
+        # Search hint button → command palette
+        _srch_btn = tk.Button(top, text="  🔍  Cari fitur...  Ctrl+K ",
+                               bg=CARD2, fg=MUT, relief="flat", bd=0,
+                               font=("Segoe UI", 8), padx=10, pady=5,
+                               cursor="hand2", anchor="w",
+                               command=self._show_command_palette)
+        _srch_btn.pack(side="right", padx=(0, 8), pady=13)
+        _srch_btn.bind("<Enter>", lambda e: _srch_btn.configure(fg=FG))
+        _srch_btn.bind("<Leave>", lambda e: _srch_btn.configure(fg=MUT))
+
         if self._email:
             tk.Label(top, text="● " + self._email, bg=SIDE, fg=GRN,
                      font=("Segoe UI", 8)).pack(side="right", padx=10)
@@ -815,6 +825,7 @@ class SynthexApp:
             _t2.Thread(target=_bg, daemon=True).start()
 
         self._root.after(2000, _check_announcement)
+        r.bind_all("<Control-k>", lambda e: self._show_command_palette())
 
         # ── BODY ──────────────────────────────────────────────────────────────
         body = tk.Frame(r, bg=BG)
@@ -11235,6 +11246,204 @@ class SynthexApp:
             "Clear    -> bersihkan tampilan log"
         ),
     }
+
+    def _show_command_palette(self):
+        """Ctrl+K command palette — ketik nama fitur, Enter untuk navigasi."""
+        if not self._root or not self._root.winfo_exists():
+            return
+
+        # Prevent duplicate palette
+        if getattr(self, "_palette_open", False):
+            return
+        self._palette_open = True
+
+        # ── Build searchable items ────────────────────────────────────────
+        _descriptions = {
+            "home":      "Dashboard utama & ringkasan aktivitas",
+            "web":       "Automasi browser & web scraping",
+            "spy":       "Monitor aktivitas layar & input",
+            "record":    "Rekam & putar ulang macro otomatis",
+            "schedule":  "Jadwalkan task otomatis berkala",
+            "templates": "Template macro siap pakai",
+            "sheet":     "Sinkronisasi data ke Google Sheets",
+            "rekening":  "Monitor saldo & mutasi rekening",
+            "monitor":   "Pantau harga & perubahan data",
+            "chat":      "Chat real-time dengan pengguna lain",
+            "inbox":     "Pesan masuk & notifikasi",
+            "blog":      "Tulis & kelola artikel blog",
+            "remote":    "Kontrol perangkat dari jarak jauh",
+            "history":   "Riwayat aktivitas & log eksekusi",
+            "logs":      "Log sistem & error detail",
+            "settings":  "Pengaturan akun & preferensi",
+            "master":    "Panel kontrol master admin",
+        }
+        _is_master = (self._email == self.MASTER_EMAIL)
+        _items = [
+            (label, key, _descriptions.get(key, ""))
+            for label, key in self.NAV
+            if key and not (key == "master" and not _is_master)
+        ]
+
+        # ── Window ───────────────────────────────────────────────────────
+        OW, PAD = 520, 12
+        ov = tk.Toplevel(self._root)
+        ov.overrideredirect(True)
+        ov.attributes("-topmost", True)
+        ov.attributes("-alpha", 0.0)
+        ov.configure(bg="#0A0A14")
+
+        # outer border
+        border = tk.Frame(ov, bg=ACC, bd=0)
+        border.pack(fill="both", expand=True, padx=1, pady=1)
+        body  = tk.Frame(border, bg="#0D0D18")
+        body.pack(fill="both", expand=True)
+
+        # search row
+        s_row = tk.Frame(body, bg="#0D0D18")
+        s_row.pack(fill="x", padx=PAD, pady=(PAD, 0))
+        tk.Label(s_row, text="🔍", bg="#0D0D18", fg=MUT,
+                 font=("Segoe UI", 11)).pack(side="left", padx=(0, 6))
+        _var = tk.StringVar()
+        entry = tk.Entry(s_row, textvariable=_var, bg="#0D0D18", fg=FG,
+                         font=("Segoe UI", 12), relief="flat", bd=0,
+                         insertbackground=ACC, width=36)
+        entry.pack(side="left", fill="x", expand=True, ipady=6)
+        tk.Label(s_row, text="Esc", bg="#1A1A28", fg=MUT,
+                 font=("Segoe UI", 7), padx=5, pady=2).pack(side="right")
+
+        tk.Frame(body, bg="#1A1A2E", height=1).pack(fill="x", pady=(PAD, 0))
+
+        # results frame (scrollable)
+        results_frame = tk.Frame(body, bg="#0D0D18")
+        results_frame.pack(fill="both", expand=True, pady=(0, PAD))
+
+        # hint label (shown when empty results)
+        hint_lbl = tk.Label(results_frame, text="Tidak ada hasil ditemukan.",
+                            bg="#0D0D18", fg=MUT, font=("Segoe UI", 9))
+
+        _rows: list = []      # list of (frame, key) for keyboard nav
+        _sel  = [0]           # currently highlighted index
+
+        def _close():
+            self._palette_open = False
+            def _fade(step=0):
+                if not ov.winfo_exists(): return
+                a = max(0.0, 1.0 - step / 6)
+                ov.attributes("-alpha", a)
+                if step < 6:
+                    ov.after(16, _fade, step + 1)
+                else:
+                    try: ov.destroy()
+                    except Exception: pass
+            _fade()
+
+        def _go(key):
+            _close()
+            self._root.after(80, lambda: self._show(key))
+
+        def _highlight(idx):
+            for i, (rf, _) in enumerate(_rows):
+                rf.configure(bg="#1A1A2E" if i == idx else "#0D0D18")
+                for child in rf.winfo_children():
+                    child.configure(bg="#1A1A2E" if i == idx else "#0D0D18")
+
+        def _render(query=""):
+            # clear existing rows
+            for rf, _ in _rows:
+                rf.destroy()
+            _rows.clear()
+            hint_lbl.pack_forget()
+            _sel[0] = 0
+
+            q = query.strip().lower()
+            filtered = [
+                (label, key, desc)
+                for label, key, desc in _items
+                if not q or q in label.lower() or q in desc.lower()
+            ]
+
+            if not filtered:
+                hint_lbl.pack(pady=18)
+                return
+
+            for i, (label, key, desc) in enumerate(filtered[:12]):
+                rf = tk.Frame(results_frame, bg="#0D0D18", cursor="hand2")
+                rf.pack(fill="x", padx=0)
+
+                # icon
+                photo = self._nav_photo_dim.get(key)
+                if photo:
+                    ic = tk.Label(rf, image=photo, bg="#0D0D18", padx=10, pady=8)
+                    ic.pack(side="left")
+
+                # text
+                tf = tk.Frame(rf, bg="#0D0D18")
+                tf.pack(side="left", fill="x", expand=True, pady=6)
+                tk.Label(tf, text=label, bg="#0D0D18", fg=FG,
+                         font=("Segoe UI", 10, "bold"), anchor="w").pack(anchor="w")
+                if desc:
+                    tk.Label(tf, text=desc, bg="#0D0D18", fg=MUT,
+                             font=("Segoe UI", 8), anchor="w").pack(anchor="w")
+
+                # arrow hint
+                tk.Label(rf, text="↵", bg="#0D0D18", fg="#2A2A44",
+                         font=("Segoe UI", 10), padx=10).pack(side="right")
+
+                _k = key
+                def _bind_row(frame, k):
+                    frame.bind("<Button-1>", lambda e: _go(k))
+                    for child in frame.winfo_children():
+                        child.bind("<Button-1>", lambda e, kk=k: _go(kk))
+                    frame.bind("<Enter>", lambda e, idx=len(_rows): _highlight(idx))
+                    frame.bind("<Leave>", lambda e, idx=len(_rows): _highlight(_sel[0]))
+                _rows.append((rf, key))
+                _bind_row(rf, _k)
+
+            _highlight(0)
+
+            # resize window height to fit
+            ov.update_idletasks()
+            new_h = min(500, body.winfo_reqheight() + 4)
+            sw = self._root.winfo_screenwidth()
+            sh = self._root.winfo_screenheight()
+            ov.geometry("{}x{}+{}+{}".format(
+                OW, new_h, (sw - OW) // 2,
+                int(sh * 0.22)))
+
+        def _on_key(e):
+            if e.keysym == "Escape":
+                _close(); return
+            if e.keysym == "Return" and _rows:
+                _go(_rows[_sel[0]][1]); return
+            if e.keysym == "Down" and _rows:
+                _sel[0] = (_sel[0] + 1) % len(_rows)
+                _highlight(_sel[0]); return
+            if e.keysym == "Up" and _rows:
+                _sel[0] = (_sel[0] - 1) % len(_rows)
+                _highlight(_sel[0]); return
+
+        _var.trace_add("write", lambda *_: _render(_var.get()))
+        ov.bind("<KeyPress>", _on_key)
+        entry.bind("<KeyPress>", _on_key)
+
+        # ── Position & animate open ───────────────────────────────────────
+        _render()
+        ov.update_idletasks()
+        sw = self._root.winfo_screenwidth()
+        sh = self._root.winfo_screenheight()
+        h0 = body.winfo_reqheight() + 4
+        ov.geometry("{}x{}+{}+{}".format(OW, h0, (sw - OW) // 2, int(sh * 0.22)))
+
+        def _fade_in(step=0):
+            if not ov.winfo_exists(): return
+            ov.attributes("-alpha", min(0.97, step / 8 * 0.97))
+            if step < 8:
+                ov.after(14, _fade_in, step + 1)
+
+        ov.after(10, _fade_in)
+        entry.focus_set()
+        ov.grab_set()
+        ov.bind("<Destroy>", lambda e: setattr(self, "_palette_open", False))
 
     def _show_help(self):
         """Show contextual help overlay for current page."""
