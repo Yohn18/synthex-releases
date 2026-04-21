@@ -120,6 +120,15 @@ class UserData:
 def _lbl(parent, text, fg=FG, bg=BG, font=("Segoe UI", 10), **kw):
     return tk.Label(parent, text=text, fg=fg, bg=bg, font=font, **kw)
 
+def _deep_bg(widget, color):
+    """Recursively set background color on a widget and all children."""
+    try:
+        widget.configure(bg=color)
+    except Exception:
+        pass
+    for child in widget.winfo_children():
+        _deep_bg(child, color)
+
 def _card(parent, title=""):
     f = tk.Frame(parent, bg=CARD, padx=14, pady=12)
     if title:
@@ -689,34 +698,83 @@ class SynthexApp:
         r.after(50, self._fade_in_dashboard)
 
         # ── HEADER ────────────────────────────────────────────────────────────
-        top = tk.Frame(r, bg=SIDE, height=54)
+        HDR_H = 54
+        top = tk.Frame(r, bg=SIDE, height=HDR_H)
         top.pack(fill="x")
         top.pack_propagate(False)
 
-        # Left accent stripe
-        tk.Frame(top, bg=ACC, width=4).pack(side="left", fill="y")
+        # Canvas overlay for gradient bottom border
+        _hdr_canvas = tk.Canvas(top, height=HDR_H, bg=SIDE,
+                                 highlightthickness=0)
+        _hdr_canvas.place(x=0, y=0, relwidth=1.0, height=HDR_H)
 
-        tk.Label(top, text="\u26a1", bg=SIDE, fg=ACC,
-                 font=("Segoe UI", 15)).pack(side="left", padx=(12, 3), pady=14)
+        def _draw_hdr_border(event=None):
+            _hdr_canvas.delete("border")
+            W = _hdr_canvas.winfo_width() or 1180
+            # gradient bottom line: ACC → BLUE
+            steps = 60
+            for i in range(steps):
+                t  = i / steps
+                r_ = int(0x6C + (0x4A - 0x6C) * t)
+                g_ = int(0x4A + (0x9E - 0x4A) * t)
+                b_ = int(0xFF + (0xFF - 0xFF) * t)
+                col = "#{:02x}{:02x}{:02x}".format(
+                    max(0, min(255, r_)), max(0, min(255, g_)), max(0, min(255, b_)))
+                x0 = int(W * i / steps)
+                x1 = int(W * (i + 1) / steps)
+                _hdr_canvas.create_rectangle(x0, HDR_H - 2, x1, HDR_H,
+                                             fill=col, outline="", tags="border")
+        _hdr_canvas.bind("<Configure>", _draw_hdr_border)
+        top.after(100, _draw_hdr_border)
+
+        # Animated left accent stripe
+        _acc_bar = tk.Frame(top, bg=ACC, width=4)
+        _acc_bar.pack(side="left", fill="y")
+
+        def _pulse_acc(step=0):
+            widths = [4, 5, 6, 6, 5, 4, 3, 4]
+            try:
+                _acc_bar.configure(width=widths[step % len(widths)])
+                top.after(120, _pulse_acc, step + 1)
+            except Exception:
+                pass
+        top.after(500, _pulse_acc)
+
+        # Logo
+        tk.Label(top, text="⚡", bg=SIDE, fg=ACC,
+                 font=("Segoe UI", 15)).pack(side="left", padx=(10, 3), pady=14)
         tk.Label(top, text="SYNTHEX", bg=SIDE, fg=ACC,
                  font=("Segoe UI", 14, "bold")).pack(side="left")
         tk.Label(top, text="by Yohn18", bg=SIDE, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(6, 0), pady=(18, 0))
 
+        # Page name indicator (updates on nav)
+        self._page_lbl = tk.Label(top, text="", bg=SIDE, fg="#3A3A60",
+                                   font=("Segoe UI", 8))
+        self._page_lbl.pack(side="left", padx=(18, 0), pady=(18, 0))
+
         # Right side
-        tk.Button(top, text="Exit", bg=RED, fg=FG,
-                  activebackground="#C04050", activeforeground=FG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                  padx=16, pady=6, cursor="hand2",
-                  command=self._logout).pack(side="right", padx=14, pady=12)
-        tk.Button(top, text=" ? ", bg=CARD, fg=ACC,
-                  activebackground=ACC, activeforeground=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
-                  padx=8, pady=6, cursor="hand2",
-                  command=self._show_help).pack(side="right", pady=12)
+        _exit_btn = tk.Button(top, text=" ⏻  Exit ", bg="#1E0A0A", fg=RED,
+                               activebackground=RED, activeforeground="white",
+                               font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                               padx=12, pady=5, cursor="hand2",
+                               command=self._logout)
+        _exit_btn.pack(side="right", padx=12, pady=13)
+        _exit_btn.bind("<Enter>", lambda e: _exit_btn.configure(bg=RED, fg="white"))
+        _exit_btn.bind("<Leave>", lambda e: _exit_btn.configure(bg="#1E0A0A", fg=RED))
+
+        _help_btn = tk.Button(top, text=" ? ", bg=CARD, fg=ACC,
+                               activebackground=ACC, activeforeground=BG,
+                               font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                               padx=8, pady=5, cursor="hand2",
+                               command=self._show_help)
+        _help_btn.pack(side="right", pady=13)
+        _help_btn.bind("<Enter>", lambda e: _help_btn.configure(bg=ACC, fg=BG))
+        _help_btn.bind("<Leave>", lambda e: _help_btn.configure(bg=CARD, fg=ACC))
+
         if self._email:
-            tk.Label(top, text=self._email, bg=SIDE, fg=GRN,
-                     font=("Segoe UI", 9)).pack(side="right", padx=10)
+            tk.Label(top, text="● " + self._email, bg=SIDE, fg=GRN,
+                     font=("Segoe UI", 8)).pack(side="right", padx=10)
 
         # ── ANNOUNCEMENT BAR (hidden by default, shown when active) ──────────
         self._ann_bar = tk.Frame(r, bg="#B45309", padx=12, pady=5)
@@ -762,14 +820,20 @@ class SynthexApp:
         body.pack(fill="both", expand=True)
 
         # ── SIDEBAR ───────────────────────────────────────────────────────────
-        side = tk.Frame(body, bg=SIDE, width=200)
+        side = tk.Frame(body, bg=SIDE, width=204)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
 
-        # Top divider + label (fixed, outside scroll area)
-        tk.Frame(side, bg="#1A1A28", height=1).pack(fill="x")
-        tk.Label(side, text="NAVIGATION", bg=SIDE, fg=MUT,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w", padx=18, pady=(14, 6))
+        # Sidebar right border glow
+        tk.Frame(body, bg="#1E1E32", width=1).pack(side="left", fill="y")
+
+        # Top divider + label
+        tk.Frame(side, bg="#1A1A30", height=1).pack(fill="x")
+        _nav_hdr = tk.Frame(side, bg=SIDE)
+        _nav_hdr.pack(fill="x", padx=14, pady=(12, 6))
+        tk.Frame(_nav_hdr, bg=ACC, width=2, height=12).pack(side="left", padx=(0, 6))
+        tk.Label(_nav_hdr, text="NAVIGATION", bg=SIDE, fg="#4A4A70",
+                 font=("Segoe UI", 7, "bold")).pack(side="left")
 
         # Bottom status bar (fixed at bottom, placed before canvas so it anchors)
         self._sv = tk.StringVar(value="")
@@ -821,7 +885,7 @@ class SynthexApp:
                          font=("Segoe UI", 7, "bold"), anchor="w").pack(anchor="w")
                 continue
 
-            icon = NAV_ICONS.get(key, "\u2022")
+            icon = NAV_ICONS.get(key, "•")
             row = tk.Frame(_side_inner, bg=SIDE)
             row.pack(fill="x")
             row.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
@@ -838,11 +902,32 @@ class SynthexApp:
                 anchor="w", bg=SIDE, fg=MUT,
                 activebackground=CARD, activeforeground=FG,
                 font=("Segoe UI", 9), relief="flat", bd=0,
-                padx=14, pady=7, cursor="hand2",
+                padx=14, pady=8, cursor="hand2",
                 command=lambda k=key: self._show(k))
             b.pack(fill="x", side="left", expand=True)
             b.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
+
+            # Hover glow effect
+            def _nav_enter(e, btn=b, k=key):
+                if self._cur != k:
+                    btn.configure(bg=CARD2, fg=FG)
+                    bar_w = self._nav_bars.get(k)
+                    if bar_w and not bar_w.winfo_ismapped():
+                        bar_w.configure(bg=ACC2)
+                        bar_w.pack(side="left", fill="y")
+
+            def _nav_leave(e, btn=b, k=key):
+                if self._cur != k:
+                    btn.configure(bg=SIDE, fg=MUT)
+                    bar_w = self._nav_bars.get(k)
+                    if bar_w and bar_w.cget("bg") != ACC:
+                        bar_w.pack_forget()
+
+            b.bind("<Enter>", _nav_enter)
+            b.bind("<Leave>", _nav_leave)
+            row.bind("<Enter>", _nav_enter)
+            row.bind("<Leave>", _nav_leave)
             self._nav[key] = b
 
         # ── CONTENT ───────────────────────────────────────────────────────────
@@ -964,17 +1049,66 @@ class SynthexApp:
         for k, b in self._nav.items():
             b.configure(bg=SIDE, fg=MUT,
                         activebackground=CARD, activeforeground=FG)
-            self._nav_bars[k].pack_forget()
+            bar_w = self._nav_bars.get(k)
+            if bar_w:
+                bar_w.pack_forget()
         if key in self._nav:
             self._nav[key].configure(bg=CARD, fg=FG,
                                       activebackground=CARD, activeforeground=ACC)
-            self._nav_bars[key].pack(side="left", fill="y")
+            bar_w = self._nav_bars.get(key)
+            if bar_w:
+                bar_w.configure(bg=ACC)
+                bar_w.pack(side="left", fill="y")
+                self._animate_nav_bar(key)
         if key not in self._pages:
             self._pages[key] = self._page_builders[key]()
         self._pages[key].pack(fill="both", expand=True)
         self._cur = key
         if key == "chat":
             self._set_chat_badge(0)
+        # Page name indicator in header
+        try:
+            _names = {k: lbl for lbl, k in self.NAV if k}
+            display = _names.get(key, key).upper()
+            self._page_lbl.configure(text="/ " + display)
+        except Exception:
+            pass
+        # Sweep line animation
+        self._page_sweep()
+
+    def _animate_nav_bar(self, key, step=0):
+        """Pulse the active nav bar width on activation."""
+        bar_w = self._nav_bars.get(key)
+        if not bar_w:
+            return
+        widths = [1, 2, 4, 5, 4, 3]
+        if step < len(widths):
+            try:
+                bar_w.configure(width=widths[step])
+                self._root.after(35, self._animate_nav_bar, key, step + 1)
+            except Exception:
+                pass
+
+    def _page_sweep(self):
+        """Accent sweep line across content area top on page change."""
+        try:
+            sweep = tk.Frame(self._content, bg=ACC, height=2)
+            sweep.place(x=0, y=0, width=0)
+
+            def _grow(step=0, total=14):
+                try:
+                    cw = self._content.winfo_width() or 900
+                    w  = int(cw * step / total)
+                    sweep.place(x=0, y=0, width=w)
+                    if step < total:
+                        self._root.after(18, _grow, step + 1, total)
+                    else:
+                        self._root.after(80, sweep.destroy)
+                except Exception:
+                    pass
+            _grow()
+        except Exception:
+            pass
 
     def _apply_remote_config_to_nav(self):
         """Dim nav buttons for features disabled by master remote config."""
@@ -1077,20 +1211,44 @@ class SynthexApp:
         today = datetime.now().strftime("%A, %d %B %Y")
 
         # ── Hero banner ──────────────────────────────────────────────────────
-        hero = tk.Frame(body, bg="#12012E", padx=28, pady=22)
-        hero.pack(fill="x", padx=20, pady=(16, 0))
+        hero_wrap = tk.Frame(body, bg=BG)
+        hero_wrap.pack(fill="x", padx=20, pady=(16, 0))
+        hero = tk.Frame(hero_wrap, bg="#10012A", padx=28, pady=20)
+        hero.pack(fill="x")
+        # Animated bottom accent line
+        hero_line = tk.Canvas(hero_wrap, height=2, bg=BG, highlightthickness=0)
+        hero_line.pack(fill="x")
+
+        def _draw_hero_line(event=None):
+            hero_line.delete("all")
+            W = hero_line.winfo_width() or 900
+            steps = 40
+            for i in range(steps):
+                t  = i / steps
+                r_ = int(0x6C + (0x4A - 0x6C) * t)
+                g_ = int(0x4A + (0x9E - 0x4A) * t)
+                b_ = 0xFF
+                col = "#{:02x}{:02x}{:02x}".format(
+                    max(0, min(255, r_)), max(0, min(255, g_)), min(255, b_))
+                x0 = int(W * i / steps)
+                x1 = int(W * (i + 1) / steps)
+                hero_line.create_rectangle(x0, 0, x1, 2, fill=col, outline="")
+        hero_line.bind("<Configure>", _draw_hero_line)
+        hero_wrap.after(80, _draw_hero_line)
+
         tk.Frame(hero, bg="#7C3AED", width=4).pack(side="left", fill="y", padx=(0, 16))
-        hero_text = tk.Frame(hero, bg="#12012E")
+        hero_text = tk.Frame(hero, bg="#10012A")
         hero_text.pack(side="left", fill="both", expand=True)
         tk.Label(hero_text,
                  text="{}, {}!".format(_greeting(), name),
-                 bg="#12012E", fg="white",
+                 bg="#10012A", fg="white",
                  font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        tk.Label(hero_text, text=today, bg="#12012E", fg="#8080A0",
+        tk.Label(hero_text, text=today, bg="#10012A", fg="#6060A0",
                  font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 0))
         ver = self.config.get("app.version", "")
-        tk.Label(hero, text="v{}".format(ver), bg="#12012E", fg="#4A4A6A",
-                 font=("Segoe UI", 9)).pack(side="right", anchor="ne")
+        ver_lbl = tk.Label(hero, text="v{}".format(ver), bg="#10012A", fg="#3A3A5A",
+                           font=("Segoe UI", 9))
+        ver_lbl.pack(side="right", anchor="ne")
 
         # ── Stat chips ───────────────────────────────────────────────────────
         browser_ok = bool(self.engine and self.engine.browser and
@@ -1110,10 +1268,22 @@ class SynthexApp:
         ]:
             chip = tk.Frame(chips_row, bg=CARD, padx=16, pady=10)
             chip.pack(side="left", fill="both", expand=True, padx=(0, 6))
+            tk.Frame(chip, bg=clr, height=2).pack(fill="x", pady=(0, 6))
             tk.Label(chip, text=lbl, bg=CARD, fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
-            tk.Label(chip, text=val, bg=CARD, fg=clr,
-                     font=("Segoe UI", 12, "bold")).pack(anchor="w")
+            val_lbl = tk.Label(chip, text=val, bg=CARD, fg=clr,
+                               font=("Segoe UI", 12, "bold"))
+            val_lbl.pack(anchor="w")
+            # Hover glow
+            def _chip_enter(e, c=chip, col=clr):
+                _deep_bg(c, CARD2)
+            def _chip_leave(e, c=chip):
+                _deep_bg(c, CARD)
+            chip.bind("<Enter>", _chip_enter)
+            chip.bind("<Leave>", _chip_leave)
+            for w in chip.winfo_children():
+                w.bind("<Enter>", _chip_enter)
+                w.bind("<Leave>", _chip_leave)
 
         # ── Quick actions ────────────────────────────────────────────────────
         qa = tk.Frame(body, bg=SIDE, padx=14, pady=8)
@@ -1127,10 +1297,23 @@ class SynthexApp:
             ("Templates",       lambda: self._show("templates"), PRP),
             ("Lihat Log",       lambda: self._show("logs"),      MUT),
         ]:
-            tk.Button(qa, text=qa_lbl, bg=qa_clr, fg=BG,
-                      font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                      padx=10, pady=4, cursor="hand2",
-                      command=qa_cmd).pack(side="left", padx=(0, 6))
+            qb = tk.Button(qa, text=qa_lbl, bg=qa_clr, fg=BG,
+                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                           padx=10, pady=4, cursor="hand2",
+                           command=qa_cmd)
+            qb.pack(side="left", padx=(0, 6))
+            def _qb_enter(e, btn=qb, col=qa_clr):
+                try:
+                    r_ = min(255, int(col[1:3], 16) + 30)
+                    g_ = min(255, int(col[3:5], 16) + 30)
+                    b_ = min(255, int(col[5:7], 16) + 30)
+                    btn.configure(bg="#{:02x}{:02x}{:02x}".format(r_, g_, b_))
+                except Exception:
+                    pass
+            def _qb_leave(e, btn=qb, col=qa_clr):
+                btn.configure(bg=col)
+            qb.bind("<Enter>", _qb_enter)
+            qb.bind("<Leave>", _qb_leave)
 
         # ── My Tasks ─────────────────────────────────────────────────────────
         my_tasks = list(enumerate(self._ud.tasks[:5]))
@@ -1156,6 +1339,8 @@ class SynthexApp:
                 row = tk.Frame(mt_card, bg=CARD, padx=14, pady=7, cursor="hand2")
                 row.pack(fill="x")
                 tk.Frame(mt_card, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
+                row.bind("<Enter>", lambda e, rw=row: _deep_bg(rw, CARD2))
+                row.bind("<Leave>", lambda e, rw=row: _deep_bg(rw, CARD))
 
                 # Status dot
                 tk.Label(row, text="●", bg=CARD,

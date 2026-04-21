@@ -1,7 +1,7 @@
 {
-  "latest_version": "1.2.3",
+  "latest_version": "1.2.4",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.3/Synthex.exe",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.2.4/Synthex.exe",
   "changelog": "v1.2.2: Fix thread safety & race conditions di auth/session, task list, dan toast \u00e2\u20ac\u201d tambah lock untuk semua shared state; fix COM resource leak di macro recorder (CoUninitialize di finally); fix memory leak di shown_keys (dict insertion-order); fix app hang saat close (daemon thread + PriceMonitor join); fix rate limiter rekening (sleep di luar lock); fix timer cancel pakai root.after_cancel; async UIA capture agar pynput tidak blocked",
   "maintenance": false,
   "maintenance_msg": ""
