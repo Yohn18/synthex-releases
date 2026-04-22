@@ -1,8 +1,19 @@
 # Secrets & credentials
 config.json
 auth/token.json
+auth/google_creds/
+credentials.json
 *.env
 .env
+
+# Backups
+backups/
+
+# Local assets & scripts
+assets/
+make_icon.py
+make_shortcut.ps1
+backup.ps1
 
 # Python
 __pycache__/
