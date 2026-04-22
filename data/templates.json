@@ -132,5 +132,55 @@
       },
       {"type": "notify", "message": "Bulk confirmation selesai: {validation_result}"}
     ]
+  },
+  {
+    "name": "AI Ringkas Konten Halaman",
+    "description": "Buka halaman web, ambil teks utama, ringkas dengan AI, simpan hasilnya ke sheet",
+    "steps": [
+      {"type": "go_to_url",        "url": "{url}"},
+      {"type": "wait_for_element", "selector": "{content_selector}"},
+      {"type": "get_text",         "selector": "{content_selector}", "var": "raw_content"},
+      {"type": "ai_prompt",        "prompt": "Ringkas teks berikut dalam 3 kalimat:\n{raw_content}", "var": "summary"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{current_date}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{url}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "C{row}", "value": "{summary}"},
+      {"type": "notify",           "message": "Ringkasan tersimpan ke sheet"}
+    ]
+  },
+  {
+    "name": "Tambah Baris Baru ke Sheet",
+    "description": "Ambil data dari website dan append sebagai baris baru di Google Sheet",
+    "steps": [
+      {"type": "go_to_url",        "url": "{url}"},
+      {"type": "wait_for_element", "selector": "{title_selector}"},
+      {"type": "get_text",         "selector": "{title_selector}", "var": "item_title"},
+      {"type": "get_text",         "selector": "{value_selector}", "var": "item_value"},
+      {"type": "sheet_append_row", "sheet": "{sheet}", "values": "{current_date},{current_time},{item_title},{item_value}"},
+      {"type": "notify",           "message": "Baris baru ditambahkan: {item_title}"}
+    ]
+  },
+  {
+    "name": "Cari & Update Baris di Sheet",
+    "description": "Cari baris berdasarkan nilai di kolom tertentu, lalu update kolom status",
+    "steps": [
+      {"type": "sheet_find_row",   "sheet": "{sheet}", "column": "{search_column}", "value": "{search_value}", "var": "found_row"},
+      {"type": "if_equals",        "value1": "{found_row}", "value2": "", "action_false": "stop", "stop_message": "Data '{search_value}' tidak ditemukan di sheet"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{status_column}{found_row}", "value": "{new_status}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "{time_column}{found_row}", "value": "{current_date} {current_time}"},
+      {"type": "notify",           "message": "Data {search_value} diupdate ke: {new_status}"}
+    ]
+  },
+  {
+    "name": "Alert Harga Melebihi Batas",
+    "description": "Pantau harga di website, kirim notifikasi jika melebihi batas yang ditentukan",
+    "steps": [
+      {"type": "go_to_url",        "url": "{product_url}"},
+      {"type": "wait_for_element", "selector": "{price_selector}"},
+      {"type": "get_number",       "selector": "{price_selector}", "var": "current_price"},
+      {"type": "if_greater",       "num1": "{current_price}", "num2": "{price_limit}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "A{row}", "value": "{current_date} {current_time}"},
+      {"type": "sheet_write_cell", "sheet": "{sheet}", "cell": "B{row}", "value": "{current_price}"},
+      {"type": "notify",           "message": "ALERT! Harga {current_price} melebihi batas {price_limit}"}
+    ]
   }
 ]

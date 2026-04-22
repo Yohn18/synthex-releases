@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.13",
+  "latest_version": "1.3.14",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.13/Synthex.exe",
-  "changelog": "v1.3.13: Redesain card home page ala Tailwind CSS — icon kini punya badge berwarna per fitur (bukan latar hitam polos), gradient top bar tiap card, hover tint sesuai warna accent, tombol Buka full-width",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.14/Synthex.exe",
+  "changelog": "v1.3.14: Tambah 12 template bawaan di fitur Templates — meliputi AI Ringkas Konten, Tambah Baris Sheet, Cari & Update Baris, Alert Harga Melebihi Batas, plus template lama (update harga, konfirmasi order, monitor stok, copy data, login, isi form, screenshot harian, bulk order)",
   "maintenance": false,
   "maintenance_msg": ""
 }
