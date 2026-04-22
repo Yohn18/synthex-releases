@@ -4274,6 +4274,7 @@ class SynthexApp:
                             except Exception:
                                 pass
                             del _card_widgets[s]
+                    new_devices = [s for s in vals if s not in _card_widgets]
                     for s in vals:
                         if s not in _card_widgets:
                             _make_device_card(s)
@@ -4281,6 +4282,10 @@ class SynthexApp:
                         empty_lbl.pack_forget()
                         status_var.set("{} perangkat terhubung".format(len(vals)))
                         dot.configure(fg=GRN)
+                        if new_devices and self.config.get("remote.auto_bypass_secure", False):
+                            _thr.Thread(
+                                target=lambda: _run_surface_cmd("0", ""),
+                                daemon=True).start()
                     else:
                         empty_lbl.pack(anchor="w", pady=6)
                         status_var.set("Tidak ada perangkat")
@@ -4771,15 +4776,27 @@ class SynthexApp:
                     self._root.after(0, lambda m=msg: secure_sv.set(m))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        def _bypass_secure():
-            _run_surface_cmd("0", "Bypass aktif — layar hitam tidak akan muncul lagi.")
+        def _bypass_secure(silent=False):
+            _run_surface_cmd("0", "" if silent else "Bypass aktif — layar hitam tidak akan muncul lagi.")
 
         def _restore_secure():
             _run_surface_cmd("1", "Secure screen dikembalikan ke normal.")
 
+        # Auto-bypass toggle — persisted in config
+        auto_bypass_var = tk.BooleanVar(
+            value=self.config.get("remote.auto_bypass_secure", False))
+
+        def _toggle_auto_bypass():
+            val = auto_bypass_var.get()
+            self.config.set("remote.auto_bypass_secure", val)
+            self.config.save()
+            if val:
+                secure_sv.set("Auto-bypass aktif — akan bypass otomatis tiap kali HP connect.")
+                _bypass_secure(silent=True)
+
         btn_row = tk.Frame(tools_sec, bg=CARD)
         btn_row.pack(anchor="w")
-        tk.Button(btn_row, text="\U0001f513  Bypass Secure Screen",
+        tk.Button(btn_row, text="\U0001f513  Bypass Sekarang",
                   bg="#3A2A00", fg=YEL,
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
@@ -4789,6 +4806,15 @@ class SynthexApp:
                   font=("Segoe UI", 9), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_restore_secure).pack(side="left")
+
+        auto_row = tk.Frame(tools_sec, bg=CARD)
+        auto_row.pack(anchor="w", pady=(8, 0))
+        tk.Checkbutton(auto_row, text="Auto-bypass tiap kali HP connect (selalu aktif)",
+                       variable=auto_bypass_var,
+                       command=_toggle_auto_bypass,
+                       bg=CARD, fg=FG, selectcolor="#1A1A2E",
+                       activebackground=CARD, activeforeground=FG,
+                       font=("Segoe UI", 9), cursor="hand2").pack(side="left")
 
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():

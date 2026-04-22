@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.10",
+  "latest_version": "1.3.11",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.10/Synthex.exe",
-  "changelog": "v1.3.10: Fix hardcoded path ADB di remote_control.py — sekarang dinamis pakai expanduser() agar benar di semua PC",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.11/Synthex.exe",
+  "changelog": "v1.3.11: Mirror HP — tambah toggle Auto-bypass Secure Screen; saat aktif, bypass dijalankan otomatis tiap kali HP connect tanpa perlu klik manual; setting tersimpan di config",
   "maintenance": false,
   "maintenance_msg": ""
 }
