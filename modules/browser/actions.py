@@ -14,6 +14,10 @@ import concurrent.futures
 from core.config import Config
 from core.logger import get_logger
 
+_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_DEFAULT_MACROS_DIR      = os.path.join(_ROOT, "macros")
+_DEFAULT_SCREENSHOTS_DIR = os.path.join(_ROOT, "screenshots")
+
 
 class BrowserActions:
     def __init__(self, config: Config):
@@ -166,7 +170,7 @@ class BrowserActions:
     # -- Shared data store --
     def _shared_store_path(self) -> str:
         return os.path.join(
-            self.config.get("macro.save_path", "C:/Users/Admin/synthex/macros"),
+            self.config.get("macro.save_path", _DEFAULT_MACROS_DIR),
             "shared_data.json",
         )
 
@@ -728,7 +732,7 @@ class BrowserActions:
         if self._recording_thread:
             self._recording_thread.join(timeout=6)
         save_path = os.path.join(
-            self.config.get("macro.save_path", "C:/Users/Admin/synthex/macros"),
+            self.config.get("macro.save_path", _DEFAULT_MACROS_DIR),
             "browser_sequence.json",
         )
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
@@ -741,7 +745,7 @@ class BrowserActions:
     def replay_browser_actions(self) -> int:
         """Replay macros/browser_sequence.json headlessly via the main browser."""
         save_path = os.path.join(
-            self.config.get("macro.save_path", "C:/Users/Admin/synthex/macros"),
+            self.config.get("macro.save_path", _DEFAULT_MACROS_DIR),
             "browser_sequence.json",
         )
         with open(save_path, encoding="utf-8") as f:
@@ -851,7 +855,7 @@ class BrowserActions:
             import datetime
             ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             screenshot_dir = self.config.get(
-                "vision.screenshot_dir", "C:/Users/Admin/synthex/screenshots"
+                "vision.screenshot_dir", _DEFAULT_SCREENSHOTS_DIR
             )
             path = value if value else os.path.join(screenshot_dir, f"screenshot_{ts}.png")
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
