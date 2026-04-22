@@ -5211,13 +5211,18 @@ class SynthexApp:
 
     def _pg_blog(self):
         import threading as _thr
+        import webbrowser as _wb
+        import io as _io
         from datetime import datetime as _dt
+        from tkinter import filedialog as _fd
+        from PIL import Image as _Img, ImageTk as _ITk
 
         ADMIN = "yohanesnzzz777@gmail.com"
         _is_admin = (self._email == ADMIN)
+        BLUE_ACC = "#0EA5E9"
 
         f = tk.Frame(self._content, bg=BG)
-        self._hdr(f, "Blog", "Artikel & update dari komunitas Synthex")
+        self._hdr(f, "Blog", "Artikel, foto & video dari komunitas Synthex")
 
         body = tk.Frame(f, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(8, 16))
@@ -5227,7 +5232,7 @@ class SynthexApp:
         left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
 
-        tk.Frame(left, bg="#0EA5E9", height=4).pack(fill="x")
+        tk.Frame(left, bg=BLUE_ACC, height=4).pack(fill="x")
 
         top_bar = tk.Frame(left, bg=CARD, padx=12, pady=8)
         top_bar.pack(fill="x")
@@ -5235,7 +5240,7 @@ class SynthexApp:
                  font=("Segoe UI", 10, "bold")).pack(side="left")
         if _is_admin:
             tk.Button(top_bar, text="+ Tulis",
-                      bg="#0EA5E9", fg="white",
+                      bg=BLUE_ACC, fg="white",
                       font=("Segoe UI", 8, "bold"), padx=8, pady=3,
                       relief="flat", bd=0, cursor="hand2",
                       command=lambda: _open_editor()).pack(side="right")
@@ -5259,15 +5264,18 @@ class SynthexApp:
         right.pack(side="left", fill="both", expand=True)
         tk.Frame(right, bg="#7C3AED", height=4).pack(fill="x")
 
-        reader = tk.Text(right, bg="#0A0A18", fg=FG,
+        reader_wrap = tk.Frame(right, bg="#0A0A18")
+        reader_wrap.pack(fill="both", expand=True)
+        reader_sb = ttk.Scrollbar(reader_wrap)
+        reader_sb.pack(side="right", fill="y")
+        reader = tk.Text(reader_wrap, bg="#0A0A18", fg=FG,
                          font=("Segoe UI", 10),
                          relief="flat", bd=0, wrap="word",
                          state="disabled", padx=20, pady=16,
+                         yscrollcommand=reader_sb.set,
                          selectbackground=ACC)
-        reader_sb = ttk.Scrollbar(right, command=reader.yview)
-        reader.configure(yscrollcommand=reader_sb.set)
-        reader_sb.pack(side="right", fill="y")
-        reader.pack(fill="both", expand=True)
+        reader_sb.configure(command=reader.yview)
+        reader.pack(side="left", fill="both", expand=True)
 
         reader.tag_configure("title",  foreground="white",      font=("Segoe UI", 16, "bold"))
         reader.tag_configure("meta",   foreground=MUT,          font=("Segoe UI", 8))
@@ -5280,19 +5288,23 @@ class SynthexApp:
                              background="#0A1A0A")
         reader.tag_configure("link",   foreground="#4A9EFF",    font=("Segoe UI", 10, "underline"))
         reader.tag_configure("empty",  foreground=MUT,          font=("Segoe UI", 10, "italic"))
+        reader.tag_configure("cap",    foreground=MUT,          font=("Segoe UI", 8, "italic"),
+                             justify="center")
+        reader.tag_configure("video",  foreground=BLUE_ACC,     font=("Segoe UI", 9, "bold"),
+                             background="#0A1428")
+        reader.tag_configure("divider", foreground="#2A2A4A")
+
+        if not hasattr(self, "_blog_photo_refs"):
+            self._blog_photo_refs = []
 
         def _render_markdown(text: str):
-            """Insert markdown-formatted text into the reader widget."""
             import re as _re
             for raw_line in text.split("\n"):
                 line = raw_line
                 if line.startswith("## "):
-                    reader.insert("end", line[3:] + "\n", "h2")
-                    continue
+                    reader.insert("end", line[3:] + "\n", "h2"); continue
                 if line.startswith("# "):
-                    reader.insert("end", line[2:] + "\n", "h1")
-                    continue
-                # Inline: bold, italic, code, link — parse segment by segment
+                    reader.insert("end", line[2:] + "\n", "h1"); continue
                 pattern = _re.compile(
                     r'(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|\[([^\]]+)\]\([^)]+\))')
                 pos = 0
@@ -5300,34 +5312,95 @@ class SynthexApp:
                     if m.start() > pos:
                         reader.insert("end", line[pos:m.start()], "body")
                     full = m.group(0)
-                    if full.startswith("**"):
-                        reader.insert("end", m.group(2), "bold")
-                    elif full.startswith("*"):
-                        reader.insert("end", m.group(3), "italic")
-                    elif full.startswith("`"):
-                        reader.insert("end", m.group(4), "code")
-                    else:
-                        reader.insert("end", m.group(5), "link")
+                    if full.startswith("**"):   reader.insert("end", m.group(2), "bold")
+                    elif full.startswith("*"):  reader.insert("end", m.group(3), "italic")
+                    elif full.startswith("`"):  reader.insert("end", m.group(4), "code")
+                    else:                       reader.insert("end", m.group(5), "link")
                     pos = m.end()
                 reader.insert("end", line[pos:] + "\n", "body")
+
+        def _load_and_show_image(url: str, caption: str):
+            try:
+                import requests as _rq, certifi as _ca
+                resp = None
+                for verify in (_ca.where(), False):
+                    try:
+                        resp = _rq.get(url, timeout=12, verify=verify)
+                        if resp and resp.ok:
+                            break
+                    except Exception:
+                        continue
+                if not resp or not resp.ok:
+                    return
+                img = _Img.open(_io.BytesIO(resp.content)).convert("RGBA")
+                max_w = 480
+                if img.width > max_w:
+                    ratio = max_w / img.width
+                    img = img.resize((max_w, int(img.height * ratio)), _Img.LANCZOS)
+                photo = _ITk.PhotoImage(img)
+                self._blog_photo_refs.append(photo)
+                if self._root and reader.winfo_exists():
+                    reader.after(0, lambda ph=photo, cap=caption: _embed_image(ph, cap))
+            except Exception:
+                pass
+
+        def _embed_image(photo, caption):
+            reader.configure(state="normal")
+            reader.insert("end", "\n")
+            reader.image_create("end", image=photo, padx=20)
+            if caption:
+                reader.insert("end", "\n" + caption + "\n", "cap")
+            reader.insert("end", "\n")
+            reader.configure(state="disabled")
+
+        def _show_video_card(url: str, caption: str):
+            label = caption if caption else (url[:55] + ("..." if len(url) > 55 else ""))
+            btn_text = "  ▶  Video: {}  ".format(label)
+            reader.configure(state="normal")
+            reader.insert("end", "\n")
+            tag_id = "video_{}".format(id(url))
+            reader.tag_configure(tag_id, foreground=BLUE_ACC,
+                                 font=("Segoe UI", 9, "bold"), background="#0A1428")
+            reader.insert("end", btn_text, tag_id)
+            reader.tag_bind(tag_id, "<Button-1>", lambda e, u=url: _wb.open(u))
+            reader.tag_bind(tag_id, "<Enter>",
+                            lambda e: reader.configure(cursor="hand2"))
+            reader.tag_bind(tag_id, "<Leave>",
+                            lambda e: reader.configure(cursor=""))
+            reader.insert("end", "\n\n")
+            reader.configure(state="disabled")
 
         _posts = []
 
         def _show_post(post):
+            self._blog_photo_refs.clear()
             reader.configure(state="normal")
             reader.delete("1.0", "end")
             ts = post.get("ts", 0)
-            try:
-                date_str = _dt.fromtimestamp(ts).strftime("%d %B %Y  %H:%M")
-            except Exception:
-                date_str = ""
+            try: date_str = _dt.fromtimestamp(ts).strftime("%d %B %Y  %H:%M")
+            except Exception: date_str = ""
             reader.insert("end", post.get("title", "Tanpa Judul") + "\n", "title")
             reader.insert("end", "oleh {}  ·  {}\n\n".format(
                 post.get("author_name", "?"), date_str), "meta")
             _render_markdown(post.get("content", ""))
+
+            media = post.get("media") or []
+            if media:
+                reader.insert("end", "\n" + "─" * 40 + "\n", "divider")
             reader.configure(state="disabled")
 
-            # Admin: Edit + Delete buttons
+            for item in media:
+                mtype = item.get("type", "")
+                url   = item.get("url", "")
+                cap   = item.get("caption", "")
+                if not url:
+                    continue
+                if mtype == "image":
+                    _thr.Thread(target=_load_and_show_image,
+                                args=(url, cap), daemon=True).start()
+                elif mtype == "video":
+                    _show_video_card(url, cap)
+
             for w in right.winfo_children():
                 if getattr(w, "_is_admin_btn", False):
                     w.destroy()
@@ -5335,18 +5408,16 @@ class SynthexApp:
                 admin_bar = tk.Frame(right, bg=CARD)
                 admin_bar._is_admin_btn = True
                 admin_bar.place(relx=1.0, rely=0.0, anchor="ne", x=-8, y=8)
-                edit_btn = tk.Button(admin_bar, text=" Edit ",
-                                     bg="#1D4E8F", fg="white",
-                                     font=("Segoe UI", 8), padx=8, pady=4,
-                                     relief="flat", bd=0, cursor="hand2",
-                                     command=lambda p=post: _open_editor(p))
-                edit_btn.pack(side="left", padx=(0, 4))
-                del_btn = tk.Button(admin_bar, text=" Hapus ",
-                                    bg="#7F1D1D", fg="white",
-                                    font=("Segoe UI", 8), padx=8, pady=4,
-                                    relief="flat", bd=0, cursor="hand2",
-                                    command=lambda p=post: _delete_post(p))
-                del_btn.pack(side="left")
+                tk.Button(admin_bar, text=" Edit ",
+                          bg="#1D4E8F", fg="white",
+                          font=("Segoe UI", 8), padx=8, pady=4,
+                          relief="flat", bd=0, cursor="hand2",
+                          command=lambda p=post: _open_editor(p)).pack(side="left", padx=(0, 4))
+                tk.Button(admin_bar, text=" Hapus ",
+                          bg="#7F1D1D", fg="white",
+                          font=("Segoe UI", 8), padx=8, pady=4,
+                          relief="flat", bd=0, cursor="hand2",
+                          command=lambda p=post: _delete_post(p)).pack(side="left")
 
         def _show_empty():
             reader.configure(state="normal")
@@ -5367,10 +5438,9 @@ class SynthexApp:
                 return
             for p in _posts:
                 ts = p.get("ts", 0)
-                try:
-                    date_s = _dt.fromtimestamp(ts).strftime("%d %b %Y")
-                except Exception:
-                    date_s = ""
+                try: date_s = _dt.fromtimestamp(ts).strftime("%d %b %Y")
+                except Exception: date_s = ""
+                media_count = len(p.get("media") or [])
                 card = tk.Frame(list_frame, bg=CARD, cursor="hand2")
                 card.pack(fill="x", pady=(0, 1))
                 tk.Frame(card, bg=CARD2, height=1).pack(fill="x")
@@ -5384,21 +5454,26 @@ class SynthexApp:
                          bg=CARD, fg=MUT,
                          font=("Segoe UI", 8),
                          wraplength=220, justify="left").pack(anchor="w", pady=(2, 0))
-                tk.Label(inner, text=date_s, bg=CARD, fg="#5A5A7A",
-                         font=("Segoe UI", 7)).pack(anchor="w", pady=(4, 0))
-                for w in (card, inner):
+                meta_row = tk.Frame(inner, bg=CARD)
+                meta_row.pack(anchor="w", pady=(4, 0), fill="x")
+                tk.Label(meta_row, text=date_s, bg=CARD, fg="#5A5A7A",
+                         font=("Segoe UI", 7)).pack(side="left")
+                if media_count:
+                    tk.Label(meta_row,
+                             text="  \U0001f5bc {}  ".format(media_count),
+                             bg=CARD, fg=BLUE_ACC,
+                             font=("Segoe UI", 7)).pack(side="left")
+                for w in (card, inner, meta_row):
                     w.bind("<Button-1>", lambda e, post=p: _show_post(post))
-                    w.bind("<Enter>", lambda e, c=card: c.configure(bg="#18183A"))
-                    w.bind("<Leave>", lambda e, c=card: c.configure(bg=CARD))
-            # Auto-open first post
+                    w.bind("<Enter>", lambda e, c=card: _deep_bg(c, "#18183A"))
+                    w.bind("<Leave>", lambda e, c=card: _deep_bg(c, CARD))
             _show_post(_posts[0])
 
         def _load_posts():
             from modules.blog import fetch_posts
             from auth.firebase_auth import get_valid_token
             token = get_valid_token()
-            if not token:
-                return
+            if not token: return
             posts = fetch_posts(token)
             if self._root:
                 self._root.after(0, lambda p=posts: _apply_posts(p))
@@ -5413,48 +5488,49 @@ class SynthexApp:
             from auth.firebase_auth import get_valid_token
             def _bg():
                 token = get_valid_token()
-                if token:
-                    delete_post(post.get("_id", ""), token)
+                if token: delete_post(post.get("_id", ""), token)
                 if self._root:
                     self._root.after(0, lambda: _thr.Thread(
                         target=_load_posts, daemon=True).start())
             _thr.Thread(target=_bg, daemon=True).start()
 
+        # ── Editor ────────────────────────────────────────────────────────────
         def _open_editor(post=None):
             dlg = tk.Toplevel(self._root)
             dlg.title("Tulis Post" if not post else "Edit Post")
             dlg.configure(bg="#0D0D14")
-            dlg.geometry("640x520")
+            dlg.geometry("720x640")
             dlg.resizable(True, True)
             dlg.attributes("-topmost", True)
-            tk.Frame(dlg, bg="#0EA5E9", height=4).pack(fill="x")
-            ed = tk.Frame(dlg, bg="#0D0D14", padx=20, pady=16)
+
+            tk.Frame(dlg, bg=BLUE_ACC, height=4).pack(fill="x")
+            ed = tk.Frame(dlg, bg="#0D0D14", padx=20, pady=14)
             ed.pack(fill="both", expand=True)
+
             tk.Label(ed, text="Judul", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
             title_var = tk.StringVar(value=post.get("title", "") if post else "")
             tk.Entry(ed, textvariable=title_var,
                      bg="#16162A", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 11), bd=6).pack(
-                fill="x", pady=(2, 10))
+                fill="x", pady=(2, 8))
+
             tk.Label(ed, text="Ringkasan (tampil di daftar)", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
             sum_var = tk.StringVar(value=post.get("summary", "") if post else "")
             tk.Entry(ed, textvariable=sum_var,
                      bg="#16162A", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 9), bd=6).pack(
-                fill="x", pady=(2, 10))
+                fill="x", pady=(2, 8))
+
             tk.Label(ed, text="Isi Artikel", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
-
-            # Formatting toolbar
             fmt_bar = tk.Frame(ed, bg="#1A1A2E")
             fmt_bar.pack(fill="x", pady=(2, 0))
-
             content_box = tk.Text(ed, bg="#16162A", fg=FG, insertbackground=FG,
                                   relief="flat", font=("Segoe UI", 10),
-                                  bd=6, wrap="word", height=14)
-            content_box.pack(fill="both", expand=True, pady=(0, 12))
+                                  bd=6, wrap="word", height=9)
+            content_box.pack(fill="both", expand=True, pady=(0, 8))
             if post:
                 content_box.insert("1.0", post.get("content", ""))
 
@@ -5477,23 +5553,164 @@ class SynthexApp:
                 content_box.focus_set()
 
             for lbl, cmd in [
-                ("B",   lambda: _wrap_sel("**")),
-                ("I",   lambda: _wrap_sel("*")),
-                ("`",   lambda: _wrap_sel("`")),
-                ("H1",  lambda: _wrap_sel("# ", "")),
-                ("H2",  lambda: _wrap_sel("## ", "")),
-                ("🔗",  _insert_link),
+                ("B",  lambda: _wrap_sel("**")),
+                ("I",  lambda: _wrap_sel("*")),
+                ("`",  lambda: _wrap_sel("`")),
+                ("H1", lambda: _wrap_sel("# ", "")),
+                ("H2", lambda: _wrap_sel("## ", "")),
+                ("\U0001f517", _insert_link),
             ]:
                 tk.Button(fmt_bar, text=lbl, bg="#222236", fg=FG,
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                           padx=9, pady=3, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 2), pady=3)
-
-            tk.Label(fmt_bar, text="Markdown didukung",
-                     bg="#1A1A2E", fg="#4A4A6A",
+            tk.Label(fmt_bar, text="Markdown", bg="#1A1A2E", fg="#4A4A6A",
                      font=("Segoe UI", 7)).pack(side="right", padx=8)
-            btn_row = tk.Frame(ed, bg="#0D0D14")
-            btn_row.pack(anchor="e")
+
+            # ── Media section ─────────────────────────────────────────────────
+            media_list = list(post.get("media") or []) if post else []
+
+            media_hdr = tk.Frame(ed, bg="#0D0D14")
+            media_hdr.pack(fill="x")
+            tk.Label(media_hdr, text="Media (Foto & Video)",
+                     bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(side="left")
+            upload_status = tk.StringVar(value="")
+            tk.Label(media_hdr, textvariable=upload_status, bg="#0D0D14",
+                     fg=BLUE_ACC, font=("Segoe UI", 8)).pack(side="right")
+
+            media_frame = tk.Frame(ed, bg="#0D0D14")
+            media_frame.pack(fill="x", pady=(4, 0))
+
+            def _refresh_media_ui():
+                for w in media_frame.winfo_children():
+                    w.destroy()
+                for i, item in enumerate(media_list):
+                    mtype = item.get("type", "image")
+                    url   = item.get("url", "")
+                    cap   = item.get("caption", "")
+                    icon  = "\U0001f5bc" if mtype == "image" else "▶"
+                    row = tk.Frame(media_frame, bg="#16162A")
+                    row.pack(fill="x", pady=(0, 3))
+                    tk.Label(row, text=icon, bg="#16162A",
+                             font=("Segoe UI", 10)).pack(side="left", padx=(6, 4))
+                    tk.Label(row, text=(url[:52] + "..." if len(url) > 52 else url),
+                             bg="#16162A", fg=FG,
+                             font=("Segoe UI", 8)).pack(side="left")
+                    cap_var = tk.StringVar(value=cap)
+                    cap_e = tk.Entry(row, textvariable=cap_var, width=16,
+                                     bg="#1E1E38", fg=MUT, insertbackground=FG,
+                                     relief="flat", font=("Segoe UI", 8), bd=4)
+                    cap_e.pack(side="left", padx=(6, 0))
+                    def _save_cap(e, idx=i, cv=cap_var):
+                        if idx < len(media_list):
+                            media_list[idx]["caption"] = cv.get()
+                    cap_e.bind("<FocusOut>", _save_cap)
+                    cap_e.bind("<Return>",   _save_cap)
+                    tk.Button(row, text="✕", bg="#3A0A0A", fg="#FF6060",
+                              font=("Segoe UI", 8), relief="flat", bd=0,
+                              padx=6, cursor="hand2",
+                              command=lambda idx=i: (_remove_media(idx))).pack(
+                                  side="right", padx=4)
+
+            def _remove_media(idx):
+                if 0 <= idx < len(media_list):
+                    media_list.pop(idx)
+                    _refresh_media_ui()
+
+            def _add_image_url():
+                url_dlg = tk.Toplevel(dlg)
+                url_dlg.title("URL Gambar")
+                url_dlg.configure(bg="#0D0D14")
+                url_dlg.geometry("440x100")
+                url_dlg.attributes("-topmost", True)
+                tk.Label(url_dlg, text="Masukkan URL gambar:",
+                         bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
+                    anchor="w", padx=16, pady=(12, 4))
+                uv = tk.StringVar()
+                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162A", fg=FG,
+                              insertbackground=FG, relief="flat",
+                              font=("Segoe UI", 10), bd=6)
+                ue.pack(fill="x", padx=16)
+                ue.focus_set()
+                def _ok(e=None):
+                    u = uv.get().strip()
+                    if u:
+                        media_list.append({"type": "image", "url": u, "caption": ""})
+                        _refresh_media_ui()
+                    url_dlg.destroy()
+                ue.bind("<Return>", _ok)
+                tk.Button(url_dlg, text="Tambah", bg=BLUE_ACC, fg="white",
+                          relief="flat", bd=0, padx=12, pady=4,
+                          font=("Segoe UI", 9, "bold"),
+                          command=_ok).pack(anchor="e", padx=16, pady=8)
+                url_dlg.grab_set()
+
+            def _add_image_file():
+                path = _fd.askopenfilename(
+                    parent=dlg, title="Pilih Gambar",
+                    filetypes=[("Image", "*.jpg *.jpeg *.png *.gif *.webp *.bmp")])
+                if not path:
+                    return
+                upload_status.set("Mengupload…")
+                def _bg():
+                    from modules.blog import upload_image
+                    from auth.firebase_auth import get_valid_token
+                    token = get_valid_token()
+                    url = upload_image(path, token) if token else None
+                    if dlg.winfo_exists():
+                        if url:
+                            media_list.append({"type": "image", "url": url, "caption": ""})
+                            dlg.after(0, lambda: (_refresh_media_ui(),
+                                                  upload_status.set("✓ Selesai")))
+                        else:
+                            dlg.after(0, lambda: upload_status.set("Upload gagal"))
+                _thr.Thread(target=_bg, daemon=True).start()
+
+            def _add_video_url():
+                url_dlg = tk.Toplevel(dlg)
+                url_dlg.title("URL Video")
+                url_dlg.configure(bg="#0D0D14")
+                url_dlg.geometry("440x100")
+                url_dlg.attributes("-topmost", True)
+                tk.Label(url_dlg, text="Masukkan URL video (YouTube, dll):",
+                         bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
+                    anchor="w", padx=16, pady=(12, 4))
+                uv = tk.StringVar()
+                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162A", fg=FG,
+                              insertbackground=FG, relief="flat",
+                              font=("Segoe UI", 10), bd=6)
+                ue.pack(fill="x", padx=16)
+                ue.focus_set()
+                def _ok(e=None):
+                    u = uv.get().strip()
+                    if u:
+                        media_list.append({"type": "video", "url": u, "caption": ""})
+                        _refresh_media_ui()
+                    url_dlg.destroy()
+                ue.bind("<Return>", _ok)
+                tk.Button(url_dlg, text="Tambah", bg="#7C3AED", fg="white",
+                          relief="flat", bd=0, padx=12, pady=4,
+                          font=("Segoe UI", 9, "bold"),
+                          command=_ok).pack(anchor="e", padx=16, pady=8)
+                url_dlg.grab_set()
+
+            btn_row_media = tk.Frame(ed, bg="#0D0D14")
+            btn_row_media.pack(fill="x", pady=(6, 8))
+            for lbl, cmd, bg_c in [
+                ("\U0001f5bc  Gambar URL",  _add_image_url,  "#1D4E8F"),
+                ("\U0001f4c2  Upload File", _add_image_file, BLUE_ACC),
+                ("▶  Tambah Video",    _add_video_url,  "#7C3AED"),
+            ]:
+                tk.Button(btn_row_media, text=lbl, bg=bg_c, fg="white",
+                          font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                          padx=10, pady=5, cursor="hand2",
+                          command=cmd).pack(side="left", padx=(0, 6))
+
+            _refresh_media_ui()
+
+            sub_row = tk.Frame(ed, bg="#0D0D14")
+            sub_row.pack(anchor="e", pady=(4, 0))
+
             def _submit():
                 title   = title_var.get().strip()
                 summary = sum_var.get().strip()
@@ -5506,22 +5723,25 @@ class SynthexApp:
                     if token:
                         if post:
                             from modules.blog import update_post
-                            update_post(post["_id"], title, content, summary, token)
+                            update_post(post["_id"], title, content,
+                                        summary, token, media_list)
                         else:
                             from modules.blog import create_post
-                            create_post(title, content, summary, ADMIN, token)
+                            create_post(title, content, summary,
+                                        ADMIN, token, media_list)
                     if self._root:
                         self._root.after(0, lambda: _thr.Thread(
                             target=_load_posts, daemon=True).start())
                 dlg.destroy()
                 _thr.Thread(target=_bg, daemon=True).start()
-            btn_label = "Simpan Perubahan" if post else "Publikasikan"
-            tk.Button(btn_row, text=btn_label,
-                      bg="#0EA5E9", fg="white",
+
+            btn_lbl = "Simpan Perubahan" if post else "Publikasikan"
+            tk.Button(sub_row, text=btn_lbl,
+                      bg=BLUE_ACC, fg="white",
                       font=("Segoe UI", 9, "bold"), padx=16, pady=6,
                       relief="flat", cursor="hand2",
                       command=_submit).pack(side="left", padx=(0, 8))
-            tk.Button(btn_row, text="Batal", bg="#1A1A2E", fg=MUT,
+            tk.Button(sub_row, text="Batal", bg="#1A1A2E", fg=MUT,
                       font=("Segoe UI", 9), padx=12, pady=6,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
