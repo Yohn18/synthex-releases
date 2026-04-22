@@ -833,15 +833,24 @@ class SynthexApp:
 
         # ── Generate PIL nav icons ─────────────────────────────────────────────
         from ui.icons import generate_all_icons, generate_all_icons_glow
-        _acc_rgb  = (108, 74, 255)
+        _acc_rgb   = (108, 74, 255)
         _muted_rgb = (80, 80, 112)
-        _raw_icons      = generate_all_icons(20, _acc_rgb)
-        _raw_icons_dim  = generate_all_icons(20, _muted_rgb)
-        _raw_icons_glow = generate_all_icons_glow(20, _acc_rgb)
+        _nav_keys  = [k for _, k in self.NAV if k]
+        _raw_icons     = generate_all_icons(20, _acc_rgb,   keys=_nav_keys)
+        _raw_icons_dim = generate_all_icons(20, _muted_rgb, keys=_nav_keys)
         # Convert to ImageTk.PhotoImage — store on self to prevent GC
-        self._nav_photo       = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons.items()}
-        self._nav_photo_dim   = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_dim.items()}
-        self._nav_photo_glow  = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_glow.items()}
+        self._nav_photo     = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons.items()}
+        self._nav_photo_dim = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_dim.items()}
+        # Glow icons generated lazily on first hover to avoid GaussianBlur at startup
+        self._nav_photo_glow = {}
+        self._nav_raw_glow_pending = (_raw_icons, _acc_rgb)
+        def _build_glow_bg():
+            glow = generate_all_icons_glow(20, _acc_rgb)
+            photos = {k: ImageTk.PhotoImage(v) for k, v in glow.items()}
+            if self._root:
+                self._root.after(0, lambda p=photos: self._nav_photo_glow.update(p))
+        import threading as _thr_icons
+        _thr_icons.Thread(target=_build_glow_bg, daemon=True).start()
 
         # ── SIDEBAR ───────────────────────────────────────────────────────────
         SIDE_W = 220
@@ -1344,7 +1353,7 @@ class SynthexApp:
         for _ck, _cc in zip(_chip_icon_keys, _chip_icon_colors):
             _ckey = "{}_{}".format(_ck, _cc)
             if _ckey not in self._home_chip_photos:
-                _raw = _gen_icons(26, _cc)
+                _raw = _gen_icons(26, _cc, keys=[_ck])
                 self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_ck])
 
         chips_row = tk.Frame(body, bg=BG)
@@ -1399,7 +1408,7 @@ class SynthexApp:
         ]
         for _ik, _, __, ___, _rgb in _qa_defs:
             if _ik not in self._home_qa_photos:
-                _raw = _gen_icons(14, _rgb)
+                _raw = _gen_icons(14, _rgb, keys=[_ik])
                 self._home_qa_photos[_ik] = ImageTk.PhotoImage(_raw[_ik])
 
         qa_wrap = tk.Frame(body, bg=BG)
@@ -5002,9 +5011,23 @@ class SynthexApp:
             if bc_ts > _last_broadcast_ts[0] and bc_ts > _session_start:
                 _last_broadcast_ts[0] = bc_ts
                 msg = "📢 BROADCAST: {}".format(bc.get("message", ""))
+                bc_text = bc.get("message", "")
                 if self._root:
                     self._root.after(0, lambda m=msg, t=bc_ts: _append(
                         "Master", m, t, "bc_{}".format(bc_ts), system=True))
+                def _bc_toast(t=bc_text):
+                    with _toast_lock:
+                        try:
+                            nonlocal _toaster
+                            if _toaster is None:
+                                from win10toast import ToastNotifier
+                                _toaster = ToastNotifier()
+                            _toaster.show_toast(
+                                "📢 Broadcast Synthex", t,
+                                duration=8, threaded=True)
+                        except Exception:
+                            pass
+                _thr.Thread(target=_bc_toast, daemon=True).start()
 
         def _poll_broadcast():
             if not self._root:

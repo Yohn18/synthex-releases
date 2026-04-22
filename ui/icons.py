@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """ui/icons.py - PIL-generated icon set for Synthex sidebar & UI."""
 
+import math
 from PIL import Image, ImageDraw, ImageFilter
 
 # Default sizes
@@ -45,14 +46,12 @@ def _icon_spy(c, s=_S):
     # eye outline
     pts = [(p, m)]
     for i in range(20):
-        import math
         a = math.pi * i / 19
         x = p + (s - 2*p) * i / 19
         y = m + int((m - p - 1) * math.sin(a) * 0.6)
         pts.append((x, y))
     pts.append((s - p, m))
     for i in range(20):
-        import math
         a = math.pi * (19 - i) / 19
         x = p + (s - 2*p) * (19 - i) / 19
         y = m - int((m - p - 1) * math.sin(a) * 0.6)
@@ -143,7 +142,6 @@ def _icon_history(c, s=_S):
 
 
 def _icon_settings(c, s=_S):
-    import math
     img, d = _new(s)
     m = s // 2
     # outer gear
@@ -308,14 +306,17 @@ _ICON_FN = {
 }
 
 
-def generate_all_icons(size=20, color=(108, 74, 255)):
-    """Return {key: PIL.Image} for all nav icons."""
+def generate_all_icons(size=20, color=(108, 74, 255), keys=None):
+    """Return {key: PIL.Image}. Pass keys=[...] to only generate specific icons."""
+    targets = keys if keys else list(_ICON_FN.keys())
     result = {}
-    for key, fn in _ICON_FN.items():
+    for key in targets:
+        fn = _ICON_FN.get(key)
+        if fn is None:
+            continue
         try:
             result[key] = fn(color, size)
         except Exception:
-            # Fallback: plain colored circle
             img, d = _new(size)
             m = size // 2; r = size // 2 - 3
             d.ellipse([m - r, m - r, m + r, m + r], fill=color)
