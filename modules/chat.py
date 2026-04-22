@@ -22,6 +22,8 @@ def _req(method: str, path: str, token: str, **kw):
         try:
             r = getattr(requests, method)(url, timeout=8, verify=verify, **kw)
             if r.ok:
+                if not verify:
+                    _logger.warning("SSL verification dinonaktifkan untuk %s %s", method, path)
                 return r.json()
         except requests.Timeout:
             last_exc = "timeout"
@@ -54,6 +56,8 @@ def fetch_messages(token: str, limit: int = 80):
         try:
             r = requests.get(url, timeout=8, verify=verify)
             if r.ok:
+                if not verify:
+                    _logger.warning("SSL verification dinonaktifkan untuk fetch_messages")
                 data = r.json()
                 if not data or not isinstance(data, dict):
                     return []

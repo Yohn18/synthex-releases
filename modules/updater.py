@@ -2,6 +2,7 @@
 modules/updater.py
 Auto-update: check GitHub releases, download new .exe, replace self, restart.
 """
+import logging
 import os
 import sys
 import subprocess
@@ -12,6 +13,7 @@ import certifi
 
 _RELEASES_API = "https://api.github.com/repos/Yohn18/synthex-releases/releases/latest"
 _HEADERS = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+_logger = logging.getLogger("updater")
 
 
 def _req_get(url, stream=False, **kw):
@@ -20,10 +22,32 @@ def _req_get(url, stream=False, **kw):
             r = requests.get(url, headers=_HEADERS, timeout=15,
                              verify=verify, stream=stream, **kw)
             if r.ok:
+                if not verify:
+                    _logger.warning("SSL verification dinonaktifkan untuk: %s", url)
                 return r
         except Exception:
             continue
     return None
+
+
+def _validate_exe(path: str, expected_size: int) -> bool:
+    """Return True jika file adalah PE executable yang valid dan ukurannya sesuai."""
+    try:
+        actual_size = os.path.getsize(path)
+        if expected_size > 0 and actual_size != expected_size:
+            _logger.error(
+                "Ukuran file tidak sesuai: expected %d bytes, got %d bytes",
+                expected_size, actual_size)
+            return False
+        with open(path, "rb") as f:
+            magic = f.read(2)
+        if magic != b"MZ":
+            _logger.error("File bukan PE executable valid (magic bytes: %r)", magic)
+            return False
+        return True
+    except Exception as e:
+        _logger.error("Validasi file gagal: %s", e)
+        return False
 
 
 def get_latest_release() -> dict | None:
@@ -72,6 +96,10 @@ def download_and_replace(url: str, progress_cb=None) -> bool:
                 if progress_cb and total:
                     progress_cb(done / total)
         tmp.close()
+
+        if not _validate_exe(tmp.name, total):
+            os.unlink(tmp.name)
+            return False
 
         # Write a bat script that waits for this process to exit, copies the
         # new exe over the old one, then relaunches.
