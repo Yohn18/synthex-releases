@@ -31,7 +31,7 @@ def _find_adb() -> str:
         os.path.join(base, "tools", "platform-tools", "adb.exe"),
         os.path.join(base, "tools", "scrcpy", "adb.exe"),
         os.path.join(base, "tools", "adb.exe"),
-        r"C:\Users\Admin\AppData\Local\Android\Sdk\platform-tools\adb.exe",
+        os.path.join(os.path.expanduser("~"), "AppData", "Local", "Android", "Sdk", "platform-tools", "adb.exe"),
         r"C:\Program Files\Android\platform-tools\adb.exe",
         r"C:\Program Files (x86)\Android\platform-tools\adb.exe",
     ]

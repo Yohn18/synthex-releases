@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.9",
+  "latest_version": "1.3.10",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.9/Synthex.exe",
-  "changelog": "v1.3.9: Blog kini support foto & video — tambah gambar via URL/upload file lokal ke Firebase Storage, embed video YouTube/link dengan card klikable; media muncul inline di reader post",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.10/Synthex.exe",
+  "changelog": "v1.3.10: Fix hardcoded path ADB di remote_control.py — sekarang dinamis pakai expanduser() agar benar di semua PC",
   "maintenance": false,
   "maintenance_msg": ""
 }
