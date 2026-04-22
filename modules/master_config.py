@@ -346,3 +346,36 @@ def get_online_count(token: str, stale_sec: int = 120) -> int:
         return len(fetch_online_users(token, stale_sec=stale_sec))
     except Exception:
         return 0
+
+
+# ── Maintenance Mode ──────────────────────────────────────────────────────────
+
+def set_maintenance(enabled: bool, message: str, token: str) -> bool:
+    data = {"enabled": enabled, "message": message.strip(), "ts": time.time()}
+    return _req("put", "master_config/maintenance", token, json=data) is not None
+
+
+def get_maintenance(token: str) -> dict:
+    try:
+        data = _req("get", "master_config/maintenance", token)
+        if data and isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+    return {"enabled": False, "message": "Sedang dalam maintenance. Coba lagi nanti."}
+
+
+# ── Firebase Templates Sync ───────────────────────────────────────────────────
+
+def set_firebase_templates(templates: list, token: str) -> bool:
+    return _req("put", "master_config/templates", token, json=templates) is not None
+
+
+def get_firebase_templates(token: str) -> list:
+    try:
+        data = _req("get", "master_config/templates", token)
+        if data and isinstance(data, list):
+            return data
+    except Exception:
+        pass
+    return []
