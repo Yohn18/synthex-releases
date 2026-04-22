@@ -509,18 +509,16 @@ class SynthexApp:
                         if self._root:
                             self._root.after(500, _show_cl)
 
-                # 3. Optional update check — toast jika versi baru tersedia
+                # 3. Optional update check — paksa update jika versi baru tersedia
                 try:
                     from modules.updater import get_latest_release, is_newer
                     rel = get_latest_release()
                     if rel and is_newer(rel["tag"], local_ver):
-                        def _toast_update(tag=rel["tag"]):
-                            self._show_toast(
-                                "🆕 Synthex {} tersedia — buka Settings untuk update".format(tag),
-                                duration=8000,
-                                action=lambda: self._show("settings"))
+                        def _show_optional_update(tag=rel["tag"], url=rel["url"]):
+                            self._show_force_download_dialog(tag, url)
                         if self._root:
-                            self._root.after(3000, _toast_update)
+                            self._root.after(0, _show_optional_update)
+                        return
                 except Exception:
                     pass
 
@@ -10327,6 +10325,67 @@ class SynthexApp:
         dlg.focus_force()
         dlg.wait_window(dlg)
         return result.get()
+
+    def _show_force_download_dialog(self, tag: str, url: str):
+        """Paksa update seperti game — tidak bisa di-close, download in-app, restart otomatis."""
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Update Tersedia")
+        dlg.configure(bg="#0D0D14")
+        dlg.resizable(False, False)
+        dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable X button
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        dlg.geometry("460x280+{}+{}".format((sw - 460) // 2, (sh - 280) // 2))
+
+        tk.Frame(dlg, bg=ACC, height=4).pack(fill="x")
+        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=24)
+        bd.pack(fill="both", expand=True)
+
+        tk.Label(bd, text="🆕 Update Tersedia: {}".format(tag),
+                 bg="#0D0D14", fg=ACC, font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tk.Label(bd, text="Versi kamu: v{}".format(self.config.get("app.version", "?")),
+                 bg="#0D0D14", fg=MUT, font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+        tk.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.",
+                 bg="#0D0D14", fg=FG, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(8, 16))
+
+        status_var = tk.StringVar(value="Siap mengunduh…")
+        tk.Label(bd, textvariable=status_var, bg="#0D0D14", fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w")
+
+        bar = ttk.Progressbar(bd, mode="determinate", length=380, maximum=100)
+        bar.pack(anchor="w", pady=(4, 12))
+
+        btn = tk.Button(bd, text="⬇  Download & Install Sekarang",
+                        bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
+                        relief="flat", bd=0, padx=18, pady=8, cursor="hand2")
+        btn.pack(anchor="w")
+
+        def _start_download():
+            btn.configure(state="disabled", text="Mengunduh…")
+            status_var.set("Mengunduh {}…".format(tag))
+
+            def _prog(ratio):
+                if dlg.winfo_exists():
+                    dlg.after(0, lambda r=ratio: bar.configure(value=int(r * 100)))
+
+            def _bg():
+                from modules.updater import download_and_replace
+                ok = download_and_replace(url, progress_cb=_prog)
+                if dlg.winfo_exists():
+                    if ok:
+                        dlg.after(0, lambda: status_var.set("✓ Selesai! Restart dalam 2 detik…"))
+                        dlg.after(0, lambda: bar.configure(value=100))
+                        dlg.after(2000, self._root.destroy)
+                    else:
+                        dlg.after(0, lambda: status_var.set("Gagal. Coba lagi atau cek koneksi."))
+                        dlg.after(0, lambda: btn.configure(
+                            state="normal", text="⬇  Coba Lagi"))
+
+            threading.Thread(target=_bg, daemon=True).start()
+
+        btn.configure(command=_start_download)
+        dlg.focus_force()
 
     def _show_force_update_dialog(self, min_ver: str):
         """Blocking dialog: user must update, cannot dismiss."""
