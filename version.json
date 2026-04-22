@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.11",
+  "latest_version": "1.3.12",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.11/Synthex.exe",
-  "changelog": "v1.3.11: Mirror HP — tambah toggle Auto-bypass Secure Screen; saat aktif, bypass dijalankan otomatis tiap kali HP connect tanpa perlu klik manual; setting tersimpan di config",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.12/Synthex.exe",
+  "changelog": "v1.3.12: Mirror HP — fix bug opacity=0 crash, fix auto-bypass thread-safe; wireless: riwayat 5 IP terakhir quick-connect, auto-reconnect saat buka halaman, step guide setup wireless lebih jelas",
   "maintenance": false,
   "maintenance_msg": ""
 }

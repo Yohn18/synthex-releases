@@ -4142,7 +4142,7 @@ class SynthexApp:
                      font=("Segoe UI", 10, "bold")).pack(side="left")
             if subtitle:
                 tk.Label(h, text=subtitle, bg=accent, fg="white",
-                         font=("Segoe UI", 8), opacity=0).pack(
+                         font=("Segoe UI", 8)).pack(
                     side="left", padx=(8, 0))
             b = tk.Frame(w, bg=CARD, padx=14, pady=12)
             b.pack(fill="x")
@@ -4283,9 +4283,14 @@ class SynthexApp:
                         status_var.set("{} perangkat terhubung".format(len(vals)))
                         dot.configure(fg=GRN)
                         if new_devices and self.config.get("remote.auto_bypass_secure", False):
-                            _thr.Thread(
-                                target=lambda: _run_surface_cmd("0", ""),
-                                daemon=True).start()
+                            first_serial = new_devices[0]
+                            def _do_bypass(s=first_serial):
+                                if self._adb:
+                                    self._adb._run(
+                                        "-s", s, "shell",
+                                        "service", "call", "SurfaceFlinger",
+                                        "1008", "i32", "0")
+                            _thr.Thread(target=_do_bypass, daemon=True).start()
                     else:
                         empty_lbl.pack(anchor="w", pady=6)
                         status_var.set("Tidak ada perangkat")
@@ -4363,9 +4368,23 @@ class SynthexApp:
                 self._root.after(800, lambda: _poll_mirror_serial(
                     serial, start_b, stop_b, mir_dot, mir_lbl))
 
-        # ── Add HP (IP connect) row ──────────────────────────────────────────
+        # ── Wireless Connect ─────────────────────────────────────────────────
         tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(4, 10))
 
+        # IP history helpers
+        def _get_ip_history() -> list:
+            return self.config.get("remote.ip_history", [])
+
+        def _save_ip_to_history(ip: str):
+            hist = _get_ip_history()
+            if ip in hist:
+                hist.remove(ip)
+            hist.insert(0, ip)
+            self.config.set("remote.ip_history", hist[:5])
+            self.config.save()
+            _refresh_history_btns()
+
+        # Input row
         ip_row = tk.Frame(conn, bg=CARD)
         ip_row.pack(fill="x", pady=(0, 4))
         tk.Label(ip_row, text="IP HP:", bg=CARD, fg=MUT,
@@ -4383,8 +4402,8 @@ class SynthexApp:
                  relief="flat", font=("Segoe UI", 10),
                  width=6, bd=4).pack(side="left", padx=(4, 10))
 
-        def _connect_bg():
-            ip = ip_var.get().strip()
+        def _connect_bg(ip_override=None):
+            ip = (ip_override or ip_var.get()).strip()
             if not ip:
                 if self._root:
                     self._root.after(0, lambda: msg_var.set("Masukkan IP address HP."))
@@ -4402,31 +4421,79 @@ class SynthexApp:
             if ok:
                 self.config.set("remote.last_ip", ip)
                 self.config.set("remote.last_port", str(port))
-                self.config.save()
+                if self._root:
+                    self._root.after(0, lambda: ip_var.set(ip))
+                _save_ip_to_history(ip)
             if self._root:
                 self._root.after(0, lambda: msg_var.set(msg))
             _refresh_devs()
 
-        tk.Button(ip_row, text="+ Tambah HP", bg=ACC, fg="white",
+        tk.Button(ip_row, text="⚡ Hubungkan", bg=ACC, fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_connect_bg, daemon=True).start(),
                   **_FB).pack(side="left")
 
+        # IP history quick-connect buttons
+        hist_frame = tk.Frame(conn, bg=CARD)
+        hist_frame.pack(fill="x", pady=(0, 4))
+
+        def _refresh_history_btns():
+            for w in hist_frame.winfo_children():
+                w.destroy()
+            hist = _get_ip_history()
+            if not hist:
+                return
+            tk.Label(hist_frame, text="Terakhir:", bg=CARD, fg=MUT,
+                     font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+            for saved_ip in hist:
+                def _quick(ip=saved_ip):
+                    ip_var.set(ip)
+                    _thr.Thread(target=lambda: _connect_bg(ip),
+                                daemon=True).start()
+                tk.Button(hist_frame, text=saved_ip,
+                          bg="#1A1A38", fg=BLUE,
+                          font=("Segoe UI", 8), padx=8, pady=3,
+                          relief="flat", cursor="hand2",
+                          command=_quick).pack(side="left", padx=(0, 4))
+
+        _refresh_history_btns()
+
         # ── USB Wireless Setup ───────────────────────────────────────────────
-        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(10, 10))
+        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(8, 8))
+
+        setup_hdr = tk.Frame(conn, bg=CARD)
+        setup_hdr.pack(fill="x", pady=(0, 6))
+        tk.Label(setup_hdr, text="Setup Wireless Debugging",
+                 bg=CARD, fg=FG, font=("Segoe UI", 9, "bold")).pack(side="left")
+
+        steps_frame = tk.Frame(conn, bg="#12121E")
+        steps_frame.pack(fill="x", pady=(0, 8))
+        steps = [
+            ("1", "Colok HP ke PC via USB"),
+            ("2", "Klik tombol di bawah → ADB aktif via WiFi"),
+            ("3", "Cabut USB → klik Mulai Mirror"),
+        ]
+        for num, txt in steps:
+            row_s = tk.Frame(steps_frame, bg="#12121E", padx=10, pady=4)
+            row_s.pack(fill="x")
+            tk.Label(row_s, text=num, bg=ACC, fg="white",
+                     font=("Segoe UI", 8, "bold"),
+                     width=2, anchor="center").pack(side="left")
+            tk.Label(row_s, text="  " + txt, bg="#12121E", fg=MUT,
+                     font=("Segoe UI", 9)).pack(side="left")
+
         usb_row = tk.Frame(conn, bg=CARD)
         usb_row.pack(fill="x")
-        tk.Label(usb_row,
-                 text="Setup WiFi sekali via USB — colok HP, klik, cabut USB:",
-                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(
-            side="left", padx=(0, 12))
-        tk.Button(usb_row, text="Setup Wireless via USB",
+        tk.Button(usb_row, text="⚙ Setup Wireless via USB",
                   bg="#3A1060", fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_usb_setup_bg, daemon=True).start(),
-                  **_FB).pack(side="left")
+                  **_FB).pack(side="left", padx=(0, 10))
+        tk.Label(usb_row,
+                 text="HP harus sudah di-authorize USB debugging",
+                 bg=CARD, fg="#4A4A6A", font=("Segoe UI", 8)).pack(side="left")
 
         def _usb_setup_bg():
             if self._root:
@@ -4836,7 +4903,22 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _after)
 
-        _thr.Thread(target=_init_adb, daemon=True).start()
+        def _init_adb_then_reconnect():
+            _init_adb()
+            # After ADB ready, try auto-reconnect to last saved IP
+            import time as _tr
+            _tr.sleep(1.5)
+            last_ip = self.config.get("remote.last_ip", "")
+            if last_ip and self._adb and self._adb.available:
+                try:
+                    port = int(self.config.get("remote.last_port", "5555"))
+                except (ValueError, TypeError):
+                    port = 5555
+                ok, _ = self._adb.connect(last_ip, port)
+                if ok:
+                    _refresh_devs()
+
+        _thr.Thread(target=_init_adb_then_reconnect, daemon=True).start()
 
         # ── Auto-refresh device list every 10s ──────────────────────────────
         def _poll_adb():
