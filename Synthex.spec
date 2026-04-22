@@ -1,0 +1,52 @@
+# -*- mode: python ; coding: utf-8 -*-
+
+
+a = Analysis(
+    ['main.py'],
+    pathex=[],
+    binaries=[],
+    datas=[('ui', 'ui'), ('core', 'core'), ('modules', 'modules'), ('auth', 'auth'), ('assets', 'assets'), ('data', 'data'), ('config.json', '.'), ('synthex.ico', '.')],
+    hiddenimports=[
+        'requests', 'win10toast', 'pystray', 'PIL', 'PIL.Image', 'PIL.ImageDraw',
+        'PIL.ImageFilter', 'PIL.ImageTk', 'tkinter',
+        'comtypes', 'comtypes.client', 'comtypes.gen',
+        'comtypes.gen.UIAutomationClient',
+        'pyperclip',
+        'bs4', 'beautifulsoup4', 'websocket', 'websocket._core',
+        'gspread', 'google.oauth2', 'google.oauth2.service_account',
+        'qrcode', 'qrcode.image.pil', 'qrcode.image.base',
+        'websockets', 'websockets.server',
+        'http.server',
+        'openpyxl', 'openpyxl.styles', 'openpyxl.utils',
+        'csv',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[],
+    noarchive=False,
+    optimize=0,
+)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    a.binaries,
+    a.datas,
+    [],
+    name='Synthex',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=['synthex.ico'],
+)
