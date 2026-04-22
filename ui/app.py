@@ -1316,6 +1316,26 @@ class SynthexApp:
         cv.bind_all("<MouseWheel>", lambda e: cv.yview_scroll(
             int(-1 * (e.delta / 120)), "units"))
 
+        # ── helper: hover card effect ────────────────────────────────────────
+        def _card_hover(widget, children, bg_on, bg_off, border_on=None,
+                        border_widget=None):
+            def _on(e=None):
+                _deep_bg(widget, bg_on)
+                if border_widget and border_on:
+                    try: border_widget.configure(bg=border_on)
+                    except Exception: pass
+            def _off(e=None):
+                _deep_bg(widget, bg_off)
+                if border_widget and border_on:
+                    try: border_widget.configure(bg=border_on)
+                    except Exception: pass
+            for w in [widget] + list(children):
+                try:
+                    w.bind("<Enter>", lambda e, fn=_on: fn())
+                    w.bind("<Leave>", lambda e, fn=_off: fn())
+                except Exception:
+                    pass
+
         name  = self._email.split("@")[0].capitalize() if self._email else "User"
         today = datetime.now().strftime("%A, %d %B %Y")
 
@@ -1533,99 +1553,122 @@ class SynthexApp:
                          bg=CARD, fg=MUT, font=("Segoe UI", 8),
                          padx=14, pady=6).pack(anchor="w")
 
-        # ── Feature grid ─────────────────────────────────────────────────────
-        tk.Label(body, text="SEMUA FITUR", bg=BG, fg="#4A4A6A",
-                 font=("Segoe UI", 8, "bold")).pack(
-            anchor="w", padx=22, pady=(18, 6))
+        # ── Feature grid (grouped by category) ──────────────────────────────
+        def _section_hdr(parent, title):
+            row = tk.Frame(parent, bg=BG)
+            row.pack(fill="x", padx=20, pady=(20, 8))
+            tk.Frame(row, bg=ACC, width=3, height=16).pack(side="left", padx=(0, 10))
+            tk.Label(row, text=title, bg=BG, fg=FG,
+                     font=("Segoe UI", 9, "bold")).pack(side="left")
 
-        FEATURES = [
-            ("web",       "\U0001f310", "Web Scraping",    "Otomasi browser & scraping"),
-            ("spy",       "\U0001f441", "Spy Vision",      "Deteksi elemen layar"),
-            ("record",    "\u23fa",     "Record Macro",    "Rekam & putar ulang aksi"),
-            ("schedule",  "\U0001f4c5", "Scheduler",       "Jadwal tugas otomatis"),
-            ("templates", "\U0001f4da", "Templates",       "Library template siap pakai"),
-            ("sheet",     "\U0001f4ca", "Google Sheet",    "Sinkronisasi spreadsheet"),
-            ("rekening",  "\U0001f3e6", "Rekening",        "Validasi nomor rekening"),
-            ("monitor",   "\U0001f4b9", "Monitor",         "Dashboard auto-update"),
-            ("remote",    "\U0001f4f1", "Mirror HP",       "Mirror & kontrol Android"),
-            ("chat",      "\U0001f4ac", "Chat",            "Ngobrol dengan user online"),
-            ("blog",      "\U0001f4f0", "Blog",            "Baca & tulis artikel"),
-            ("history",   "\U0001f4cb", "History",         "Riwayat aktivitas"),
-            ("logs",      "\U0001f5d2", "Logs",            "Log sistem real-time"),
-            ("settings",  "\u2699\ufe0f","Settings",       "Konfigurasi aplikasi"),
-        ]
+        def _feat_card(parent, key, icon, title, desc, accent):
+            cell = tk.Frame(parent, bg=CARD, cursor="hand2")
 
-        ACCENT_PALETTE = [
-            "#7C3AED", "#0EA5E9", "#10B981", "#F59E0B",
-            "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16",
-            "#F97316", "#EC4899", "#6366F1", "#14B8A6",
-            "#A855F7", "#64748B",
-        ]
-
-        grid_frame = tk.Frame(body, bg=BG)
-        grid_frame.pack(fill="x", padx=20, pady=(0, 8))
-
-        COLS = 4
-        for i, (key, icon, title, desc) in enumerate(FEATURES):
-            row_idx = i // COLS
-            col_idx = i % COLS
-            accent = ACCENT_PALETTE[i % len(ACCENT_PALETTE)]
-
-            cell = tk.Frame(grid_frame, bg=CARD, cursor="hand2")
-            cell.grid(row=row_idx, column=col_idx, padx=5, pady=5, sticky="nsew")
-            grid_frame.columnconfigure(col_idx, weight=1)
-
-            # Top accent bar
-            tk.Frame(cell, bg=accent, height=3).pack(fill="x")
+            bar = tk.Frame(cell, bg=accent, width=3)
+            bar.pack(side="left", fill="y")
 
             inner = tk.Frame(cell, bg=CARD, padx=14, pady=12)
-            inner.pack(fill="both", expand=True)
+            inner.pack(side="left", fill="both", expand=True)
 
-            tk.Label(inner, text=icon, bg=CARD, fg=accent,
-                     font=("Segoe UI", 20)).pack(anchor="w")
-            tk.Label(inner, text=title, bg=CARD, fg=FG,
-                     font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(4, 0))
+            head = tk.Frame(inner, bg=CARD)
+            head.pack(anchor="w", fill="x", pady=(0, 4))
+            tk.Label(head, text=icon, bg=CARD,
+                     font=("Segoe UI", 17)).pack(side="left")
+            tk.Label(head, text=title, bg=CARD, fg=FG,
+                     font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
+
             tk.Label(inner, text=desc, bg=CARD, fg=MUT,
-                     font=("Segoe UI", 8), wraplength=140,
-                     justify="left").pack(anchor="w", pady=(2, 8))
+                     font=("Segoe UI", 8), wraplength=170,
+                     justify="left").pack(anchor="w", pady=(0, 10))
 
-            btn = tk.Button(inner, text="Buka  →",
-                            bg=accent, fg="white",
-                            font=("Segoe UI", 8, "bold"),
-                            padx=10, pady=4, relief="flat", bd=0, cursor="hand2",
-                            command=lambda k=key: self._show(k))
-            btn.pack(anchor="w")
+            tk.Button(inner, text="Buka →", bg=accent, fg="white",
+                      font=("Segoe UI", 8, "bold"),
+                      padx=10, pady=3, relief="flat", bd=0, cursor="hand2",
+                      command=lambda: self._show(key)).pack(anchor="w")
 
-            # Make entire cell clickable
-            for w in (cell, inner):
-                w.bind("<Button-1>", lambda e, k=key: self._show(k))
-                w.bind("<Enter>", lambda e, c=cell, a=accent: c.configure(bg=CARD))
-                w.bind("<Leave>", lambda e, c=cell: c.configure(bg=CARD))
+            def _hover_on(e=None):
+                _deep_bg(cell, "#22223A")
+                try: bar.configure(bg=accent)
+                except Exception: pass
+
+            def _hover_off(e=None):
+                _deep_bg(cell, CARD)
+                try: bar.configure(bg=accent)
+                except Exception: pass
+
+            for w in ([cell, bar, inner, head] +
+                      list(head.winfo_children()) +
+                      list(inner.winfo_children())):
+                try:
+                    w.bind("<Enter>", lambda e, fn=_hover_on: fn())
+                    w.bind("<Leave>", lambda e, fn=_hover_off: fn())
+                    w.bind("<Button-1>", lambda e, k=key: self._show(k))
+                except Exception:
+                    pass
+            return cell
+
+        GROUPS = [
+            ("⚡ AUTOMASI", [
+                ("web",       "🌐", "Web Scraping",  "Otomasi browser & scraping data",    "#7C3AED"),
+                ("spy",       "👁", "Spy Vision",    "Deteksi elemen layar real-time",     "#0EA5E9"),
+                ("record",    "⏺",     "Record Macro",  "Rekam & putar ulang aksi mouse/KB",  "#10B981"),
+                ("schedule",  "📅", "Scheduler",     "Jadwal & otomasi tugas terjadwal",   "#F59E0B"),
+                ("templates", "📚", "Templates",     "Library template siap pakai",        "#8B5CF6"),
+            ]),
+            ("📊 DATA", [
+                ("sheet",    "📈", "Google Sheet",  "Sinkronisasi & baca spreadsheet",    "#06B6D4"),
+                ("rekening", "🏦", "Rekening",       "Validasi nomor rekening bank",       "#84CC16"),
+                ("monitor",  "💹", "Monitor",        "Dashboard angka auto-update",        "#F97316"),
+            ]),
+            ("💬 KOMUNITAS", [
+                ("chat", "💬", "Chat",   "Ngobrol dengan user Synthex online",  "#EC4899"),
+                ("blog", "📰", "Blog",   "Baca & tulis artikel komunitas",      "#6366F1"),
+            ]),
+            ("🖥 DEVICE & SISTEM", [
+                ("remote",   "📱", "Mirror HP",  "Mirror & kontrol perangkat Android", "#A855F7"),
+                ("history",  "📋", "History",    "Riwayat semua aktivitas task",       "#64748B"),
+                ("logs",     "🗒", "Logs",       "Log sistem & error real-time",       "#4A9EFF"),
+                ("settings", "⚙️", "Settings", "Konfigurasi & preferensi app",       "#6B7280"),
+            ]),
+        ]
+
+        GCOLS = 3
+        for group_title, features in GROUPS:
+            _section_hdr(body, group_title)
+            grid = tk.Frame(body, bg=BG)
+            grid.pack(fill="x", padx=20)
+            for ci in range(GCOLS):
+                grid.columnconfigure(ci, weight=1)
+            for fi, (key, icon, title, desc, accent) in enumerate(features):
+                r, c = divmod(fi, GCOLS)
+                card = _feat_card(grid, key, icon, title, desc, accent)
+                card.grid(row=r, column=c, padx=4, pady=4, sticky="nsew")
 
         # ── Recent Activity ──────────────────────────────────────────────────
-        tk.Label(body, text="AKTIVITAS TERAKHIR", bg=BG, fg="#4A4A6A",
-                 font=("Segoe UI", 8, "bold")).pack(
-            anchor="w", padx=22, pady=(16, 6))
-
+        _section_hdr(body, "🕐 AKTIVITAS TERAKHIR")
         ac = tk.Frame(body, bg=CARD)
-        ac.pack(fill="x", padx=20, pady=(0, 20))
+        ac.pack(fill="x", padx=20, pady=(0, 24))
         acts = self._ud.activity[:6]
         if acts:
-            for e in acts:
-                ok = e.get("ok")
-                row = tk.Frame(ac, bg=CARD, padx=14, pady=5)
-                row.pack(fill="x")
+            for act in acts:
+                ok = act.get("ok")
+                arow = tk.Frame(ac, bg=CARD, padx=14, pady=6)
+                arow.pack(fill="x")
                 tk.Frame(ac, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
-                tk.Label(row, text=e["time"], fg=MUT, bg=CARD,
+                tk.Label(arow, text="●", fg=GRN if ok else RED,
+                         bg=CARD, font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+                tk.Label(arow, text=act.get("time", ""), fg=MUT, bg=CARD,
                          font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
-                tk.Label(row, text=e["task"][:30], bg=CARD, fg=FG,
+                tk.Label(arow, text=act.get("task", "")[:36], bg=CARD, fg=FG,
                          font=("Segoe UI", 9)).pack(side="left", padx=8)
-                tk.Label(row, text="✓ OK" if ok else "✗ FAIL",
+                tk.Label(arow, text="✓ OK" if ok else "✗ FAIL",
                          fg=GRN if ok else RED,
                          bg=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
+                arow.bind("<Enter>", lambda e, rw=arow: _deep_bg(rw, "#22223A"))
+                arow.bind("<Leave>", lambda e, rw=arow: _deep_bg(rw, CARD))
         else:
             tk.Label(ac, text="Belum ada aktivitas.", fg=MUT, bg=CARD,
-                     font=("Segoe UI", 9), padx=14, pady=10).pack(anchor="w")
+                     font=("Segoe UI", 9), padx=14, pady=12).pack(anchor="w")
 
         return f
 
