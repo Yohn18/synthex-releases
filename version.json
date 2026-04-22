@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.7",
+  "latest_version": "1.3.8",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.7/Synthex.exe",
-  "changelog": "v1.3.7: Fix notifikasi update tidak bisa di-close — tambah dev_mode bypass di config.json; perbaikan version mismatch di PC developer",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.8/Synthex.exe",
+  "changelog": "v1.3.8: Upgrade semua icon ke desain next-level — 4x super-sampling anti-aliased, shape lebih detail (spy dengan pupil & highlight, monitor dengan area chart, logs dengan traffic dots, remote dengan signal waves, schedule dengan grid dots, dll)",
   "maintenance": false,
   "maintenance_msg": ""
 }
