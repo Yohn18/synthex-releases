@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.12",
+  "latest_version": "1.3.13",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.12/Synthex.exe",
-  "changelog": "v1.3.12: Mirror HP — fix bug opacity=0 crash, fix auto-bypass thread-safe; wireless: riwayat 5 IP terakhir quick-connect, auto-reconnect saat buka halaman, step guide setup wireless lebih jelas",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.13/Synthex.exe",
+  "changelog": "v1.3.13: Redesain card home page ala Tailwind CSS — icon kini punya badge berwarna per fitur (bukan latar hitam polos), gradient top bar tiap card, hover tint sesuai warna accent, tombol Buka full-width",
   "maintenance": false,
   "maintenance_msg": ""
 }

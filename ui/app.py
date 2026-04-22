@@ -1555,55 +1555,116 @@ class SynthexApp:
                          bg=CARD, fg=MUT, font=("Segoe UI", 8),
                          padx=14, pady=6).pack(anchor="w")
 
-        # ── Feature grid (grouped by category) ──────────────────────────────
+        # ── Feature grid (Tailwind-inspired cards) ─────────────────────────
+        def _hex_blend(hex_a, hex_b, t):
+            ar,ag,ab = int(hex_a[1:3],16), int(hex_a[3:5],16), int(hex_a[5:7],16)
+            br,bg2,bb = int(hex_b[1:3],16), int(hex_b[3:5],16), int(hex_b[5:7],16)
+            return "#{:02x}{:02x}{:02x}".format(
+                int(ar+(br-ar)*t), int(ag+(bg2-ag)*t), int(ab+(bb-ab)*t))
+
+        _CARD_HEX = CARD
+
         def _section_hdr(parent, title):
             row = tk.Frame(parent, bg=BG)
-            row.pack(fill="x", padx=20, pady=(20, 8))
-            tk.Frame(row, bg=ACC, width=3, height=16).pack(side="left", padx=(0, 10))
+            row.pack(fill="x", padx=20, pady=(22, 10))
+            tk.Frame(row, bg=ACC, width=3, height=18).pack(side="left", padx=(0, 10))
             tk.Label(row, text=title, bg=BG, fg=FG,
-                     font=("Segoe UI", 9, "bold")).pack(side="left")
+                     font=("Segoe UI", 10, "bold")).pack(side="left")
 
         def _feat_card(parent, key, icon, title, desc, accent):
-            cell = tk.Frame(parent, bg=CARD, cursor="hand2")
+            badge_bg  = _hex_blend(_CARD_HEX, accent, 0.22)
+            hover_bg  = _hex_blend(_CARD_HEX, accent, 0.10)
+            badge_hov = _hex_blend(_CARD_HEX, accent, 0.35)
+            ar,ag,ab = int(accent[1:3],16), int(accent[3:5],16), int(accent[5:7],16)
+            cr,cg,cb = int(_CARD_HEX[1:3],16), int(_CARD_HEX[3:5],16), int(_CARD_HEX[5:7],16)
 
-            bar = tk.Frame(cell, bg=accent, width=3)
-            bar.pack(side="left", fill="y")
+            cell = tk.Frame(parent, bg=_CARD_HEX, cursor="hand2")
 
-            inner = tk.Frame(cell, bg=CARD, padx=14, pady=12)
-            inner.pack(side="left", fill="both", expand=True)
+            # Top gradient bar
+            grad_cv = tk.Canvas(cell, height=4, highlightthickness=0, bd=0,
+                                bg=_CARD_HEX)
+            grad_cv.pack(fill="x")
 
-            head = tk.Frame(inner, bg=CARD)
-            head.pack(anchor="w", fill="x", pady=(0, 4))
-            tk.Label(head, text=icon, bg=CARD,
-                     font=("Segoe UI", 17)).pack(side="left")
-            tk.Label(head, text=title, bg=CARD, fg=FG,
-                     font=("Segoe UI", 10, "bold")).pack(side="left", padx=(8, 0))
+            def _draw_grad(e=None, cv=grad_cv,
+                           _ar=ar,_ag=ag,_ab=ab,_cr=cr,_cg=cg,_cb=cb):
+                cv.delete("all")
+                W = cv.winfo_width() or 240
+                steps = 30
+                for i in range(steps):
+                    t = (i / steps) ** 1.5
+                    r_ = int(_ar*(1-t) + _cr*t)
+                    g_ = int(_ag*(1-t) + _cg*t)
+                    b_ = int(_ab*(1-t) + _cb*t)
+                    col = "#{:02x}{:02x}{:02x}".format(
+                        max(0,min(255,r_)), max(0,min(255,g_)), max(0,min(255,b_)))
+                    x0 = int(W*i/steps); x1 = int(W*(i+1)/steps)
+                    cv.create_rectangle(x0, 0, x1, 4, fill=col, outline="")
 
-            tk.Label(inner, text=desc, bg=CARD, fg=MUT,
-                     font=("Segoe UI", 8), wraplength=170,
-                     justify="left").pack(anchor="w", pady=(0, 10))
+            grad_cv.bind("<Configure>", _draw_grad)
+            cell.after(60, _draw_grad)
 
-            tk.Button(inner, text="Buka →", bg=accent, fg="white",
-                      font=("Segoe UI", 8, "bold"),
-                      padx=10, pady=3, relief="flat", bd=0, cursor="hand2",
-                      command=lambda: self._show(key)).pack(anchor="w")
+            inner = tk.Frame(cell, bg=_CARD_HEX, padx=14, pady=12)
+            inner.pack(fill="both", expand=True)
 
+            # Icon badge
+            badge = tk.Frame(inner, bg=badge_bg, padx=10, pady=8)
+            badge.pack(anchor="w", pady=(0, 10))
+            badge_icon = tk.Label(badge, text=icon, bg=badge_bg,
+                                  font=("Segoe UI", 20))
+            badge_icon.pack()
+
+            # Title
+            title_lbl = tk.Label(inner, text=title, bg=_CARD_HEX, fg="white",
+                                  font=("Segoe UI", 11, "bold"))
+            title_lbl.pack(anchor="w", pady=(0, 4))
+
+            # Description
+            desc_lbl = tk.Label(inner, text=desc, bg=_CARD_HEX, fg=MUT,
+                                 font=("Segoe UI", 8), wraplength=160,
+                                 justify="left")
+            desc_lbl.pack(anchor="w", pady=(0, 12))
+
+            # Full-width button (Canvas)
+            btn_cv = tk.Canvas(inner, height=32, highlightthickness=0,
+                               bd=0, bg=_CARD_HEX, cursor="hand2")
+            btn_cv.pack(fill="x")
+
+            def _draw_btn(e=None, cv=btn_cv, ac=accent):
+                cv.delete("all")
+                W = cv.winfo_width() or 200
+                cv.create_rectangle(0, 0, W, 32, fill=ac, outline="")
+                cv.create_text(W//2, 16, text="Buka  →",
+                               fill="white", font=("Segoe UI", 9, "bold"))
+
+            btn_cv.bind("<Configure>", _draw_btn)
+            inner.after(80, _draw_btn)
+
+            # Hover
             def _hover_on(e=None):
-                _deep_bg(cell, "#22223A")
-                try: bar.configure(bg=accent)
-                except Exception: pass
+                cell.configure(bg=hover_bg)
+                inner.configure(bg=hover_bg)
+                grad_cv.configure(bg=hover_bg)
+                badge.configure(bg=badge_hov)
+                badge_icon.configure(bg=badge_hov)
+                title_lbl.configure(bg=hover_bg)
+                desc_lbl.configure(bg=hover_bg)
+                btn_cv.configure(bg=hover_bg)
 
             def _hover_off(e=None):
-                _deep_bg(cell, CARD)
-                try: bar.configure(bg=accent)
-                except Exception: pass
+                cell.configure(bg=_CARD_HEX)
+                inner.configure(bg=_CARD_HEX)
+                grad_cv.configure(bg=_CARD_HEX)
+                badge.configure(bg=badge_bg)
+                badge_icon.configure(bg=badge_bg)
+                title_lbl.configure(bg=_CARD_HEX)
+                desc_lbl.configure(bg=_CARD_HEX)
+                btn_cv.configure(bg=_CARD_HEX)
 
-            for w in ([cell, bar, inner, head] +
-                      list(head.winfo_children()) +
-                      list(inner.winfo_children())):
+            for w in [cell, grad_cv, inner, badge, badge_icon,
+                      title_lbl, desc_lbl, btn_cv]:
                 try:
-                    w.bind("<Enter>", lambda e, fn=_hover_on: fn())
-                    w.bind("<Leave>", lambda e, fn=_hover_off: fn())
+                    w.bind("<Enter>",    lambda e, f=_hover_on:  f())
+                    w.bind("<Leave>",    lambda e, f=_hover_off: f())
                     w.bind("<Button-1>", lambda e, k=key: self._show(k))
                 except Exception:
                     pass
@@ -1611,25 +1672,25 @@ class SynthexApp:
 
         GROUPS = [
             ("⚡ AUTOMASI", [
-                ("web",       "🌐", "Web Scraping",  "Otomasi browser & scraping data",    "#7C3AED"),
-                ("spy",       "👁", "Spy Vision",    "Deteksi elemen layar real-time",     "#0EA5E9"),
+                ("web",       "\U0001f310", "Web Scraping",  "Otomasi browser & scraping data",    "#7C3AED"),
+                ("spy",       "\U0001f441", "Spy Vision",    "Deteksi elemen layar real-time",     "#0EA5E9"),
                 ("record",    "⏺",     "Record Macro",  "Rekam & putar ulang aksi mouse/KB",  "#10B981"),
-                ("schedule",  "📅", "Scheduler",     "Jadwal & otomasi tugas terjadwal",   "#F59E0B"),
-                ("templates", "📚", "Templates",     "Library template siap pakai",        "#8B5CF6"),
+                ("schedule",  "\U0001f4c5", "Scheduler",     "Jadwal & otomasi tugas terjadwal",   "#F59E0B"),
+                ("templates", "\U0001f4da", "Templates",     "Library template siap pakai",        "#8B5CF6"),
             ]),
-            ("📊 DATA", [
-                ("sheet",    "📈", "Google Sheet",  "Sinkronisasi & baca spreadsheet",    "#06B6D4"),
-                ("rekening", "🏦", "Rekening",       "Validasi nomor rekening bank",       "#84CC16"),
-                ("monitor",  "💹", "Monitor",        "Dashboard angka auto-update",        "#F97316"),
+            ("\U0001f4ca DATA", [
+                ("sheet",    "\U0001f4c8", "Google Sheet",  "Sinkronisasi & baca spreadsheet",    "#06B6D4"),
+                ("rekening", "\U0001f3e6", "Rekening",       "Validasi nomor rekening bank",       "#84CC16"),
+                ("monitor",  "\U0001f4b9", "Monitor",        "Dashboard angka auto-update",        "#F97316"),
             ]),
-            ("💬 KOMUNITAS", [
-                ("chat", "💬", "Chat",   "Ngobrol dengan user Synthex online",  "#EC4899"),
-                ("blog", "📰", "Blog",   "Baca & tulis artikel komunitas",      "#6366F1"),
+            ("\U0001f4ac KOMUNITAS", [
+                ("chat", "\U0001f4ac", "Chat",   "Ngobrol dengan user Synthex online",  "#EC4899"),
+                ("blog", "\U0001f4f0", "Blog",   "Baca & tulis artikel komunitas",      "#6366F1"),
             ]),
-            ("🖥 DEVICE & SISTEM", [
-                ("remote",   "📱", "Mirror HP",  "Mirror & kontrol perangkat Android", "#A855F7"),
-                ("history",  "📋", "History",    "Riwayat semua aktivitas task",       "#64748B"),
-                ("logs",     "🗒", "Logs",       "Log sistem & error real-time",       "#4A9EFF"),
+            ("\U0001f5a5 DEVICE & SISTEM", [
+                ("remote",   "\U0001f4f1", "Mirror HP",   "Mirror & kontrol perangkat Android", "#A855F7"),
+                ("history",  "\U0001f4cb", "History",     "Riwayat semua aktivitas task",       "#64748B"),
+                ("logs",     "\U0001f5d2", "Logs",        "Log sistem & error real-time",       "#4A9EFF"),
                 ("settings", "⚙️", "Settings", "Konfigurasi & preferensi app",       "#6B7280"),
             ]),
         ]
@@ -1644,7 +1705,7 @@ class SynthexApp:
             for fi, (key, icon, title, desc, accent) in enumerate(features):
                 r, c = divmod(fi, GCOLS)
                 card = _feat_card(grid, key, icon, title, desc, accent)
-                card.grid(row=r, column=c, padx=4, pady=4, sticky="nsew")
+                card.grid(row=r, column=c, padx=5, pady=5, sticky="nsew")
 
         # ── Recent Activity ──────────────────────────────────────────────────
         _section_hdr(body, "🕐 AKTIVITAS TERAKHIR")
