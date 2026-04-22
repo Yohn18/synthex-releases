@@ -1270,8 +1270,11 @@ class SynthexApp:
             self.logger.warning("_mb_load_template error: {}".format(e))
 
     def _tick(self):
-        self._cl.configure(text=datetime.now().strftime("%d %b %Y  %H:%M:%S"))
-        self._root.after(1000, self._tick)
+        try:
+            self._cl.configure(text=datetime.now().strftime("%d %b %Y  %H:%M:%S"))
+            self._root.after(1000, self._tick)
+        except Exception:
+            pass
 
     def _hdr(self, f, title, sub=""):
         _lbl(f, title, font=("Segoe UI", 14, "bold")).pack(
@@ -11851,6 +11854,9 @@ class SynthexApp:
                 pass
             if self._dm_poll_id and self._root:
                 try: self._root.after_cancel(self._dm_poll_id)
+                except Exception: pass
+            if self._adb_poll_id and self._root:
+                try: self._root.after_cancel(self._adb_poll_id)
                 except Exception: pass
             if self._tray:
                 try: self._tray.stop()

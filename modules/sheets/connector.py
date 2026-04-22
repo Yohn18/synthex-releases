@@ -327,6 +327,8 @@ def preview_data(sheets_list, sheet_name, max_rows=15):
     ws, err = _get_ws(sheets_list, sheet_name)
     if err:
         return [], err
+    if ws is None:
+        return [], "Worksheet tidak tersedia"
     try:
         all_rows = ws.get_all_values()
         return [row[:10] for row in all_rows[:max_rows]], None

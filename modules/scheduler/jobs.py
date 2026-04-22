@@ -111,7 +111,12 @@ class JobScheduler:
                 self.logger.info("Task '%s' scheduled every %dm.", name, minutes)
 
             elif stype == "daily" and stime:
-                h, m = stime.split(":")
+                parts = stime.split(":")
+                if len(parts) != 2:
+                    self.logger.error(
+                        "Format schedule_time salah untuk task '%s': '%s' (harus HH:MM)", name, stime)
+                    return
+                h, m = parts
                 trigger = CronTrigger(hour=int(h), minute=int(m))
                 self._scheduler.add_job(
                     run_fn, trigger,
