@@ -10329,31 +10329,55 @@ class SynthexApp:
     def _show_force_download_dialog(self, tag: str, url: str):
         """Paksa update seperti game — tidak bisa di-close, download in-app, restart otomatis."""
         dlg = tk.Toplevel(self._root)
-        dlg.title("Update Tersedia")
+        dlg.title("Synthex — Update Tersedia")
         dlg.configure(bg="#0D0D14")
         dlg.resizable(False, False)
         dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable X button
         dlg.attributes("-topmost", True)
         dlg.grab_set()
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
-        dlg.geometry("460x280+{}+{}".format((sw - 460) // 2, (sh - 280) // 2))
+        dlg.geometry("480x300+{}+{}".format((sw - 480) // 2, (sh - 300) // 2))
+
+        # Set ikon Synthex di title bar dialog
+        try:
+            _ico = _resolve_icon()
+            if _ico:
+                dlg.iconbitmap(_ico)
+        except Exception:
+            pass
 
         tk.Frame(dlg, bg=ACC, height=4).pack(fill="x")
-        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=24)
+        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
         bd.pack(fill="both", expand=True)
 
-        tk.Label(bd, text="🆕 Update Tersedia: {}".format(tag),
-                 bg="#0D0D14", fg=ACC, font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tk.Label(bd, text="Versi kamu: v{}".format(self.config.get("app.version", "?")),
-                 bg="#0D0D14", fg=MUT, font=("Segoe UI", 9)).pack(anchor="w", pady=(4, 0))
+        # Header: logo PIL + judul
+        hdr = tk.Frame(bd, bg="#0D0D14")
+        hdr.pack(fill="x", anchor="w", pady=(0, 12))
+        try:
+            from ui.icons import generate_all_icons
+            _ico_img = generate_all_icons(28, (108, 74, 255), keys=["settings"])["settings"]
+            _ico_ph  = ImageTk.PhotoImage(_ico_img)
+            dlg._ico_ph = _ico_ph  # prevent GC
+            tk.Label(hdr, image=_ico_ph, bg="#0D0D14").pack(side="left", padx=(0, 10))
+        except Exception:
+            pass
+        title_wrap = tk.Frame(hdr, bg="#0D0D14")
+        title_wrap.pack(side="left")
+        tk.Label(title_wrap, text="Synthex  {}  Tersedia".format(tag),
+                 bg="#0D0D14", fg=ACC, font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(title_wrap,
+                 text="Versi kamu: v{}  →  {}".format(
+                     self.config.get("app.version", "?"), tag),
+                 bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+
         tk.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.",
-                 bg="#0D0D14", fg=FG, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(8, 16))
+                 bg="#0D0D14", fg=FG, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 14))
 
         status_var = tk.StringVar(value="Siap mengunduh…")
         tk.Label(bd, textvariable=status_var, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w")
 
-        bar = ttk.Progressbar(bd, mode="determinate", length=380, maximum=100)
+        bar = ttk.Progressbar(bd, mode="determinate", length=400, maximum=100)
         bar.pack(anchor="w", pady=(4, 12))
 
         btn = tk.Button(bd, text="⬇  Download & Install Sekarang",
