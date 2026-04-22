@@ -843,7 +843,6 @@ class SynthexApp:
         self._nav_photo_dim = {k: ImageTk.PhotoImage(v) for k, v in _raw_icons_dim.items()}
         # Glow icons generated lazily on first hover to avoid GaussianBlur at startup
         self._nav_photo_glow = {}
-        self._nav_raw_glow_pending = (_raw_icons, _acc_rgb)
         def _build_glow_bg():
             glow = generate_all_icons_glow(20, _acc_rgb)
             photos = {k: ImageTk.PhotoImage(v) for k, v in glow.items()}
