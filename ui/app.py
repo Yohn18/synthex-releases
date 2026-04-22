@@ -480,6 +480,8 @@ class SynthexApp:
         def _post_login_checks():
             import time as _t3
             _t3.sleep(4)
+            if self.config.get("app.dev_mode", False):
+                return
             try:
                 from modules.master_config import (get_min_version, get_changelog)
                 local_ver = self.config.get("app.version", "0")

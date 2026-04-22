@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.6",
+  "latest_version": "1.3.7",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.6/Synthex.exe",
-  "changelog": "v1.3.6: Redesain halaman Home - card fitur dikelompokkan per kategori (Automasi, Data, Komunitas, Device & Sistem) dengan 3 kolom, accent bar kiri berwarna per fitur, hover effect yang berfungsi, section header dengan accent ACC; section aktivitas terakhir dengan status dot berwarna dan hover; tampilan lebih bersih dan profesional",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.7/Synthex.exe",
+  "changelog": "v1.3.7: Fix notifikasi update tidak bisa di-close — tambah dev_mode bypass di config.json; perbaikan version mismatch di PC developer",
   "maintenance": false,
   "maintenance_msg": ""
 }
