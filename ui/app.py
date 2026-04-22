@@ -6601,6 +6601,13 @@ class SynthexApp:
             int(-1 * (e.delta / 120)), "units"))
 
         # ── Card + section helpers ───────────────────────────────────────────
+        def _hex_blend(hex_a, hex_b, t):
+            ar, ag, ab = int(hex_a[1:3], 16), int(hex_a[3:5], 16), int(hex_a[5:7], 16)
+            br, bg2, bb = int(hex_b[1:3], 16), int(hex_b[3:5], 16), int(hex_b[5:7], 16)
+            return "#{:02x}{:02x}{:02x}".format(
+                int(ar + (br - ar) * t), int(ag + (bg2 - ag) * t),
+                int(ab + (bb - ab) * t))
+
         def _mk(parent, title, icon, accent):
             wrap = tk.Frame(parent, bg=BG)
             wrap.pack(fill="x", padx=16, pady=(0, 10))
