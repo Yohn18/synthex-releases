@@ -509,7 +509,22 @@ class SynthexApp:
                         if self._root:
                             self._root.after(500, _show_cl)
 
-                # 3. DM check — set badge, toast if unread
+                # 3. Optional update check — toast jika versi baru tersedia
+                try:
+                    from modules.updater import get_latest_release, is_newer
+                    rel = get_latest_release()
+                    if rel and is_newer(rel["tag"], local_ver):
+                        def _toast_update(tag=rel["tag"]):
+                            self._show_toast(
+                                "🆕 Synthex {} tersedia — buka Settings untuk update".format(tag),
+                                duration=8000,
+                                action=lambda: self._show("settings"))
+                        if self._root:
+                            self._root.after(3000, _toast_update)
+                except Exception:
+                    pass
+
+                # 4. DM check — set badge, toast if unread
                 from modules.master_config import count_unread_dm
                 n = count_unread_dm(email, token)
                 if self._root:
