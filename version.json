@@ -2,7 +2,7 @@
   "latest_version": "1.3.5",
   "min_version": "1.0.0",
   "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.5/Synthex.exe",
-  "changelog": "v1.3.5: Broadcast toast notif; optimasi icon loading; fix hardcoded path; atomic config save; fix file/socket leak; fix shell injection; fix 4 bug runtime",
+  "changelog": "v1.3.5: Broadcast kini muncul sebagai notifikasi Windows; paksa update otomatis seperti game saat login; optimasi icon loading lebih cepat di PC lain; fix path macro & screenshot di PC lain; fix data tidak corrupt saat crash (atomic save); fix file handle & socket leak; fix shell injection di self-destruct; fix 4 bug runtime (None crash, split validasi, tick guard, ADB poll leak)",
   "maintenance": false,
   "maintenance_msg": ""
 }
