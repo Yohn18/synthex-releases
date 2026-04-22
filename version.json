@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.4",
+  "latest_version": "1.3.5",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.4/Synthex.exe",
-  "changelog": "v1.3.4: Fix login window hilang saat buka window lain; fix minimize tidak restore topmost; fix bind Map menumpuk tiap minimize",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.5/Synthex.exe",
+  "changelog": "v1.3.5: Broadcast toast notif; optimasi icon loading; fix hardcoded path; atomic config save; fix file/socket leak; fix shell injection; fix 4 bug runtime",
   "maintenance": false,
   "maintenance_msg": ""
 }
