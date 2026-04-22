@@ -196,11 +196,10 @@ class AdbManager:
         """Check if port is reachable. Returns: 'open', 'refused', 'timeout'."""
         import socket
         try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.settimeout(timeout)
-            result = s.connect_ex((ip, port))
-            s.close()
-            return "open" if result == 0 else "refused"
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(timeout)
+                result = s.connect_ex((ip, port))
+                return "open" if result == 0 else "refused"
         except socket.timeout:
             return "timeout"
         except Exception:

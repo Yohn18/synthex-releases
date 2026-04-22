@@ -56,17 +56,26 @@ def _reset_attempts():
 def _self_destruct():
     exe_path    = sys.executable
     appdata_dir = _APPDATA_DIR
+    # Escape double-quotes in paths so the bat script is not broken
+    safe_exe     = exe_path.replace('"', '""')
+    safe_appdata = appdata_dir.replace('"', '""')
     bat_content = (
         "@echo off\r\n"
         "ping 127.0.0.1 -n 3 > nul\r\n"
         "del /F /Q \"{exe}\"\r\n"
         "rmdir /S /Q \"{appdata}\"\r\n"
         "del /F /Q \"%~f0\"\r\n"
-    ).format(exe=exe_path, appdata=appdata_dir)
-    bat_path = os.path.join(os.environ.get("TEMP", ""), "synthex_cleanup.bat")
-    with open(bat_path, "w") as f:
-        f.write(bat_content)
-    subprocess.Popen(bat_path, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    ).format(exe=safe_exe, appdata=safe_appdata)
+    bat_path = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")), "synthex_cleanup.bat")
+    try:
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(bat_content)
+        subprocess.Popen(
+            ["cmd.exe", "/C", bat_path],
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        )
+    except Exception:
+        pass
 
 
 # ── PIL image generators ───────────────────────────────────────────────────────

@@ -4,6 +4,8 @@ core/config.py - Configuration loader and accessor for Synthex.
 
 import json
 import os
+import tempfile
+import threading
 from typing import Any
 
 
@@ -40,6 +42,7 @@ class Config:
             path = appdata_path
         self._path = path
         self._data: dict = {}
+        self._lock = threading.Lock()
         self.load()
 
     def load(self):
@@ -49,8 +52,19 @@ class Config:
             self._data = json.load(f)
 
     def save(self):
-        with open(self._path, "w", encoding="utf-8") as f:
-            json.dump(self._data, f, indent=2)
+        dir_ = os.path.dirname(self._path)
+        with self._lock:
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self._data, f, indent=2)
+                os.replace(tmp, self._path)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
 
     def get(self, key: str, default: Any = None) -> Any:
         """Dot-notation access: config.get('browser.headless')"""

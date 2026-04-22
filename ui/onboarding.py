@@ -599,7 +599,8 @@ class OnboardingWizard:
         tpl_path = os.path.join(_ROOT, "data", "templates.json")
         matched = None
         try:
-            templates = _json.load(open(tpl_path, "r", encoding="utf-8"))
+            with open(tpl_path, "r", encoding="utf-8") as _f:
+                templates = _json.load(_f)
             for t in templates:
                 if t.get("name") == template_card["name"]:
                     matched = t
@@ -690,7 +691,8 @@ def _set_bg_deep(widget, color):
 
 def onboarding_needed():
     try:
-        data = json.load(open(_DATA_FILE, "r", encoding="utf-8"))
+        with open(_DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
         return not data.get("onboarding_complete", False)
     except Exception:
         return True

@@ -73,6 +73,7 @@ class _TkLogHandler(logging.Handler):
 
 class UserData:
     def __init__(self):
+        self._lock = threading.Lock()
         self._d = {k: [] for k in
                    ("websites", "recordings", "tasks", "activity",
                     "elements", "sheets")}
@@ -87,9 +88,21 @@ class UserData:
             logging.getLogger("ui").warning("UserData: gagal load %s", _DATA_FILE, exc_info=True)
 
     def save(self):
-        os.makedirs(os.path.dirname(_DATA_FILE), exist_ok=True)
-        with open(_DATA_FILE, "w", encoding="utf-8") as fh:
-            json.dump(self._d, fh, indent=2)
+        dir_ = os.path.dirname(_DATA_FILE)
+        os.makedirs(dir_, exist_ok=True)
+        with self._lock:
+            import tempfile
+            fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                    json.dump(self._d, fh, indent=2)
+                os.replace(tmp, _DATA_FILE)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
 
     def log(self, task, result, ok=True):
         self._d["activity"].insert(0, {
@@ -275,7 +288,8 @@ def _step_label(step):
 def _load_templates():
     path = os.path.join(_ROOT, "data", "templates.json")
     try:
-        return json.load(open(path, "r", encoding="utf-8"))
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
     except Exception:
         return []
 
@@ -474,7 +488,7 @@ class SynthexApp:
                 min_ver = get_min_version(token)
                 def _ver_tuple(v):
                     try: return tuple(int(x) for x in v.lstrip("v").split("."))
-                    except: return (0,)
+                    except Exception: return (0,)
                 if _ver_tuple(min_ver) > _ver_tuple(local_ver):
                     def _show_force():
                         self._show_force_update_dialog(min_ver)
@@ -6799,7 +6813,7 @@ class SynthexApp:
                 is_master = (m.get("from", "") == self.MASTER_EMAIL)
                 ts = m.get("ts", 0)
                 try: t_str = _dt2.fromtimestamp(ts).strftime("%H:%M")
-                except: t_str = ""
+                except Exception: t_str = ""
                 row = tk.Frame(conv_inner, bg=CARD2, pady=2)
                 row.pack(fill="x", padx=6)
                 bub_bg = "#1E1B4B" if is_master else "#052e16"
@@ -10375,7 +10389,7 @@ class SynthexApp:
         for m in msgs:
             ts = m.get("ts", 0)
             try: t_str = _dt2.fromtimestamp(ts).strftime("%d %b %Y  %H:%M")
-            except: t_str = ""
+            except Exception: t_str = ""
             mf = tk.Frame(msg_frame, bg=CARD, padx=12, pady=8)
             mf.pack(fill="x")
             tk.Frame(msg_frame, bg="#1A1A2E", height=1).pack(fill="x")
