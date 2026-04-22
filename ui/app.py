@@ -848,8 +848,7 @@ class SynthexApp:
             photos = {k: ImageTk.PhotoImage(v) for k, v in glow.items()}
             if self._root:
                 self._root.after(0, lambda p=photos: self._nav_photo_glow.update(p))
-        import threading as _thr_icons
-        _thr_icons.Thread(target=_build_glow_bg, daemon=True).start()
+        threading.Thread(target=_build_glow_bg, daemon=True).start()
 
         # ── SIDEBAR ───────────────────────────────────────────────────────────
         SIDE_W = 220
