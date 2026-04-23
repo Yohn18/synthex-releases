@@ -413,7 +413,6 @@ class SimpleRecorder:
             silent_click_fn:  Callable(x, y, button) used when silent_mode is True.
         """
         import pyautogui
-        pyautogui.FAILSAFE = False
 
         total = len(actions) * repeat
         step  = 0
@@ -439,47 +438,55 @@ class SimpleRecorder:
                 desc  = self._action_desc(action)
 
                 if on_step:
-                    on_step(step, total, desc)
-
-                if atype == "click":
-                    btn = action.get("button", "left")
-                    cx, cy = action["x"], action["y"]
-                    uia_fp = action.get("uia", {})
-                    if uia_fp and uia_fp.get("proc"):
-                        found = _uia_find_center(uia_fp)
-                        if found:
-                            cx, cy = found
-
-                    if silent_mode and silent_click_fn:
-                        silent_click_fn(cx, cy, btn)
-                    else:
-                        pyautogui.click(cx, cy, button=btn)
-
-                elif atype == "type":
-                    text = action.get("text", "")
-                    pasted = False
                     try:
-                        import pyperclip
-                        pyperclip.copy(text)
-                        pyautogui.hotkey("ctrl", "v")
-                        time.sleep(0.15)
-                        pasted = True
+                        on_step(step, total, desc)
                     except Exception:
                         pass
-                    if not pasted:
-                        # pyperclip unavailable or failed — fall back to typewrite
-                        safe = text.encode("ascii", "ignore").decode("ascii")
-                        if safe:
-                            pyautogui.typewrite(safe, interval=0.05)
 
-                elif atype == "scroll":
-                    pyautogui.scroll(action.get("amount", 0),
-                                     x=action["x"], y=action["y"])
+                try:
+                    if atype == "click":
+                        btn = action.get("button", "left")
+                        cx, cy = action["x"], action["y"]
+                        uia_fp = action.get("uia", {})
+                        if uia_fp and uia_fp.get("proc"):
+                            found = _uia_find_center(uia_fp)
+                            if found:
+                                cx, cy = found
 
-                elif atype == "key":
-                    key = action.get("key", "")
-                    if key:
-                        pyautogui.press(key)
+                        if silent_mode and silent_click_fn:
+                            silent_click_fn(cx, cy, btn)
+                        else:
+                            pyautogui.click(cx, cy, button=btn)
+
+                    elif atype == "type":
+                        text = action.get("text", "")
+                        pasted = False
+                        try:
+                            import pyperclip
+                            pyperclip.copy(text)
+                            pyautogui.hotkey("ctrl", "v")
+                            time.sleep(0.15)
+                            pasted = True
+                        except Exception:
+                            pass
+                        if not pasted:
+                            # pyperclip unavailable or failed — fall back to typewrite
+                            safe = text.encode("ascii", "ignore").decode("ascii")
+                            if safe:
+                                pyautogui.typewrite(safe, interval=0.05)
+
+                    elif atype == "scroll":
+                        pyautogui.scroll(action.get("amount", 0),
+                                         x=action["x"], y=action["y"])
+
+                    elif atype == "key":
+                        key = action.get("key", "")
+                        if key:
+                            pyautogui.press(key)
+                except Exception as exc:
+                    self.logger.error("Playback step %d error: %s", step, exc, exc_info=True)
+                    if stop_event and not stop_event.is_set():
+                        pass  # continue to next step rather than crashing
 
                 step += 1
 

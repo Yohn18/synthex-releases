@@ -26,20 +26,17 @@ _logger = logging.getLogger("master_config")
 
 def _req(method: str, path: str, token: str, **kw):
     url = "{}/{}.json?auth={}".format(_RTDB, path, token)
-    last_exc = None
-    for verify in (certifi.where(), False):
-        try:
-            r = getattr(requests, method)(url, timeout=10, verify=verify, **kw)
-            if r.ok:
-                return r.json()
-        except requests.Timeout:
-            last_exc = "timeout"
-        except requests.ConnectionError:
-            last_exc = "connection error"
-        except Exception as e:
-            last_exc = str(e)
-    if last_exc:
-        _logger.debug("_req %s %s gagal: %s", method, path, last_exc)
+    try:
+        r = getattr(requests, method)(url, timeout=10, verify=certifi.where(), **kw)
+        if r.ok:
+            return r.json()
+        _logger.debug("_req %s %s HTTP %s", method, path, r.status_code)
+    except requests.Timeout:
+        _logger.debug("_req %s %s timeout", method, path)
+    except requests.ConnectionError as e:
+        _logger.debug("_req %s %s connection error: %s", method, path, e)
+    except Exception as e:
+        _logger.debug("_req %s %s error: %s", method, path, e)
     return None
 
 

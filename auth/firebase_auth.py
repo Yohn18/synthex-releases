@@ -12,16 +12,31 @@ import time
 import uuid
 import certifi
 import requests
-import urllib3
 
 _logger       = logging.getLogger("firebase_auth")
 _session_lock = threading.Lock()
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 _TOKEN_FILE = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex", "token.json")
+    os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex", "token.enc")
 os.makedirs(os.path.dirname(_TOKEN_FILE), exist_ok=True)
+
+# ── DPAPI helpers (Windows Data Protection API) ───────────────────────────────
+def _dpapi_encrypt(data: bytes) -> bytes:
+    """Encrypt bytes using Windows DPAPI (current-user scope)."""
+    try:
+        import win32crypt
+        return win32crypt.CryptProtectData(data, None, None, None, None, 0)
+    except Exception:
+        return data  # fallback: plaintext (non-Windows or pywin32 missing)
+
+def _dpapi_decrypt(data: bytes) -> bytes:
+    """Decrypt DPAPI-encrypted bytes."""
+    try:
+        import win32crypt
+        _, plaintext = win32crypt.CryptUnprotectData(data, None, None, None, 0)
+        return plaintext
+    except Exception:
+        return data  # fallback: already plaintext
 
 # Firebase ID tokens expire after 1 hour; we refresh proactively at 50 min
 _ID_TOKEN_TTL   = 3600        # 1 hour (Firebase hard limit)
@@ -58,35 +73,31 @@ def _email_key(email: str) -> str:
 
 def _rtdb_put(path: str, data: dict, id_token: str) -> bool:
     url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
-    for verify in (certifi.where(), False):
-        try:
-            r = requests.put(url, json=data, timeout=8, verify=verify)
-            return r.ok
-        except Exception:
-            continue
-    return False
+    try:
+        r = requests.put(url, json=data, timeout=8, verify=certifi.where())
+        return r.ok
+    except Exception as e:
+        _logger.warning("_rtdb_put gagal: %s", e)
+        return False
 
 
 def _rtdb_get(path: str, id_token: str) -> dict | None:
     url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
-    for verify in (certifi.where(), False):
-        try:
-            r = requests.get(url, timeout=8, verify=verify)
-            if r.ok:
-                return r.json()
-        except Exception:
-            continue
+    try:
+        r = requests.get(url, timeout=8, verify=certifi.where())
+        if r.ok:
+            return r.json()
+    except Exception as e:
+        _logger.warning("_rtdb_get gagal: %s", e)
     return None
 
 
 def _rtdb_delete(path: str, id_token: str):
     url = "{}/{}.json?auth={}".format(_RTDB_BASE, path, id_token)
-    for verify in (certifi.where(), False):
-        try:
-            requests.delete(url, timeout=8, verify=verify)
-            return
-        except Exception:
-            continue
+    try:
+        requests.delete(url, timeout=8, verify=certifi.where())
+    except Exception as e:
+        _logger.warning("_rtdb_delete gagal: %s", e)
 
 
 def register_session(email: str, id_token: str) -> str:
@@ -115,31 +126,32 @@ def clear_session_rtdb(email: str, id_token: str):
 
 
 def _http_post(url, params=None, json_body=None, data=None, timeout=10):
-    """POST with automatic SSL fallback."""
-    for verify in (certifi.where(), False):
-        try:
-            return requests.post(
-                url, params=params, json=json_body, data=data,
-                timeout=timeout, verify=verify)
-        except Exception:
-            continue
-    return None
+    """POST with certifi SSL verification."""
+    try:
+        return requests.post(
+            url, params=params, json=json_body, data=data,
+            timeout=timeout, verify=certifi.where())
+    except Exception as e:
+        _logger.warning("_http_post gagal: %s", e)
+        return None
 
 
 def _save_token_file(id_token: str, refresh_token: str,
                      email: str, issued_at: float, api_key: str):
     try:
-        with open(_TOKEN_FILE, "w", encoding="utf-8") as f:
-            json.dump({
-                "idToken":      id_token,
-                "refreshToken": refresh_token,
-                "email":        email,
-                "loginTime":    issued_at,
-                "tokenIssued":  issued_at,
-                "apiKey":       api_key,
-            }, f, indent=2)
-    except Exception:
-        pass
+        payload = json.dumps({
+            "idToken":      id_token,
+            "refreshToken": refresh_token,
+            "email":        email,
+            "loginTime":    issued_at,
+            "tokenIssued":  issued_at,
+            "apiKey":       api_key,
+        }).encode("utf-8")
+        encrypted = _dpapi_encrypt(payload)
+        with open(_TOKEN_FILE, "wb") as f:
+            f.write(encrypted)
+    except Exception as e:
+        _logger.warning("_save_token_file gagal: %s", e)
 
 
 def refresh_id_token(api_key: str = None, refresh_token: str = None) -> dict | None:
@@ -249,12 +261,24 @@ def load_saved_session() -> dict | None:
     - If stale but refresh token exists → silently refresh.
     - If no refresh token and too old → return None (force login).
     """
-    if not os.path.exists(_TOKEN_FILE):
-        return None
-    try:
-        with open(_TOKEN_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception:
+    # Support migration from old plaintext .json file
+    _old_json = _TOKEN_FILE.replace(".enc", ".json")
+    if not os.path.exists(_TOKEN_FILE) and os.path.exists(_old_json):
+        try:
+            with open(_old_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            os.remove(_old_json)
+        except Exception:
+            return None
+    elif os.path.exists(_TOKEN_FILE):
+        try:
+            with open(_TOKEN_FILE, "rb") as f:
+                raw = f.read()
+            plaintext = _dpapi_decrypt(raw)
+            data = json.loads(plaintext.decode("utf-8"))
+        except Exception:
+            return None
+    else:
         return None
 
     id_token    = data.get("idToken", "")
@@ -324,8 +348,9 @@ def logout() -> None:
         for k in ("token", "email", "login_time", "refresh_token",
                   "token_issued", "api_key", "session_id"):
             _session[k] = None
-    if os.path.exists(_TOKEN_FILE):
-        try:
-            os.remove(_TOKEN_FILE)
-        except Exception:
-            pass
+    for _f in (_TOKEN_FILE, _TOKEN_FILE.replace(".enc", ".json")):
+        if os.path.exists(_f):
+            try:
+                os.remove(_f)
+            except Exception:
+                pass

@@ -5,15 +5,10 @@ Supports Firebase Auth and Google OAuth via gspread/google-auth.
 
 import os
 import json
-import ssl
 import certifi
 import requests
-import urllib3
 from core.config import Config
 from core.logger import get_logger
-
-ssl._create_default_https_context = ssl._create_unverified_context
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -37,7 +32,7 @@ def firebase_login(username: str, password: str, api_key: str = "AIzaSyBtReTuUDI
             params={"key": api_key},
             json={"email": email, "password": password, "returnSecureToken": True},
             timeout=10,
-            verify=False,
+            verify=certifi.where(),
         )
         resp.raise_for_status()
         data = resp.json()

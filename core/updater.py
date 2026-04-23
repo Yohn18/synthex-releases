@@ -16,9 +16,6 @@ import re
 import sys
 import certifi
 import requests
-import urllib3
-
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Version manifest — GitHub Gist publik (repo tetap private, update cukup edit gist ini)
 # Gist ID: 3920fa0dd0e4c2a400c69940ad614d3b
@@ -27,14 +24,13 @@ _TIMEOUT  = 6  # seconds
 
 
 def _http_get(url: str, timeout: int = _TIMEOUT) -> dict | None:
-    """GET with SSL fallback. Returns parsed JSON or None."""
-    for verify in (certifi.where(), False):
-        try:
-            r = requests.get(url, timeout=timeout, verify=verify)
-            if r.ok:
-                return r.json()
-        except Exception:
-            continue
+    """GET with certifi SSL verification. Returns parsed JSON or None."""
+    try:
+        r = requests.get(url, timeout=timeout, verify=certifi.where())
+        if r.ok:
+            return r.json()
+    except Exception:
+        pass
     return None
 
 
@@ -145,6 +141,7 @@ def auto_download_update(download_url: str, on_progress=None) -> tuple[bool, str
 
         tmp_dir  = tempfile.gettempdir()
         new_exe  = os.path.join(tmp_dir, "Synthex_new.exe")
+        bak_exe  = os.path.join(tmp_dir, "Synthex_backup.exe")
         bat_path = os.path.join(tmp_dir, "synthex_update.bat")
 
         # Download dengan progress
@@ -165,6 +162,7 @@ def auto_download_update(download_url: str, on_progress=None) -> tuple[bool, str
             on_progress(92, "Menyiapkan update...")
 
         # Buat bat script yang replace exe setelah proses selesai
+        # Backup exe lama dulu sebelum replace — restore otomatis kalau copy gagal
         bat_content = (
             "@echo off\n"
             "timeout /t 2 /nobreak >nul\n"
@@ -174,10 +172,15 @@ def auto_download_update(download_url: str, on_progress=None) -> tuple[bool, str
             "    timeout /t 1 /nobreak >nul\n"
             "    goto wait\n"
             ")\n"
+            "copy /Y \"{cur}\" \"{bak}\" >nul\n"
             "copy /Y \"{new}\" \"{cur}\"\n"
+            "if errorlevel 1 (\n"
+            "    copy /Y \"{bak}\" \"{cur}\" >nul\n"
+            "    exit /b 1\n"
+            ")\n"
             "start \"\" \"{cur}\"\n"
             "del \"%~f0\"\n"
-        ).format(new=new_exe, cur=current_exe)
+        ).format(new=new_exe, cur=current_exe, bak=bak_exe)
 
         with open(bat_path, "w") as f:
             f.write(bat_content)

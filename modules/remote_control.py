@@ -309,7 +309,7 @@ class ScrcpyManager:
                 self._proc = subprocess.Popen(
                     cmd,
                     stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
                     creationflags=(subprocess.CREATE_NO_WINDOW
                                    if os.name == "nt" else 0))
             logger.info("scrcpy started: %s", " ".join(cmd))

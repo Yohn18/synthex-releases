@@ -6,6 +6,7 @@ Uses APIV3: https://apivalidasi.my.id/api/v3/validate
 
 import json
 import os
+import re
 import time
 import threading
 import requests
@@ -98,9 +99,11 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
 
     result = {"provider": provider, "nomor": nomor, "name": "-", "status": "Gagal"}
 
-    if not nomor or len(nomor) < 5:
+    digits = re.sub(r'\D', '', nomor)
+    if not digits or len(digits) < 5:
         result["status"] = "Nomor tidak valid"
         return result
+    nomor = digits
 
     try:
         _base = _get_base()
@@ -111,13 +114,14 @@ def check_rekening(provider: str, nomor: str, api_key: str = None) -> dict:
             code = BANK_CODES.get(provider, provider.lower())
             url = "{}?type=bank&code={}&accountNumber={}".format(
                 _base, code, nomor)
+        headers = {}
         if api_key:
-            url += "&api_key={}".format(api_key)
+            headers["Authorization"] = "Bearer {}".format(api_key)
 
         _rate_wait()
         resp = None
         for attempt in range(3):
-            resp = requests.get(url, timeout=12)
+            resp = requests.get(url, headers=headers, timeout=12)
             if resp.status_code == 429:
                 wait = min(int(resp.headers.get("Retry-After", str(3 * (attempt + 1)))), 20)
                 time.sleep(wait)

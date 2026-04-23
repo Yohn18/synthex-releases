@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """ui/app.py - Synthex dashboard by Yohn18."""
 import json, logging, os, re, sys, threading, time, tkinter as tk
+from collections import deque
 from datetime import datetime
 from tkinter import ttk, scrolledtext
 import pystray
@@ -56,32 +57,53 @@ _STEP_ICONS = {
 
 
 class _TkLogHandler(logging.Handler):
+    """Buffered log handler — batches entries and flushes every 100ms to avoid UI flooding."""
+
     def __init__(self, w):
         super().__init__()
         self._w = w
+        self._buf: list[tuple[str, str]] = []
+        self._buf_lock = threading.Lock()
+        self._scheduled = False
 
     def emit(self, record):
         msg = self.format(record) + "\n"
         tag = {logging.DEBUG: "debug", logging.INFO: "info",
                logging.WARNING: "warn"}.get(record.levelno, "error")
-        self._w.after(0, lambda m=msg, t=tag: [
-            self._w.configure(state="normal"),
-            self._w.insert(tk.END, m, t),
-            self._w.see(tk.END),
-            self._w.configure(state="disabled")])
+        with self._buf_lock:
+            self._buf.append((msg, tag))
+            if not self._scheduled:
+                self._scheduled = True
+                self._w.after(100, self._flush)
+
+    def _flush(self):
+        with self._buf_lock:
+            entries = self._buf[:]
+            self._buf.clear()
+            self._scheduled = False
+        if not entries:
+            return
+        self._w.configure(state="normal")
+        for msg, tag in entries:
+            self._w.insert(tk.END, msg, tag)
+        self._w.see(tk.END)
+        self._w.configure(state="disabled")
 
 
 class UserData:
     def __init__(self):
         self._lock = threading.Lock()
         self._d = {k: [] for k in
-                   ("websites", "recordings", "tasks", "activity",
+                   ("websites", "recordings", "tasks",
                     "elements", "sheets")}
+        self._activity: deque = deque(maxlen=500)
         try:
             with open(_DATA_FILE, "r", encoding="utf-8") as fh:
                 saved = json.load(fh)
             for k in self._d:
                 self._d[k] = saved.get(k, [])
+            for entry in saved.get("activity", []):
+                self._activity.append(entry)
         except FileNotFoundError:
             pass
         except Exception:
@@ -92,10 +114,11 @@ class UserData:
         os.makedirs(dir_, exist_ok=True)
         with self._lock:
             import tempfile
+            snapshot = {**self._d, "activity": list(self._activity)}
             fd, tmp = tempfile.mkstemp(dir=dir_, suffix=".tmp")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                    json.dump(self._d, fh, indent=2)
+                    json.dump(snapshot, fh, indent=2)
                 os.replace(tmp, _DATA_FILE)
             except Exception:
                 try:
@@ -105,13 +128,14 @@ class UserData:
                 raise
 
     def log(self, task, result, ok=True):
-        self._d["activity"].insert(0, {
+        entry = {
             "time":   datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "task":   task,
             "result": result,
             "ok":     ok,
-        })
-        self._d["activity"] = self._d["activity"][:500]
+        }
+        with self._lock:
+            self._activity.appendleft(entry)
         self.save()
 
     @property
@@ -121,7 +145,7 @@ class UserData:
     @property
     def tasks(self):      return self._d["tasks"]
     @property
-    def activity(self):   return self._d["activity"]
+    def activity(self):   return self._activity
     @property
     def elements(self):   return self._d["elements"]
     @property
@@ -1711,7 +1735,7 @@ class SynthexApp:
         _section_hdr(body, "🕐 AKTIVITAS TERAKHIR")
         ac = tk.Frame(body, bg=CARD)
         ac.pack(fill="x", padx=20, pady=(0, 24))
-        acts = self._ud.activity[:6]
+        acts = list(self._ud.activity)[:6]
         if acts:
             for act in acts:
                 ok = act.get("ok")
@@ -6597,8 +6621,9 @@ class SynthexApp:
         body.bind("<Configure>", lambda e: _mcv.configure(
             scrollregion=_mcv.bbox("all")))
         _mcv.bind("<Configure>", lambda e: _mcv.itemconfig(_mwid, width=e.width))
-        _mcv.bind_all("<MouseWheel>", lambda e: _mcv.yview_scroll(
+        _mcv.bind("<MouseWheel>", lambda e: _mcv.yview_scroll(
             int(-1 * (e.delta / 120)), "units"))
+
 
         # ── Card + section helpers ───────────────────────────────────────────
         def _hex_blend(hex_a, hex_b, t):
@@ -11228,13 +11253,15 @@ class SynthexApp:
             _fa_logout()
         except Exception:
             pass
-        # Clear token file
-        token_path = os.path.join(os.environ.get("APPDATA", ""), "Synthex", "token.json")
-        if os.path.exists(token_path):
-            try:
-                os.remove(token_path)
-            except Exception:
-                pass
+        # Clear token files (both legacy .json and new .enc)
+        _appdata = os.environ.get("APPDATA", "")
+        for _tname in ("token.enc", "token.json"):
+            _tp = os.path.join(_appdata, "Synthex", _tname)
+            if os.path.exists(_tp):
+                try:
+                    os.remove(_tp)
+                except Exception:
+                    pass
         # Clear stay-logged-in config
         self.config.set("ui.stay_logged_in", False)
         self.config.set("ui.last_email", "")
@@ -12546,10 +12573,12 @@ class SynthexApp:
         def _do_quit():
             dlg.destroy()
             import os as _os
-            token_path = _os.path.join(_os.environ.get("APPDATA", ""), "Synthex", "token.json")
-            if _os.path.exists(token_path):
-                try: _os.remove(token_path)
-                except Exception: pass
+            _appdata = _os.environ.get("APPDATA", "")
+            for _tname in ("token.enc", "token.json"):
+                _tp = _os.path.join(_appdata, "Synthex", _tname)
+                if _os.path.exists(_tp):
+                    try: _os.remove(_tp)
+                    except Exception: pass
             try:
                 self.config.set("ui.stay_logged_in", False)
                 self.config.set("ui.last_email", "")

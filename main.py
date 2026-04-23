@@ -26,10 +26,14 @@ Entry point: login → load modules → launch dashboard.
 import signal
 
 # Fix stdout/stderr for frozen exe (PyInstaller --windowed sets them to None)
-if sys.stdout is None:
-    sys.stdout = open(os.devnull, 'w')
-if sys.stderr is None:
-    sys.stderr = open(os.devnull, 'w')
+if sys.stdout is None or sys.stderr is None:
+    _log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex")
+    os.makedirs(_log_dir, exist_ok=True)
+    _stdio_log = open(os.path.join(_log_dir, "stdio.log"), "a", encoding="utf-8", buffering=1)
+    if sys.stdout is None:
+        sys.stdout = _stdio_log
+    if sys.stderr is None:
+        sys.stderr = _stdio_log
 
 # Only reconfigure encoding when running from source (not frozen)
 if not getattr(sys, 'frozen', False):
