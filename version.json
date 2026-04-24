@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.27",
-  "min_version": "1.3.27",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.27/Synthex.exe",
-  "changelog": "v1.3.27: Fix FPS & Orientasi mirror (sekarang benar-benar berpengaruh), screenshot otomatis pilih HP yang sedang di-mirror, swipe control panel adaptif resolusi HP, cleanup memory ctrl panel.",
+  "latest_version": "1.3.28",
+  "min_version": "1.3.28",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.28/Synthex.exe",
+  "changelog": "v1.3.28: Tambah fitur AI Chat standalone \u2014 chat pribadi dengan GPT/Claude/Gemini/Groq langsung dari Synthex, support multi-turn conversation.",
   "maintenance": false,
   "maintenance_msg": ""
 }

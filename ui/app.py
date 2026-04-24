@@ -370,6 +370,7 @@ class SynthexApp:
         ("Monitor",          "monitor"),
         ("KOMUNITAS",        ""),
         ("Chat",             "chat"),
+        ("AI Chat",          "ai_chat"),
         ("Inbox",            "inbox"),
         ("Blog",             "blog"),
         ("DEVICE",           ""),
@@ -1084,6 +1085,7 @@ class SynthexApp:
             "monitor":   self._pg_monitor,
             "remote":    self._pg_remote,
             "chat":      self._pg_chat,
+            "ai_chat":   self._pg_ai_chat,
             "blog":      self._pg_blog,
             "inbox":     self._pg_inbox,
             "history":   self._pg_history,
@@ -5842,6 +5844,220 @@ class SynthexApp:
         self._root.after(20000, _poll_users)
         inp_entry.focus()
 
+        return f
+
+    # ================================================================
+    #  AI CHAT PAGE
+    # ================================================================
+
+    def _pg_ai_chat(self):
+        import threading as _thr
+        from datetime import datetime as _dt
+
+        f = tk.Frame(self._content, bg=BG)
+        self._hdr(f, "AI Chat",
+                  "Chat pribadi dengan AI — GPT, Claude, Gemini, Groq")
+
+        provider = self.config.get("ai.provider", "openai")
+        api_key  = self.config.get("ai.api_key", "").strip()
+        model    = self.config.get("ai.model", "").strip()
+        sys_prompt = self.config.get(
+            "ai.system_prompt",
+            "You are a helpful automation assistant. Answer concisely.")
+        max_tokens = self.config.get("ai.max_tokens", 800)
+
+        # conversation history: list of {"role": "user"/"assistant", "content": str}
+        _history = []
+        _thinking = [False]
+
+        # ── layout ──────────────────────────────────────────────────────────
+        top_bar = tk.Frame(f, bg=CARD, padx=16, pady=8)
+        top_bar.pack(fill="x")
+
+        # Provider badge
+        _prov_colors = {
+            "openai": "#10A37F", "anthropic": "#C76B3A",
+            "groq": "#F55036",   "gemini": "#4285F4",
+        }
+        _badge_bg = _prov_colors.get(provider, ACC)
+        tk.Label(top_bar, text=" {} ".format(provider.upper()),
+                 bg=_badge_bg, fg="white",
+                 font=("Segoe UI", 8, "bold"),
+                 padx=6, pady=2).pack(side="left")
+        _model_lbl = model or "default"
+        tk.Label(top_bar, text="  {}".format(_model_lbl),
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(side="left")
+
+        if not api_key:
+            tk.Label(top_bar,
+                     text="  ⚠ API key belum diset — buka Settings → AI Integration",
+                     bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(side="left", padx=(12, 0))
+
+        def _clear_chat():
+            _history.clear()
+            _rebuild_messages()
+
+        tk.Button(top_bar, text="🗑 Hapus Chat",
+                  bg=CARD2, fg=MUT, relief="flat", bd=0,
+                  font=("Segoe UI", 8), padx=10, pady=4,
+                  cursor="hand2", command=_clear_chat).pack(side="right")
+
+        # ── message area ────────────────────────────────────────────────────
+        msg_outer = tk.Frame(f, bg=BG)
+        msg_outer.pack(fill="both", expand=True, padx=0, pady=0)
+
+        msg_sb = ttk.Scrollbar(msg_outer, orient="vertical")
+        msg_sb.pack(side="right", fill="y")
+        msg_cv = tk.Canvas(msg_outer, bg=BG, highlightthickness=0,
+                           yscrollcommand=msg_sb.set)
+        msg_cv.pack(side="left", fill="both", expand=True)
+        msg_sb.config(command=msg_cv.yview)
+        msg_body = tk.Frame(msg_cv, bg=BG)
+        _mwid = msg_cv.create_window((0, 0), window=msg_body, anchor="nw")
+        msg_body.bind("<Configure>",
+                      lambda e: msg_cv.configure(
+                          scrollregion=msg_cv.bbox("all")))
+        msg_cv.bind("<Configure>",
+                    lambda e: msg_cv.itemconfig(_mwid, width=e.width))
+        msg_cv.bind("<MouseWheel>",
+                    lambda e: msg_cv.yview_scroll(
+                        int(-1 * (e.delta / 120)), "units"))
+
+        def _scroll_bottom():
+            if self._root:
+                self._root.after(80, lambda: msg_cv.yview_moveto(1.0))
+
+        def _rebuild_messages():
+            for w in msg_body.winfo_children():
+                w.destroy()
+            if not _history:
+                tk.Label(msg_body,
+                         text="Mulai percakapan — ketik pesan di bawah.",
+                         bg=BG, fg=MUT, font=("Segoe UI", 9, "italic")).pack(
+                    pady=40)
+                return
+            for msg in _history:
+                _add_bubble(msg["role"], msg["content"])
+            _scroll_bottom()
+
+        def _add_bubble(role: str, text: str):
+            is_user = role == "user"
+            bubble_bg  = ACC if is_user else CARD
+            bubble_fg  = "white" if is_user else FG
+            anchor     = "e" if is_user else "w"
+            padx_l     = (80, 16) if is_user else (16, 80)
+            label_txt  = "Kamu" if is_user else provider.upper()
+            label_fg   = ACC2 if is_user else MUT
+
+            row = tk.Frame(msg_body, bg=BG)
+            row.pack(fill="x", pady=(0, 6))
+
+            tk.Label(row, text=label_txt, bg=BG, fg=label_fg,
+                     font=("Segoe UI", 7, "bold")).pack(
+                anchor=anchor, padx=padx_l)
+
+            bubble = tk.Frame(row, bg=bubble_bg, padx=12, pady=8)
+            bubble.pack(anchor=anchor, padx=padx_l)
+
+            tk.Label(bubble, text=text, bg=bubble_bg, fg=bubble_fg,
+                     font=("Segoe UI", 9),
+                     wraplength=500, justify="left").pack(anchor="w")
+
+        # typing indicator
+        _typing_frame = tk.Frame(msg_body, bg=BG)
+        _typing_lbl   = tk.Label(_typing_frame,
+                                  text="AI sedang mengetik...",
+                                  bg=BG, fg=MUT,
+                                  font=("Segoe UI", 8, "italic"))
+        _typing_lbl.pack(anchor="w", padx=16)
+
+        def _show_typing(show: bool):
+            if show:
+                _typing_frame.pack(fill="x", pady=(0, 4))
+            else:
+                _typing_frame.pack_forget()
+            _scroll_bottom()
+
+        # ── input bar ───────────────────────────────────────────────────────
+        inp_frame = tk.Frame(f, bg=CARD, padx=12, pady=10)
+        inp_frame.pack(fill="x", side="bottom")
+
+        inp_var = tk.StringVar()
+        inp_entry = tk.Entry(inp_frame, textvariable=inp_var,
+                             bg="#16162A", fg=FG, insertbackground=FG,
+                             relief="flat", font=("Segoe UI", 10),
+                             bd=8)
+        inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        inp_entry.focus_set()
+
+        send_btn = tk.Button(inp_frame, text="Kirim ➤",
+                             bg=ACC, fg="white", relief="flat", bd=0,
+                             font=("Segoe UI", 9, "bold"),
+                             padx=14, pady=6, cursor="hand2")
+        send_btn.pack(side="left")
+
+        status_var = tk.StringVar(value="")
+        tk.Label(inp_frame, textvariable=status_var,
+                 bg=CARD, fg=RED, font=("Segoe UI", 8)).pack(
+            side="left", padx=(8, 0))
+
+        def _send(event=None):
+            if _thinking[0]:
+                return
+            text = inp_var.get().strip()
+            if not text:
+                return
+            if not api_key:
+                status_var.set("API key kosong. Buka Settings → AI Integration.")
+                return
+            status_var.set("")
+            inp_var.set("")
+            _history.append({"role": "user", "content": text})
+            _rebuild_messages()
+            _show_typing(True)
+            _thinking[0] = True
+            send_btn.configure(state="disabled", bg=MUT)
+
+            def _do():
+                try:
+                    from modules.ai_client import call_ai
+                    # Build messages list with full history
+                    resp = call_ai(
+                        prompt=text,
+                        provider=provider,
+                        api_key=api_key,
+                        model=model or None,
+                        max_tokens=max_tokens,
+                        system_prompt=sys_prompt,
+                        history=[h for h in _history[:-1]],  # exclude latest user msg
+                    )
+                    def _ui():
+                        _history.append({"role": "assistant", "content": resp})
+                        _show_typing(False)
+                        _rebuild_messages()
+                        _thinking[0] = False
+                        send_btn.configure(state="normal", bg=ACC)
+                except Exception as e:
+                    err = str(e)[:120]
+                    def _ui_err():
+                        _show_typing(False)
+                        status_var.set(err)
+                        _thinking[0] = False
+                        send_btn.configure(state="normal", bg=ACC)
+                        # Remove last user message from history on error
+                        if _history and _history[-1]["role"] == "user":
+                            _history.pop()
+                        _rebuild_messages()
+                    if self._root: self._root.after(0, _ui_err)
+                    return
+                if self._root: self._root.after(0, _ui)
+
+            _thr.Thread(target=_do, daemon=True).start()
+
+        send_btn.configure(command=_send)
+        inp_entry.bind("<Return>", _send)
+
+        _rebuild_messages()
         return f
 
     # ================================================================
@@ -12847,6 +13063,7 @@ class SynthexApp:
             "rekening":  "Monitor saldo & mutasi rekening",
             "monitor":   "Pantau harga & perubahan data",
             "chat":      "Chat real-time dengan pengguna lain",
+            "ai_chat":   "Chat pribadi dengan AI (GPT, Claude, Gemini, Groq)",
             "inbox":     "Pesan masuk & notifikasi",
             "blog":      "Tulis & kelola artikel blog",
             "remote":    "Kontrol perangkat dari jarak jauh",

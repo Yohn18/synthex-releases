@@ -21,7 +21,7 @@ _DEFAULT_MODELS = {
     "gemini":    "gemini-1.5-flash",
 }
 
-PROVIDER_NAMES = list(_PROVIDERS.keys())
+PROVIDER_NAMES  = list(_PROVIDERS.keys())
 PROVIDER_LABELS = list(_PROVIDERS.values())
 
 
@@ -38,20 +38,29 @@ def _post(url, headers, body, timeout=30):
 
 
 def call_ai(prompt: str, provider: str, api_key: str,
-            model: str = "", system: str = "", max_tokens: int = 800) -> str:
+            model: str = "",
+            system: str = "",
+            system_prompt: str = "",
+            max_tokens: int = 800,
+            history: list = None) -> str:
     """
     Send `prompt` to the selected provider and return the text response.
-    Raises ValueError on bad config, RuntimeError on API error.
+    `history` is a list of {"role": "user"/"assistant", "content": str} for
+    multi-turn conversation. Raises ValueError on bad config, RuntimeError on error.
     """
     if not api_key:
         raise ValueError("API key kosong. Masukkan API key di Settings → AI.")
     provider = provider.lower().strip()
-    model = model.strip() or _DEFAULT_MODELS.get(provider, "")
+    model    = (model or "").strip() or _DEFAULT_MODELS.get(provider, "")
+    sys_msg  = (system_prompt or system or "").strip()
+    history  = history or []
 
     if provider == "openai":
         messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if sys_msg:
+            messages.append({"role": "system", "content": sys_msg})
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
         messages.append({"role": "user", "content": prompt})
         body = {"model": model, "messages": messages, "max_tokens": max_tokens}
         r = _post("https://api.openai.com/v1/chat/completions",
@@ -63,11 +72,13 @@ def call_ai(prompt: str, provider: str, api_key: str,
         return r.json()["choices"][0]["message"]["content"].strip()
 
     elif provider == "anthropic":
-        messages = [{"role": "user", "content": prompt}]
-        body = {"model": model, "max_tokens": max_tokens,
-                "messages": messages}
-        if system:
-            body["system"] = system
+        messages = []
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
+        messages.append({"role": "user", "content": prompt})
+        body = {"model": model, "max_tokens": max_tokens, "messages": messages}
+        if sys_msg:
+            body["system"] = sys_msg
         r = _post("https://api.anthropic.com/v1/messages",
                   headers={"x-api-key": api_key,
                            "anthropic-version": "2023-06-01",
@@ -79,8 +90,10 @@ def call_ai(prompt: str, provider: str, api_key: str,
 
     elif provider == "groq":
         messages = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if sys_msg:
+            messages.append({"role": "system", "content": sys_msg})
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
         messages.append({"role": "user", "content": prompt})
         body = {"model": model, "messages": messages, "max_tokens": max_tokens}
         r = _post("https://api.groq.com/openai/v1/chat/completions",
@@ -92,11 +105,13 @@ def call_ai(prompt: str, provider: str, api_key: str,
         return r.json()["choices"][0]["message"]["content"].strip()
 
     elif provider == "gemini":
-        parts = []
-        if system:
-            parts.append({"text": system + "\n\n"})
-        parts.append({"text": prompt})
-        body = {"contents": [{"parts": parts}],
+        contents = []
+        for h in history:
+            role = "user" if h["role"] == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": h["content"]}]})
+        user_text = (sys_msg + "\n\n" + prompt) if sys_msg and not contents else prompt
+        contents.append({"role": "user", "parts": [{"text": user_text}]})
+        body = {"contents": contents,
                 "generationConfig": {"maxOutputTokens": max_tokens}}
         url = ("https://generativelanguage.googleapis.com/v1beta/models/"
                "{}:generateContent?key={}".format(model, api_key))
