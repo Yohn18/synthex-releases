@@ -5852,7 +5852,6 @@ class SynthexApp:
 
     def _pg_ai_chat(self):
         import threading as _thr
-        from datetime import datetime as _dt
 
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "AI Chat",
@@ -5927,9 +5926,14 @@ class SynthexApp:
             if self._root:
                 self._root.after(80, lambda: msg_cv.yview_moveto(1.0))
 
+        _typing_frame_ref = [None]  # forward ref — assigned after frame is created
+
         def _rebuild_messages():
             for w in msg_body.winfo_children():
-                w.destroy()
+                if w is _typing_frame_ref[0]:
+                    continue
+                try: w.destroy()
+                except Exception: pass
             if not _history:
                 tk.Label(msg_body,
                          text="Mulai percakapan — ketik pesan di bawah.",
@@ -5963,17 +5967,18 @@ class SynthexApp:
                      font=("Segoe UI", 9),
                      wraplength=500, justify="left").pack(anchor="w")
 
-        # typing indicator
+        # typing indicator — kept as last child, excluded from rebuild destroy
         _typing_frame = tk.Frame(msg_body, bg=BG)
-        _typing_lbl   = tk.Label(_typing_frame,
-                                  text="AI sedang mengetik...",
-                                  bg=BG, fg=MUT,
-                                  font=("Segoe UI", 8, "italic"))
-        _typing_lbl.pack(anchor="w", padx=16)
+        _typing_frame_ref[0] = _typing_frame
+        tk.Label(_typing_frame,
+                 text="AI sedang mengetik...",
+                 bg=BG, fg=MUT,
+                 font=("Segoe UI", 8, "italic")).pack(anchor="w", padx=16)
 
         def _show_typing(show: bool):
             if show:
                 _typing_frame.pack(fill="x", pady=(0, 4))
+                _typing_frame.lift()  # always last in msg_body
             else:
                 _typing_frame.pack_forget()
             _scroll_bottom()
