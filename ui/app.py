@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """ui/app.py - Synthex dashboard by Yohn18."""
-import json, logging, os, re, sys, threading, time, tkinter as tk
+import json, logging, os, re, sys, threading, time, tkinter as tk  # noqa: E401
 from collections import deque
 from datetime import datetime
 from tkinter import ttk, scrolledtext
@@ -10,7 +10,14 @@ from core.config import Config
 from core.logger import get_logger
 
 _ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_DATA_FILE = os.path.join(_ROOT, "data", "user_data.json")
+def _get_data_file():
+    if getattr(sys, 'frozen', False):
+        _appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
+        _dir = os.path.join(_appdata, "Synthex", "data")
+        os.makedirs(_dir, exist_ok=True)
+        return os.path.join(_dir, "user_data.json")
+    return os.path.join(_ROOT, "data", "user_data.json")
+_DATA_FILE = _get_data_file()
 
 _DARK_PALETTE  = ("#111118","#1A1A24","#1A1A28","#0D0D12",
                    "#6C4AFF","#8880FF","#E0DFFF","#555575",
@@ -333,6 +340,16 @@ def _extract_sheet_id(url):
     m = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", url)
     return m.group(1) if m else ""
 
+
+def _resolve_icon():
+    base = sys._MEIPASS if hasattr(sys, '_MEIPASS') else _ROOT
+    for candidate in [
+        os.path.join(base, 'assets', 'synthex.ico'),
+        os.path.join(base, 'synthex.ico'),
+    ]:
+        if os.path.exists(candidate):
+            return candidate
+    return None
 
 # ============================================================
 #  Main application class
@@ -663,16 +680,6 @@ class SynthexApp:
 
     def _splash(self):
         r = self._root = tk.Tk()
-        def _resolve_icon():
-            base = sys._MEIPASS if hasattr(sys, '_MEIPASS') else \
-                   os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            for candidate in [
-                os.path.join(base, 'assets', 'synthex.ico'),
-                os.path.join(base, 'synthex.ico'),
-            ]:
-                if os.path.exists(candidate):
-                    return candidate
-            return None
         _icon_path = _resolve_icon()
         if _icon_path:
             r.iconbitmap(_icon_path)
@@ -741,6 +748,19 @@ class SynthexApp:
         r.configure(bg=BG)
         r.protocol("WM_DELETE_WINDOW", self._quit)
         _apply_styles(r)
+        # Re-apply window icon (gets lost when window is reconfigured after splash)
+        _ico = _resolve_icon()
+        if _ico:
+            try:
+                r.iconbitmap(_ico)
+            except Exception:
+                pass
+        # Set Windows taskbar AppUserModelID so taskbar shows synthex.ico correctly
+        try:
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Yohn18.Synthex")
+        except Exception:
+            pass
         # Center on screen then fade in
         sw = r.winfo_screenwidth()
         sh = r.winfo_screenheight()
@@ -4425,6 +4445,7 @@ class SynthexApp:
                 mir_dot.configure(fg=GRN)
                 mir_lbl.configure(text="Sedang mirror", fg=GRN)
                 _poll_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl)
+                _open_control_panel(serial)
 
         def _stop_mirror_serial(serial, start_b, stop_b, mir_dot, mir_lbl):
             if serial in self._scrcpy_map:
@@ -4452,6 +4473,140 @@ class SynthexApp:
             if self._root:
                 self._root.after(800, lambda: _poll_mirror_serial(
                     serial, start_b, stop_b, mir_dot, mir_lbl))
+
+        # ── Vysor-like Control Panel ─────────────────────────────────────────
+        _ctrl_wins = {}
+
+        def _open_control_panel(serial: str):
+            if serial in _ctrl_wins:
+                try:
+                    if _ctrl_wins[serial].winfo_exists():
+                        _ctrl_wins[serial].lift()
+                        return
+                except Exception:
+                    pass
+
+            adb = self._adb
+            def _kev(code):
+                def _do():
+                    if adb:
+                        adb._run("-s", serial, "shell", "input", "keyevent", str(code))
+                _thr.Thread(target=_do, daemon=True).start()
+
+            def _tap_input(text: str):
+                def _do():
+                    if adb and text.strip():
+                        safe = text.replace("'", "\\'").replace(" ", "%s")
+                        adb._run("-s", serial, "shell", "input", "text", safe)
+                _thr.Thread(target=_do, daemon=True).start()
+
+            def _swipe(x1, y1, x2, y2):
+                def _do():
+                    if adb:
+                        adb._run("-s", serial, "shell", "input", "swipe",
+                                 str(x1), str(y1), str(x2), str(y2), "300")
+                _thr.Thread(target=_do, daemon=True).start()
+
+            win = tk.Toplevel(self._root)
+            win.title("Synthex Control — {}".format(serial))
+            win.configure(bg="#0D0D14")
+            win.resizable(False, False)
+            win.attributes("-topmost", True)
+            _ico = _resolve_icon()
+            if _ico:
+                try: win.iconbitmap(_ico)
+                except Exception: pass
+            _ctrl_wins[serial] = win
+
+            # ── Header ──
+            tk.Frame(win, bg=ACC, height=3).pack(fill="x")
+            hdr = tk.Frame(win, bg="#111120", padx=12, pady=8)
+            hdr.pack(fill="x")
+            tk.Label(hdr, text="⚡ Synthex Control", bg="#111120", fg=ACC,
+                     font=("Segoe UI", 10, "bold")).pack(side="left")
+            tk.Label(hdr, text=serial, bg="#111120", fg=MUT,
+                     font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+            tk.Button(hdr, text="✕", bg="#111120", fg=MUT, relief="flat",
+                      bd=0, font=("Segoe UI", 9), cursor="hand2",
+                      command=win.destroy).pack(side="right")
+
+            def _mbtn(parent, text, cmd, bg="#1A1A2E", fg=FG, w=5):
+                return tk.Button(parent, text=text, command=cmd,
+                                 bg=bg, fg=fg, relief="flat", bd=0,
+                                 font=("Segoe UI", 12), width=w,
+                                 cursor="hand2", activebackground=ACC,
+                                 activeforeground="white", pady=10)
+
+            # ── Navigation row ──
+            nav = tk.Frame(win, bg="#0D0D14", pady=6)
+            nav.pack(fill="x", padx=10)
+            tk.Label(nav, text="NAVIGASI", bg="#0D0D14", fg="#444466",
+                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+            nr = tk.Frame(nav, bg="#0D0D14")
+            nr.pack()
+            for txt, code in [("◀  Back", 4), ("⏺  Home", 3), ("⬛  Recent", 187),
+                               ("🔔  Notif", 83)]:
+                _mbtn(nr, txt, lambda c=code: _kev(c), w=9).pack(
+                    side="left", padx=2)
+
+            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+
+            # ── Volume + Brightness row ──
+            vb = tk.Frame(win, bg="#0D0D14", padx=10)
+            vb.pack(fill="x")
+            tk.Label(vb, text="VOLUME  &  BRIGHTNESS", bg="#0D0D14", fg="#444466",
+                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+            vr = tk.Frame(vb, bg="#0D0D14")
+            vr.pack()
+            for txt, code in [("🔉 Vol−", 25), ("🔊 Vol+", 24),
+                               ("🔅 Dim", 220), ("🔆 Bright", 221)]:
+                _mbtn(vr, txt, lambda c=code: _kev(c), w=9).pack(
+                    side="left", padx=2)
+
+            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+
+            # ── System row ──
+            sys_f = tk.Frame(win, bg="#0D0D14", padx=10)
+            sys_f.pack(fill="x")
+            tk.Label(sys_f, text="SISTEM", bg="#0D0D14", fg="#444466",
+                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+            sr = tk.Frame(sys_f, bg="#0D0D14")
+            sr.pack()
+            for txt, cmd in [
+                ("🔒 Lock",     lambda: _kev(26)),
+                ("📸 SS",       lambda: _kev(120)),
+                ("⬆ Swipe Up",  lambda: _swipe(540, 1600, 540, 400)),
+                ("⬇ Notif Bar", lambda: _swipe(540, 0, 540, 800)),
+            ]:
+                _mbtn(sr, txt, cmd, w=9).pack(side="left", padx=2)
+
+            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+
+            # ── Text input ──
+            ti = tk.Frame(win, bg="#0D0D14", padx=10, pady=6)
+            ti.pack(fill="x")
+            tk.Label(ti, text="KIRIM TEKS KE HP", bg="#0D0D14", fg="#444466",
+                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+            ti_row = tk.Frame(ti, bg="#0D0D14")
+            ti_row.pack(fill="x")
+            ti_var = tk.StringVar()
+            ti_entry = tk.Entry(ti_row, textvariable=ti_var, bg="#16162A", fg=FG,
+                                insertbackground=FG, relief="flat",
+                                font=("Segoe UI", 10), bd=6)
+            ti_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            tk.Button(ti_row, text="Kirim", bg=ACC, fg="white",
+                      relief="flat", bd=0, font=("Segoe UI", 9, "bold"),
+                      padx=10, cursor="hand2",
+                      command=lambda: (_tap_input(ti_var.get()), ti_var.set("")),
+                      ).pack(side="left")
+            tk.Button(ti_row, text="⌫ Del", bg="#2A1A1A", fg=RED,
+                      relief="flat", bd=0, font=("Segoe UI", 9),
+                      padx=8, cursor="hand2",
+                      command=lambda: _kev(67),
+                      ).pack(side="left", padx=(4, 0))
+            ti_entry.bind("<Return>", lambda e: (_tap_input(ti_var.get()), ti_var.set("")))
+
+            tk.Frame(win, bg="#0D0D14", height=8).pack()
 
         # ── Wireless Connect ─────────────────────────────────────────────────
         tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(4, 10))
@@ -4691,6 +4846,121 @@ class SynthexApp:
             dlg.grab_set()
 
         # ══════════════════════════════════════════════════════════════
+        # SECTION — Beda Jaringan? Solusi Koneksi
+        # ══════════════════════════════════════════════════════════════
+        net = _sec("Beda Jaringan? Solusi Koneksi", accent="#1A2A0A",
+                   subtitle="LAN ≠ WiFi — pakai cara ini")
+
+        # ── Mode 1: USB Direct ───────────────────────────────────────────────
+        usb_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        usb_card.pack(fill="x", pady=(0, 8))
+        tk.Frame(usb_card, bg="#0EA5E9", width=3).pack(side="left", fill="y")
+        usb_inner = tk.Frame(usb_card, bg="#111820", padx=12)
+        usb_inner.pack(side="left", fill="both", expand=True)
+        tk.Label(usb_inner, text="🔌  Mode 1 — USB Direct (Paling Simpel)",
+                 bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(usb_inner,
+                 text="Hubungkan HP ke PC via kabel USB. ADB & scrcpy otomatis\n"
+                      "berjalan lewat USB — tidak perlu WiFi sama sekali.",
+                 bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+        usb_steps = [
+            "1. Aktifkan Developer Options di HP (ketuk Build Number 7x)",
+            "2. Aktifkan USB Debugging",
+            "3. Colok kabel USB ke PC",
+            "4. Izinkan USB Debugging saat muncul popup di HP",
+            "5. Klik Refresh di atas — HP muncul sebagai [usb]",
+        ]
+        for s in usb_steps:
+            tk.Label(usb_inner, text=s, bg="#111820", fg="#8888AA",
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+        # ── Mode 2: USB Tethering ────────────────────────────────────────────
+        teth_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        teth_card.pack(fill="x", pady=(0, 8))
+        tk.Frame(teth_card, bg="#7C3AED", width=3).pack(side="left", fill="y")
+        teth_inner = tk.Frame(teth_card, bg="#111820", padx=12)
+        teth_inner.pack(side="left", fill="both", expand=True)
+        tk.Label(teth_inner, text="📡  Mode 2 — USB Tethering (Wireless ADB via USB)",
+                 bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(teth_inner,
+                 text="HP berbagi jaringan ke PC via USB → PC dan HP jadi satu subnet.\n"
+                      "Setelah itu bisa pakai ADB wireless di IP yang didapat.",
+                 bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+        teth_steps = [
+            "1. Colok kabel USB ke PC",
+            "2. Di HP: Settings → Hotspot & Tethering → USB Tethering → ON",
+            "3. PC dapat IP dari HP (misal 192.168.x.x di adapter baru)",
+            "4. ADB otomatis jalan lewat USB — atau klik 'Deteksi IP HP'",
+        ]
+        for s in teth_steps:
+            tk.Label(teth_inner, text=s, bg="#111820", fg="#8888AA",
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+        def _detect_usb_ip():
+            def _bg():
+                if not self._adb:
+                    return
+                ip = self._adb.get_device_ip()
+                devs = self._adb.list_devices()
+                usb_devs = [d["serial"] for d in devs
+                            if d["state"] == "device" and ":" not in d["serial"]]
+                if ip and usb_devs:
+                    if self._root:
+                        self._root.after(0, lambda: (
+                            ip_var.set(ip),
+                            msg_var.set("IP HP terdeteksi: {} (dari USB device {})".format(
+                                ip, usb_devs[0]))))
+                elif usb_devs:
+                    if self._root:
+                        self._root.after(0, lambda: msg_var.set(
+                            "Device USB ada ({}) tapi IP tidak terdeteksi. "
+                            "Pastikan USB Tethering atau WiFi aktif di HP.".format(usb_devs[0])))
+                else:
+                    if self._root:
+                        self._root.after(0, lambda: msg_var.set(
+                            "Tidak ada device USB. Colok kabel dulu."))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        teth_btn_row = tk.Frame(teth_inner, bg="#111820")
+        teth_btn_row.pack(anchor="w", pady=(6, 0))
+        tk.Button(teth_btn_row, text="🔍 Deteksi IP HP via USB",
+                  bg="#7C3AED", fg="white", relief="flat", bd=0,
+                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  cursor="hand2", command=_detect_usb_ip).pack(side="left", padx=(0, 8))
+
+        # ── Mode 3: Windows Hotspot ──────────────────────────────────────────
+        hs_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        hs_card.pack(fill="x", pady=(0, 4))
+        tk.Frame(hs_card, bg=GRN, width=3).pack(side="left", fill="y")
+        hs_inner = tk.Frame(hs_card, bg="#111820", padx=12)
+        hs_inner.pack(side="left", fill="both", expand=True)
+        tk.Label(hs_inner, text="📶  Mode 3 — Windows Mobile Hotspot (LAN → WiFi)",
+                 bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(hs_inner,
+                 text="PC bagikan koneksi LAN sebagai WiFi hotspot → HP connect ke hotspot PC\n"
+                      "→ HP & PC satu subnet → ADB wireless normal.",
+                 bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+
+        def _open_hotspot_settings():
+            import subprocess as _sp
+            try:
+                _sp.Popen(["ms-settings:network-mobilehotspot"], shell=True)
+            except Exception:
+                try:
+                    _sp.Popen(["control", "/name", "Microsoft.NetworkAndSharingCenter"],
+                              creationflags=subprocess.CREATE_NO_WINDOW)
+                except Exception:
+                    pass
+
+        tk.Button(hs_inner, text="⚙ Buka Settings Hotspot Windows",
+                  bg=GRN, fg="#000", relief="flat", bd=0,
+                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  cursor="hand2", command=_open_hotspot_settings).pack(anchor="w")
+        tk.Label(hs_inner,
+                 text="Setelah HP connect ke hotspot PC, HP dapat IP 192.168.137.x — masukkan ke kolom IP di bawah.",
+                 bg="#111820", fg="#555577", font=("Segoe UI", 7)).pack(anchor="w", pady=(4, 0))
+
+        # ══════════════════════════════════════════════════════════════
         # SECTION 2 — Pengaturan Mirror (shared untuk semua HP)
         # ══════════════════════════════════════════════════════════════
         mir = _sec("Pengaturan Mirror", accent="#0A2A18")
@@ -4895,6 +5165,133 @@ class SynthexApp:
                   command=_take_screenshot).pack(side="right")
 
         # ══════════════════════════════════════════════════════════════
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Tailscale (beda jaringan, tanpa kabel)
+        # ══════════════════════════════════════════════════════════════
+        ts_sec = _sec("Tailscale — Wireless Tanpa Kabel & Beda Jaringan",
+                      accent="#5B21B6", subtitle="VPN mesh langsung peer-to-peer")
+
+        ts_status_var = tk.StringVar(value="Belum dicek…")
+        ts_status_lbl = tk.Label(ts_sec, textvariable=ts_status_var,
+                                 bg=CARD, fg=MUT, font=("Segoe UI", 8))
+        ts_status_lbl.pack(anchor="w", pady=(0, 8))
+
+        ts_peers_frame = tk.Frame(ts_sec, bg=CARD)
+        ts_peers_frame.pack(fill="x")
+
+        def _tailscale_cmd(*args, timeout=5):
+            import subprocess as _sp, shutil
+            ts = shutil.which("tailscale") or r"C:\Program Files\Tailscale\tailscale.exe"
+            if not ts:
+                return None, "Tailscale tidak ditemukan"
+            try:
+                r = _sp.run([ts] + list(args), capture_output=True, text=True,
+                            timeout=timeout,
+                            creationflags=subprocess.CREATE_NO_WINDOW if os.name=="nt" else 0)
+                return r.stdout.strip(), r.stderr.strip()
+            except FileNotFoundError:
+                return None, "Tailscale tidak terinstall"
+            except Exception as e:
+                return None, str(e)
+
+        def _refresh_tailscale():
+            def _bg():
+                import json as _j
+                out, err = _tailscale_cmd("status", "--json")
+                if out is None:
+                    def _ui():
+                        ts_status_var.set("❌ " + err)
+                        ts_status_lbl.configure(fg=RED)
+                        for w in ts_peers_frame.winfo_children(): w.destroy()
+                        tk.Label(ts_peers_frame,
+                                 text="Download Tailscale di tailscale.com, install di PC & HP.",
+                                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+                    if self._root: self._root.after(0, _ui)
+                    return
+                try:
+                    data = _j.loads(out)
+                except Exception:
+                    if self._root:
+                        self._root.after(0, lambda: ts_status_var.set("❌ Gagal parse status Tailscale"))
+                    return
+
+                self_node = data.get("Self", {})
+                peers = data.get("Peer", {})
+                my_ip = (self_node.get("TailscaleIPs") or ["?"])[0]
+
+                peer_list = []
+                for node_id, peer in peers.items():
+                    if not peer.get("Active", False) and not peer.get("Online", False):
+                        continue
+                    ips = peer.get("TailscaleIPs", [])
+                    if not ips:
+                        continue
+                    peer_list.append({
+                        "name": peer.get("HostName", peer.get("DNSName", node_id)),
+                        "ip":   ips[0],
+                        "os":   peer.get("OS", ""),
+                        "online": peer.get("Online", False),
+                    })
+
+                def _ui():
+                    ts_status_var.set("✅ Tailscale aktif  •  IP PC kamu: {}".format(my_ip))
+                    ts_status_lbl.configure(fg=GRN)
+                    for w in ts_peers_frame.winfo_children():
+                        w.destroy()
+                    if not peer_list:
+                        tk.Label(ts_peers_frame,
+                                 text="Tidak ada peer online. Pastikan Tailscale aktif di HP juga.",
+                                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+                        return
+                    for p in peer_list:
+                        row = tk.Frame(ts_peers_frame, bg="#16162A", pady=6, padx=10)
+                        row.pack(fill="x", pady=(0, 4))
+                        clr = GRN if p["online"] else MUT
+                        dot_t = "🟢" if p["online"] else "⚪"
+                        tk.Label(row, text=dot_t, bg="#16162A",
+                                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+                        info = tk.Frame(row, bg="#16162A")
+                        info.pack(side="left", fill="both", expand=True)
+                        tk.Label(info, text=p["name"], bg="#16162A", fg=FG,
+                                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                        tk.Label(info, text="{} • {}".format(p["ip"], p["os"]),
+                                 bg="#16162A", fg=MUT,
+                                 font=("Segoe UI", 8)).pack(anchor="w")
+                        def _connect_ts(ip=p["ip"], name=p["name"]):
+                            def _do():
+                                if not self._adb:
+                                    return
+                                # Enable tcpip mode on any USB-connected device first
+                                usb_devs = [d["serial"] for d in self._adb.list_devices()
+                                            if d["state"]=="device" and ":"not in d["serial"]]
+                                if usb_devs:
+                                    self._adb.tcpip(5555)
+                                    import time as _t; _t.sleep(1)
+                                ok, msg = self._adb.connect(ip, 5555)
+                                def _ui2():
+                                    msg_var.set("Tailscale → {}: {}".format(name, msg))
+                                    _thr.Thread(target=_refresh_devs, daemon=True).start()
+                                if self._root: self._root.after(0, _ui2)
+                            _thr.Thread(target=_do, daemon=True).start()
+                        tk.Button(row, text="⚡ Connect ADB",
+                                  bg="#5B21B6", fg="white", relief="flat", bd=0,
+                                  font=("Segoe UI", 8, "bold"), padx=10, pady=4,
+                                  cursor="hand2", command=_connect_ts).pack(side="right")
+                if self._root: self._root.after(0, _ui)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        ts_btn_row = tk.Frame(ts_sec, bg=CARD)
+        ts_btn_row.pack(anchor="w", pady=(8, 4))
+        tk.Button(ts_btn_row, text="🔍 Cek & Tampilkan Peers Tailscale",
+                  bg="#5B21B6", fg="white", relief="flat", bd=0,
+                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  cursor="hand2", command=_refresh_tailscale).pack(side="left", padx=(0, 8))
+        tk.Label(ts_sec,
+                 text="💡 Install Tailscale di PC (tailscale.com) + di HP (Play Store) → login akun sama → klik Cek.",
+                 bg=CARD, fg="#555577", font=("Segoe UI", 7)).pack(anchor="w")
+
+        _refresh_tailscale()
+
         # SECTION 3 — Tools
         # ══════════════════════════════════════════════════════════════
         tools_sec = _sec("Tools", accent="#1A1A0A")
@@ -5697,8 +6094,21 @@ class SynthexApp:
             dlg.attributes("-topmost", True)
 
             tk.Frame(dlg, bg=BLUE_ACC, height=4).pack(fill="x")
-            ed = tk.Frame(dlg, bg="#0D0D14", padx=20, pady=14)
-            ed.pack(fill="both", expand=True)
+            _wrap = tk.Frame(dlg, bg="#0D0D14")
+            _wrap.pack(fill="both", expand=True)
+            _esb = ttk.Scrollbar(_wrap, orient="vertical")
+            _esb.pack(side="right", fill="y")
+            _ecv = tk.Canvas(_wrap, bg="#0D0D14", highlightthickness=0,
+                             yscrollcommand=_esb.set)
+            _ecv.pack(side="left", fill="both", expand=True)
+            _esb.config(command=_ecv.yview)
+            ed = tk.Frame(_ecv, bg="#0D0D14", padx=20, pady=14)
+            _ewin = _ecv.create_window((0, 0), window=ed, anchor="nw")
+            ed.bind("<Configure>", lambda e: _ecv.configure(
+                scrollregion=_ecv.bbox("all")))
+            _ecv.bind("<Configure>", lambda e: _ecv.itemconfig(_ewin, width=e.width))
+            _ecv.bind("<MouseWheel>", lambda e: _ecv.yview_scroll(
+                int(-1 * (e.delta / 120)), "units"))
 
             tk.Label(ed, text="Judul", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
@@ -6060,8 +6470,22 @@ class SynthexApp:
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "Settings")
 
+        # Scrollable container for all settings cards
+        _ssb = ttk.Scrollbar(f, orient="vertical")
+        _ssb.pack(side="right", fill="y")
+        _scv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_ssb.set)
+        _scv.pack(side="left", fill="both", expand=True)
+        _ssb.config(command=_scv.yview)
+        _sbody = tk.Frame(_scv, bg=BG)
+        _swin = _scv.create_window((0, 0), window=_sbody, anchor="nw")
+        _sbody.bind("<Configure>", lambda e: _scv.configure(
+            scrollregion=_scv.bbox("all")))
+        _scv.bind("<Configure>", lambda e: _scv.itemconfig(_swin, width=e.width))
+        _scv.bind("<MouseWheel>", lambda e: _scv.yview_scroll(
+            int(-1 * (e.delta / 120)), "units"))
+
         # ---- Tema Aplikasi card ---------------------------------------
-        tc = _card(f, "Tema Aplikasi")
+        tc = _card(_sbody, "Tema Aplikasi")
         tc.pack(fill="x", padx=20, pady=(8, 0))
 
         _cur_theme = self.config.get("ui.theme", "dark")
@@ -6111,7 +6535,7 @@ class SynthexApp:
         from utils.backup import AutoBackup
         _ab = AutoBackup()
 
-        bc = _card(f, "Backup & Restore")
+        bc = _card(_sbody, "Backup & Restore")
         bc.pack(fill="x", padx=20, pady=(8, 0))
 
         info_row = tk.Frame(bc, bg=CARD)
@@ -6134,7 +6558,7 @@ class SynthexApp:
                    command=self._restore_backup_dialog).pack(side="left")
 
         # ---- Rekening API card ----------------------------------------
-        rak = _card(f, "Rekening API")
+        rak = _card(_sbody, "Rekening API")
         rak.pack(fill="x", padx=20, pady=(12, 0))
 
         _rak_row = tk.Frame(rak, bg=CARD)
@@ -6152,11 +6576,11 @@ class SynthexApp:
                  font=("Segoe UI", 9)).pack(anchor="w")
 
         # ---- Google Accounts card ------------------------------------
-        self._build_google_accounts_card(f)
+        self._build_google_accounts_card(_sbody)
 
         # ---- AI card --------------------------------------------------
         from modules.ai_client import PROVIDER_LABELS, PROVIDER_NAMES
-        aic = _card(f, "🤖 AI Integration")
+        aic = _card(_sbody, "🤖 AI Integration")
         aic.pack(fill="x", padx=20, pady=(8, 0))
 
         _ai_provider_var = tk.StringVar(
@@ -6284,7 +6708,7 @@ class SynthexApp:
                   command=_test_ai).pack(side="left")
 
         # ---- Update card ----------------------------------------------
-        upc = _card(f, "Pembaruan Aplikasi")
+        upc = _card(_sbody, "Pembaruan Aplikasi")
         upc.pack(fill="x", padx=20, pady=(8, 0))
         _cur_ver = self.config.get("app.version", "?")
         _upd_status = tk.StringVar(value="Versi saat ini: v{}".format(_cur_ver))
@@ -6364,7 +6788,7 @@ class SynthexApp:
                          daemon=True).start()
 
         # ---- Appearance card -----------------------------------------
-        apc = _card(f, "Tampilan")
+        apc = _card(_sbody, "Tampilan")
         apc.pack(fill="x", padx=20, pady=(12, 0))
         _cur_theme = self.config.get("ui.theme", "dark")
         _theme_lbl = tk.Label(apc,
@@ -6386,7 +6810,7 @@ class SynthexApp:
                   command=_toggle_theme).pack(anchor="w")
 
         # ---- Account card ---------------------------------------------
-        ac = _card(f, "Account")
+        ac = _card(_sbody, "Account")
         ac.pack(fill="x", padx=20, pady=(12, 0))
         _lbl(ac, "Email: {}".format(self._email or "-"), bg=CARD).pack(
             anchor="w")
@@ -6398,8 +6822,8 @@ class SynthexApp:
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=self._launch_onboarding).pack(side="left")
-        lc = _card(f, "System Log")
-        lc.pack(fill="both", expand=True, padx=20, pady=(12, 20))
+        lc = _card(_sbody, "System Log")
+        lc.pack(fill="x", padx=20, pady=(12, 20))
         self._lw = scrolledtext.ScrolledText(
             lc, bg=BG, fg=FG, insertbackground=FG,
             font=("Consolas", 9), relief="flat", state="disabled")
@@ -6588,14 +7012,18 @@ class SynthexApp:
 
         f = tk.Frame(self._content, bg=BG)
 
-        if self._email != self.MASTER_EMAIL:
+        _email_now = self._email
+        if _email_now != self.MASTER_EMAIL:
             tk.Label(f, text="Akses ditolak.", bg=BG, fg=RED,
                      font=("Segoe UI", 14, "bold")).pack(pady=40)
             return f
 
         def _tok():
             from auth.firebase_auth import get_valid_token
-            return get_valid_token()
+            tok = get_valid_token()
+            if not tok:
+                self.logger.warning("master panel: token kosong, Firebase calls akan gagal")
+            return tok
 
         # ── Header crown bar ─────────────────────────────────────────────────
         hdr = tk.Frame(f, bg="#0D0D1F", padx=20, pady=14)
@@ -6659,9 +7087,10 @@ class SynthexApp:
                 side="left", fill="x", expand=True, padx=(8, 0), pady=5)
 
         def _btn(parent, text, bg, fg="white", cmd=None, **kw):
-            return tk.Button(parent, text=text, bg=bg, fg=fg,
-                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
-                             padx=14, pady=6, cursor="hand2", command=cmd, **kw)
+            defaults = dict(font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                            padx=14, pady=6, cursor="hand2")
+            defaults.update(kw)
+            return tk.Button(parent, text=text, bg=bg, fg=fg, command=cmd, **defaults)
 
         # ══════════════════════════════════════════════════════════════════════
         # STATS BAR
@@ -6704,6 +7133,68 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _u)
         _thr.Thread(target=_load_stats_bar, daemon=True).start()
+
+        # ══════════════════════════════════════════════════════════════════════
+        # WHO'S ONLINE
+        # ══════════════════════════════════════════════════════════════════════
+        _sect(body, "Who's Online")
+        _wo_card = _mk(body, "User Aktif Sekarang", "\U0001f7e2", "#22D3EE")
+
+        _wo_status = tk.StringVar(value="Memuat…")
+        tk.Label(_wo_card, textvariable=_wo_status, bg=CARD, fg=MUT,
+                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+
+        _wo_list_frame = tk.Frame(_wo_card, bg=CARD)
+        _wo_list_frame.pack(fill="x")
+
+        def _render_online(users):
+            for w in _wo_list_frame.winfo_children():
+                w.destroy()
+            if not users:
+                tk.Label(_wo_list_frame, text="Tidak ada user online saat ini.",
+                         bg=CARD, fg=MUT, font=("Segoe UI", 9)).pack(anchor="w")
+                return
+            for u in users:
+                row = tk.Frame(_wo_list_frame, bg=CARD2, pady=5, padx=10)
+                row.pack(fill="x", pady=(0, 3))
+                tk.Label(row, text="\U0001f7e2", bg=CARD2, fg="#22D3EE",
+                         font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+                tk.Label(row, text=u["email"], bg=CARD2, fg=FG,
+                         font=("Segoe UI", 9, "bold")).pack(side="left")
+                secs = int(time.time() - u.get("last_seen", time.time()))
+                if secs < 60:
+                    ago = "baru saja"
+                elif secs < 3600:
+                    ago = "{}m lalu".format(secs // 60)
+                else:
+                    ago = "{}j lalu".format(secs // 3600)
+                tk.Label(row, text=ago, bg=CARD2, fg=MUT,
+                         font=("Segoe UI", 8)).pack(side="right")
+
+        _wo_refresh_id = [None]
+
+        def _refresh_online():
+            def _bg():
+                from modules.chat import fetch_online_users
+                users = fetch_online_users(_tok() or "", stale_sec=120)
+                def _ui():
+                    _wo_status.set("Online: {}  •  Refresh otomatis tiap 30 detik".format(len(users)))
+                    _render_online(users)
+                    _wo_refresh_id[0] = body.after(30000, _refresh_online)
+                if self._root:
+                    self._root.after(0, _ui)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        _refresh_online()
+
+        def _stop_wo_refresh():
+            if _wo_refresh_id[0]:
+                try: body.after_cancel(_wo_refresh_id[0])
+                except Exception: pass
+        _wo_card.bind("<Destroy>", lambda e: _stop_wo_refresh())
+
+        _btn(_wo_card, "\U0001f504 Refresh Sekarang", "#22D3EE", "#000",
+             cmd=lambda: (_stop_wo_refresh(), _refresh_online())).pack(anchor="w", pady=(8, 0))
 
         # ══════════════════════════════════════════════════════════════════════
         # APP CONTROL
@@ -11279,9 +11770,16 @@ class SynthexApp:
 
     def _start_tray(self):
         def _run():
-            img = Image.new("RGB", (64, 64), ACC)
-            ImageDraw.Draw(img).ellipse([8, 8, 56, 56], fill=BG)
-            self._tray = pystray.Icon("synthex", img, "Synthex",
+            ico_path = _resolve_icon()
+            if ico_path:
+                try:
+                    img = Image.open(ico_path).convert("RGBA").resize((64, 64))
+                except Exception:
+                    ico_path = None
+            if not ico_path:
+                img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+                ImageDraw.Draw(img).ellipse([4, 4, 60, 60], fill=ACC)
+            self._tray = pystray.Icon("synthex", img, "Synthex ⚡",
                 pystray.Menu(
                     pystray.MenuItem(
                         "Show",
