@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.20",
+  "latest_version": "1.3.21",
   "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.20/Synthex.exe",
-  "changelog": "v1.3.20: Fix master panel tidak tampil & freeze di semua halaman setelah buka master panel. Fix SSL verify=False diganti certifi (keamanan). Token login kini disimpan terenkripsi (DPAPI). Fix crash activity log saat slicing deque. Fix rekening API key ke Authorization Bearer header. Hapus pyautogui.FAILSAFE=False dari macro recorder.",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.21/Synthex.exe",
+  "changelog": "v1.3.21: Fix icon title bar hilang saat splash ke dashboard. Fix icon taskbar Windows (AppUserModelID + ico asli di tray). Fix Saved Sites blank (data user disimpan ke APPDATA bukan temp dir). Fix Blog Write Post tidak bisa scroll. Fix Master Panel: token check lebih robust.",
   "maintenance": false,
   "maintenance_msg": ""
 }
