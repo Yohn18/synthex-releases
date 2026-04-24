@@ -275,6 +275,8 @@ class ScrcpyManager:
     def start(self, serial: str = "",
               max_size: int = 1024,
               bitrate: str = "8M",
+              fps: int = 60,
+              orientation: str = "Auto",
               stay_awake: bool = True,
               show_touches: bool = False,
               always_on_top: bool = True,
@@ -292,7 +294,12 @@ class ScrcpyManager:
         cmd = [self.path,
                "--max-size", str(max_size),
                "--video-bit-rate", bitrate,
+               "--max-fps", str(fps),
                "--window-title", "Synthex Mirror"]
+        if orientation == "Portrait":
+            cmd += ["--lock-video-orientation", "0"]
+        elif orientation == "Landscape":
+            cmd += ["--lock-video-orientation", "1"]
         if serial:
             cmd += ["--serial", serial]
         if stay_awake:

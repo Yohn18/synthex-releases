@@ -4429,10 +4429,16 @@ class SynthexApp:
                 max_size = int(res_var.get())
             except (ValueError, TypeError):
                 max_size = 1024
+            try:
+                fps = int(fps_var.get())
+            except (ValueError, TypeError):
+                fps = 60
             ok, msg = scr.start(
                 serial=serial,
                 max_size=max_size,
                 bitrate=br_var.get(),
+                fps=fps,
+                orientation=ori_var.get(),
                 stay_awake=stay_var.get(),
                 show_touches=touch_var.get(),
                 always_on_top=top_var.get(),
@@ -4500,9 +4506,31 @@ class SynthexApp:
                         adb._run("-s", serial, "shell", "input", "text", safe)
                 _thr.Thread(target=_do, daemon=True).start()
 
-            def _swipe(x1, y1, x2, y2):
+            _screen_size = [None]  # cache (w, h)
+
+            def _get_screen_size():
+                if _screen_size[0]:
+                    return _screen_size[0]
+                try:
+                    _, out, _ = adb._run("-s", serial, "shell",
+                                         "wm", "size")
+                    import re as _re
+                    m = _re.search(r"(\d+)x(\d+)", out or "")
+                    if m:
+                        _screen_size[0] = (int(m.group(1)), int(m.group(2)))
+                        return _screen_size[0]
+                except Exception:
+                    pass
+                return (1080, 1920)
+
+            def _swipe(fx1, fy1, fx2, fy2):
                 def _do():
                     if adb:
+                        w, h = _get_screen_size()
+                        x1 = int(w * fx1)
+                        y1 = int(h * fy1)
+                        x2 = int(w * fx2)
+                        y2 = int(h * fy2)
                         adb._run("-s", serial, "shell", "input", "swipe",
                                  str(x1), str(y1), str(x2), str(y2), "300")
                 _thr.Thread(target=_do, daemon=True).start()
@@ -4517,6 +4545,8 @@ class SynthexApp:
                 try: win.iconbitmap(_ico)
                 except Exception: pass
             _ctrl_wins[serial] = win
+            win.protocol("WM_DELETE_WINDOW", lambda: (
+                _ctrl_wins.pop(serial, None), win.destroy()))
 
             # ── Header ──
             tk.Frame(win, bg=ACC, height=3).pack(fill="x")
@@ -4575,8 +4605,8 @@ class SynthexApp:
             for txt, cmd in [
                 ("🔒 Lock",     lambda: _kev(26)),
                 ("📸 SS",       lambda: _kev(120)),
-                ("⬆ Swipe Up",  lambda: _swipe(540, 1600, 540, 400)),
-                ("⬇ Notif Bar", lambda: _swipe(540, 0, 540, 800)),
+                ("⬆ Swipe Up",  lambda: _swipe(0.5, 0.85, 0.5, 0.2)),
+                ("⬇ Notif Bar", lambda: _swipe(0.5, 0.01, 0.5, 0.5)),
             ]:
                 _mbtn(sr, txt, cmd, w=9).pack(side="left", padx=2)
 
@@ -5127,7 +5157,10 @@ class SynthexApp:
             if not serials:
                 ss_sv.set("Tidak ada perangkat terhubung.")
                 return
-            serial = serials[0]
+            # Prefer device that is currently mirroring
+            mirroring = [s for s in serials
+                         if s in self._scrcpy_map and self._scrcpy_map[s].running]
+            serial = mirroring[0] if mirroring else serials[0]
             import datetime as _dt2, os as _os2
             ss_dir = os.path.join(os.path.expanduser("~"), "Pictures", "Synthex Screenshots")
             _os2.makedirs(ss_dir, exist_ok=True)
