@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.21",
-  "min_version": "1.0.0",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.21/Synthex.exe",
-  "changelog": "v1.3.21: Fix icon title bar hilang saat splash ke dashboard. Fix icon taskbar Windows (AppUserModelID + ico asli di tray). Fix Saved Sites blank (data user disimpan ke APPDATA bukan temp dir). Fix Blog Write Post tidak bisa scroll. Fix Master Panel: token check lebih robust.",
+  "latest_version": "1.3.22",
+  "min_version": "1.3.22",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.22/Synthex.exe",
+  "changelog": "v1.3.22: Fix master panel crash (TypeError: multiple values for 'font' di _btn). Fix settings tidak bisa scroll (tambah Canvas+Scrollbar). Fix semua card settings ke scrollable body.",
   "maintenance": false,
   "maintenance_msg": ""
 }
