@@ -4948,7 +4948,7 @@ class SynthexApp:
             except Exception:
                 try:
                     _sp.Popen(["control", "/name", "Microsoft.NetworkAndSharingCenter"],
-                              creationflags=subprocess.CREATE_NO_WINDOW)
+                              creationflags=_sp.CREATE_NO_WINDOW)
                 except Exception:
                     pass
 
@@ -5187,7 +5187,7 @@ class SynthexApp:
             try:
                 r = _sp.run([ts] + list(args), capture_output=True, text=True,
                             timeout=timeout,
-                            creationflags=subprocess.CREATE_NO_WINDOW if os.name=="nt" else 0)
+                            creationflags=_sp.CREATE_NO_WINDOW if os.name=="nt" else 0)
                 return r.stdout.strip(), r.stderr.strip()
             except FileNotFoundError:
                 return None, "Tailscale tidak terinstall"
@@ -5403,13 +5403,29 @@ class SynthexApp:
         _thr.Thread(target=_init_adb_then_reconnect, daemon=True).start()
 
         # ── Auto-refresh device list every 10s ──────────────────────────────
+        # Cancel any previous poll timer from a prior page instance
+        if hasattr(self, "_adb_poll_id") and self._adb_poll_id:
+            try: self._root.after_cancel(self._adb_poll_id)
+            except Exception: pass
+            self._adb_poll_id = None
+
+        _poll_active = [True]
+
         def _poll_adb():
-            if not self._root:
+            if not self._root or not _poll_active[0]:
                 return
             if self._cur == "remote":
                 _thr.Thread(target=_refresh_devs, daemon=True).start()
             self._adb_poll_id = self._root.after(10000, _poll_adb)
 
+        def _on_page_destroy(event):
+            _poll_active[0] = False
+            if hasattr(self, "_adb_poll_id") and self._adb_poll_id:
+                try: self._root.after_cancel(self._adb_poll_id)
+                except Exception: pass
+                self._adb_poll_id = None
+
+        f.bind("<Destroy>", _on_page_destroy)
         self._adb_poll_id = self._root.after(10000, _poll_adb)
 
         return f

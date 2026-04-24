@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.25",
-  "min_version": "1.3.25",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.25/Synthex.exe",
-  "changelog": "v1.3.25: Tambah Tailscale integration di Remote page \u2014 wireless ADB cross-network (beda WiFi/LAN). Install Tailscale di PC + HP login akun sama, HP bisa di lemari tetap bisa di-remote.",
+  "latest_version": "1.3.26",
+  "min_version": "1.3.26",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.26/Synthex.exe",
+  "changelog": "v1.3.26: Fix 3 bug kritis Remote page \u2014 NameError subprocess crash (Hotspot & Tailscale), multiple poll timer menumpuk, dead widget access saat navigasi.",
   "maintenance": false,
   "maintenance_msg": ""
 }
