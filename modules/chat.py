@@ -17,22 +17,17 @@ def _email_key(email: str) -> str:
 
 def _req(method: str, path: str, token: str, **kw):
     url = "{}/{}.json?auth={}".format(_RTDB, path, token)
-    last_exc = None
-    for verify in (certifi.where(), False):
-        try:
-            r = getattr(requests, method)(url, timeout=8, verify=verify, **kw)
-            if r.ok:
-                if not verify:
-                    _logger.warning("SSL verification dinonaktifkan untuk %s %s", method, path)
-                return r.json()
-        except requests.Timeout:
-            last_exc = "timeout"
-        except requests.ConnectionError:
-            last_exc = "connection error"
-        except Exception as e:
-            last_exc = str(e)
-    if last_exc:
-        _logger.debug("_req %s %s gagal: %s", method, path, last_exc)
+    try:
+        r = getattr(requests, method)(url, timeout=8, verify=certifi.where(), **kw)
+        if r.ok:
+            return r.json()
+        _logger.debug("_req %s %s HTTP %s", method, path, r.status_code)
+    except requests.Timeout:
+        _logger.debug("_req %s %s timeout", method, path)
+    except requests.ConnectionError as e:
+        _logger.debug("_req %s %s connection error: %s", method, path, e)
+    except Exception as e:
+        _logger.debug("_req %s %s gagal: %s", method, path, e)
     return None
 
 
@@ -52,20 +47,22 @@ def fetch_messages(token: str, limit: int = 80):
     """
     url = ("{}/chat/messages.json?auth={}"
            "&orderBy=\"$key\"&limitToLast={}").format(_RTDB, token, limit)
-    for verify in (certifi.where(), False):
-        try:
-            r = requests.get(url, timeout=8, verify=verify)
-            if r.ok:
-                if not verify:
-                    _logger.warning("SSL verification dinonaktifkan untuk fetch_messages")
-                data = r.json()
-                if not data or not isinstance(data, dict):
-                    return []
-                return [dict(v, _key=k) for k, v in sorted(data.items())]
-            if r.status_code == 401:
-                return "AUTH_EXPIRED"
-        except Exception:
-            continue
+    try:
+        r = requests.get(url, timeout=8, verify=certifi.where())
+        if r.ok:
+            data = r.json()
+            if not data or not isinstance(data, dict):
+                return []
+            return [dict(v, _key=k) for k, v in sorted(data.items())]
+        if r.status_code == 401:
+            return "AUTH_EXPIRED"
+        _logger.debug("fetch_messages HTTP %s", r.status_code)
+    except requests.Timeout:
+        _logger.debug("fetch_messages timeout")
+    except requests.ConnectionError as e:
+        _logger.debug("fetch_messages connection error: %s", e)
+    except Exception as e:
+        _logger.debug("fetch_messages gagal: %s", e)
     return None
 
 

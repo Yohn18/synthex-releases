@@ -666,10 +666,20 @@ class SynthexApp:
         tk.Label(dlg, text="Jika bukan kamu, segera ganti password.",
                  bg="#0A0A0F", fg=MUT, font=("Segoe UI", 8)).pack(pady=(6, 0))
         tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=28, pady=(16, 0))
+        def _do_close():
+            for _attr in ("_dm_poll_id", "_chat_poll_id", "_broadcast_poll_id",
+                          "_adb_poll_id", "_spy_poll_id", "_rem_poll_id"):
+                _pid = getattr(self, _attr, None)
+                if _pid:
+                    try: self._root.after_cancel(_pid)
+                    except Exception: pass
+                    setattr(self, _attr, None)
+            try: self._root.destroy()
+            except Exception: pass
         tk.Button(dlg, text="  OK, Tutup  ", bg=YEL, fg="#0A0A0F",
                   relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
-                  command=lambda: self._root.destroy()).pack(pady=14)
+                  command=_do_close).pack(pady=14)
 
         dlg.grab_set()
         dlg.focus_force()
@@ -13371,12 +13381,13 @@ class SynthexApp:
                 self.config.save()
             except Exception:
                 pass
-            if self._dm_poll_id and self._root:
-                try: self._root.after_cancel(self._dm_poll_id)
-                except Exception: pass
-            if self._adb_poll_id and self._root:
-                try: self._root.after_cancel(self._adb_poll_id)
-                except Exception: pass
+            for _attr in ("_dm_poll_id", "_chat_poll_id", "_broadcast_poll_id",
+                          "_adb_poll_id", "_spy_poll_id", "_rem_poll_id"):
+                _pid = getattr(self, _attr, None)
+                if _pid and self._root:
+                    try: self._root.after_cancel(_pid)
+                    except Exception: pass
+                    setattr(self, _attr, None)
             if self._tray:
                 try: self._tray.stop()
                 except Exception: pass

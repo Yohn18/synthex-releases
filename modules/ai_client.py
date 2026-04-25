@@ -26,15 +26,25 @@ PROVIDER_LABELS = list(_PROVIDERS.values())
 
 
 def _post(url, headers, body, timeout=30):
-    for verify in (certifi.where(), False):
+    last = None
+    try:
+        r = requests.post(url, headers=headers,
+                          data=json.dumps(body), timeout=timeout,
+                          verify=certifi.where())
+        return r
+    except Exception as e:
+        last = e
+    raise RuntimeError("Koneksi ke AI gagal: {}".format(last))
+
+
+def _safe_get(data, *keys):
+    """Safely traverse nested dict/list, return None if any key missing."""
+    for key in keys:
         try:
-            r = requests.post(url, headers=headers,
-                              data=json.dumps(body), timeout=timeout,
-                              verify=verify)
-            return r
-        except Exception as e:
-            last = e
-    raise last
+            data = data[key]
+        except (KeyError, IndexError, TypeError):
+            return None
+    return data
 
 
 def call_ai(prompt: str, provider: str, api_key: str,
@@ -69,7 +79,10 @@ def call_ai(prompt: str, provider: str, api_key: str,
                   body=body)
         if not r.ok:
             raise RuntimeError("OpenAI error {}: {}".format(r.status_code, r.text[:200]))
-        return r.json()["choices"][0]["message"]["content"].strip()
+        text = _safe_get(r.json(), "choices", 0, "message", "content")
+        if text is None:
+            raise RuntimeError("OpenAI response tidak valid: {}".format(r.text[:200]))
+        return text.strip()
 
     elif provider == "anthropic":
         messages = []
@@ -86,7 +99,10 @@ def call_ai(prompt: str, provider: str, api_key: str,
                   body=body)
         if not r.ok:
             raise RuntimeError("Anthropic error {}: {}".format(r.status_code, r.text[:200]))
-        return r.json()["content"][0]["text"].strip()
+        text = _safe_get(r.json(), "content", 0, "text")
+        if text is None:
+            raise RuntimeError("Anthropic response tidak valid: {}".format(r.text[:200]))
+        return text.strip()
 
     elif provider == "groq":
         messages = []
@@ -102,7 +118,10 @@ def call_ai(prompt: str, provider: str, api_key: str,
                   body=body)
         if not r.ok:
             raise RuntimeError("Groq error {}: {}".format(r.status_code, r.text[:200]))
-        return r.json()["choices"][0]["message"]["content"].strip()
+        text = _safe_get(r.json(), "choices", 0, "message", "content")
+        if text is None:
+            raise RuntimeError("Groq response tidak valid: {}".format(r.text[:200]))
+        return text.strip()
 
     elif provider == "gemini":
         contents = []
@@ -120,7 +139,10 @@ def call_ai(prompt: str, provider: str, api_key: str,
                   body=body)
         if not r.ok:
             raise RuntimeError("Gemini error {}: {}".format(r.status_code, r.text[:200]))
-        return (r.json()["candidates"][0]["content"]["parts"][0]["text"]).strip()
+        text = _safe_get(r.json(), "candidates", 0, "content", "parts", 0, "text")
+        if text is None:
+            raise RuntimeError("Gemini response tidak valid: {}".format(r.text[:200]))
+        return text.strip()
 
     else:
         raise ValueError("Provider tidak dikenal: {}".format(provider))
