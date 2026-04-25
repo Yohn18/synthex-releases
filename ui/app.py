@@ -5293,6 +5293,13 @@ class SynthexApp:
                                  bg="#16162A", fg=MUT,
                                  font=("Segoe UI", 8)).pack(anchor="w")
                         def _connect_ts(ip=p["ip"], name=p["name"]):
+                            def _auto_mirror(serial, attempt=0):
+                                if serial in _card_widgets:
+                                    w = _card_widgets[serial]
+                                    _start_mirror_serial(serial, w["start_b"], w["stop_b"],
+                                                         w["mir_dot"], w["mir_lbl"])
+                                elif attempt < 15 and self._root:
+                                    self._root.after(200, lambda: _auto_mirror(serial, attempt + 1))
                             def _do():
                                 if not self._adb:
                                     return
@@ -5303,9 +5310,12 @@ class SynthexApp:
                                     self._adb.tcpip(5555)
                                     import time as _t; _t.sleep(1)
                                 ok, msg = self._adb.connect(ip, 5555)
+                                serial_ts = "{}:5555".format(ip)
                                 def _ui2():
                                     msg_var.set("Tailscale → {}: {}".format(name, msg))
                                     _thr.Thread(target=_refresh_devs, daemon=True).start()
+                                    if ok:
+                                        self._root.after(300, lambda: _auto_mirror(serial_ts))
                                 if self._root: self._root.after(0, _ui2)
                             _thr.Thread(target=_do, daemon=True).start()
                         tk.Button(row, text="⚡ Connect ADB",
