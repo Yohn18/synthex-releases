@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.30",
+  "latest_version": "1.3.31",
   "min_version": "1.3.29",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.30/Synthex.exe",
-  "changelog": "v1.3.30: Auto-start mirror setelah Connect ADB via Tailscale — tidak perlu klik Mirror manual.",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.31/Synthex.exe",
+  "changelog": "v1.3.31: Redesign UI — tema Premium Dark Tech, warna baru, font lebih besar, card padding lebih lapang, sidebar & nav diperbarui.",
   "maintenance": false,
   "maintenance_msg": ""
 }

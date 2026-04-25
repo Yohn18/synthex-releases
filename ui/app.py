@@ -19,9 +19,9 @@ def _get_data_file():
     return os.path.join(_ROOT, "data", "user_data.json")
 _DATA_FILE = _get_data_file()
 
-_DARK_PALETTE  = ("#111118","#1A1A24","#1A1A28","#0D0D12",
-                   "#6C4AFF","#8880FF","#E0DFFF","#555575",
-                   "#4CAF88","#F06070","#F0C060","#9D5CF6","#4A9EFF")
+_DARK_PALETTE  = ("#0a0a0f","#111118","#16162a","#0d0d16",
+                   "#7c3aed","#06b6d4","#e2e8f0","#64748b",
+                   "#10b981","#f87171","#f59e0b","#9d5cf6","#06b6d4")
 _LIGHT_PALETTE = ("#F4F4FA","#FFFFFF","#EEEEF6","#E8E8F2",
                   "#6C4AFF","#8880FF","#1A1A30","#8888AA",
                   "#2A8C5C","#D04050","#B07800","#7C3AED","#2A7EDD")
@@ -161,7 +161,7 @@ class UserData:
 
 # -- Widget helpers --
 
-def _lbl(parent, text, fg=FG, bg=BG, font=("Segoe UI", 10), **kw):
+def _lbl(parent, text, fg=FG, bg=BG, font=("Segoe UI", 11), **kw):
     return tk.Label(parent, text=text, fg=fg, bg=bg, font=font, **kw)
 
 def _deep_bg(widget, color):
@@ -174,10 +174,10 @@ def _deep_bg(widget, color):
         _deep_bg(child, color)
 
 def _card(parent, title=""):
-    f = tk.Frame(parent, bg=CARD, padx=14, pady=12)
+    f = tk.Frame(parent, bg=CARD, padx=20, pady=16)
     if title:
         _lbl(f, title, fg=ACC, bg=CARD,
-             font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+             font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
     return f
 
 def _fmt_duration(seconds: int) -> str:
@@ -204,32 +204,34 @@ def _tree(parent, cols):
 def _apply_styles(root):
     s = ttk.Style(root)
     s.theme_use("clam")
-    s.configure(".", background=BG, foreground=FG, font=("Segoe UI", 10))
+    s.configure(".", background=BG, foreground=FG, font=("Segoe UI", 11))
     s.configure("TFrame",  background=BG)
     s.configure("TLabel",  background=BG, foreground=FG)
     s.configure("TButton", background=CARD, foreground=FG,
-                relief="flat", padding=[10, 6])
+                relief="flat", padding=[12, 7], borderwidth=1,
+                bordercolor="#1c1c2e")
     s.map("TButton",
-          background=[("active", ACC)], foreground=[("active", BG)])
-    s.configure("Accent.TButton", background=ACC, foreground=BG,
-                font=("Segoe UI", 10, "bold"), padding=[14, 7])
-    s.map("Accent.TButton", background=[("active", "#8880FF")])
+          background=[("active", ACC)], foreground=[("active", "#ffffff")])
+    s.configure("Accent.TButton", background=ACC, foreground="#ffffff",
+                font=("Segoe UI", 11, "bold"), padding=[16, 8])
+    s.map("Accent.TButton", background=[("active", "#9d5cf6")])
     s.configure("Danger.TButton", background=CARD, foreground=RED,
-                padding=[10, 6])
+                padding=[12, 7])
     s.map("Danger.TButton",
-          background=[("active", RED)], foreground=[("active", BG)])
+          background=[("active", RED)], foreground=[("active", "#ffffff")])
     s.configure("TEntry", fieldbackground=CARD, foreground=FG,
-                insertcolor=FG, borderwidth=0)
+                insertcolor=FG, borderwidth=1, bordercolor="#1c1c2e",
+                padding=[8, 6])
     s.configure("Treeview", background=CARD, foreground=FG,
-                fieldbackground=CARD, borderwidth=0, rowheight=28)
+                fieldbackground=CARD, borderwidth=0, rowheight=30)
     s.map("Treeview",
-          background=[("selected", ACC)], foreground=[("selected", BG)])
+          background=[("selected", ACC)], foreground=[("selected", "#ffffff")])
     s.configure("Treeview.Heading", background=SIDE, foreground=MUT,
-                font=("Segoe UI", 9, "bold"), borderwidth=0)
-    s.configure("TScrollbar", background=CARD, troughcolor=BG,
-                borderwidth=0, arrowcolor=MUT)
+                font=("Segoe UI", 10, "bold"), borderwidth=0)
+    s.configure("TScrollbar", background="#1c1c2e", troughcolor=BG,
+                borderwidth=0, arrowcolor=MUT, width=4)
     s.configure("TCombobox", fieldbackground=CARD, foreground=FG,
-                arrowcolor=FG, background=CARD)
+                arrowcolor=FG, background=CARD, bordercolor="#1c1c2e")
     s.map("TCombobox",
           fieldbackground=[("readonly", CARD)], foreground=[("readonly", FG)])
     s.configure("TCheckbutton", background=BG, foreground=FG)
@@ -817,14 +819,14 @@ class SynthexApp:
 
         # Logo
         tk.Label(top, text="⚡", bg=SIDE, fg=ACC,
-                 font=("Segoe UI", 15)).pack(side="left", padx=(10, 3), pady=14)
+                 font=("Segoe UI", 16)).pack(side="left", padx=(12, 4), pady=14)
         tk.Label(top, text="SYNTHEX", bg=SIDE, fg=ACC,
-                 font=("Segoe UI", 14, "bold")).pack(side="left")
+                 font=("Segoe UI", 16, "bold")).pack(side="left")
         tk.Label(top, text="by Yohn18", bg=SIDE, fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(6, 0), pady=(18, 0))
+                 font=("Segoe UI", 9)).pack(side="left", padx=(8, 0), pady=(20, 0))
 
         # Page name indicator (updates on nav)
-        self._page_lbl = tk.Label(top, text="", bg=SIDE, fg="#3A3A60",
+        self._page_lbl = tk.Label(top, text="", bg=SIDE, fg="#64748b",
                                    font=("Segoe UI", 8))
         self._page_lbl.pack(side="left", padx=(18, 0), pady=(18, 0))
 
@@ -931,26 +933,26 @@ class SynthexApp:
         side.pack_propagate(False)
 
         # Sidebar right glow border (2px gradient look)
-        tk.Frame(body, bg="#18182C", width=1).pack(side="left", fill="y")
-        tk.Frame(body, bg="#0E0E1A", width=1).pack(side="left", fill="y")
+        tk.Frame(body, bg="#1c1c2e", width=1).pack(side="left", fill="y")
+        tk.Frame(body, bg="#111118", width=1).pack(side="left", fill="y")
 
         # Sidebar top: mini branding
-        _sb_top = tk.Frame(side, bg="#0A0A16", height=40)
+        _sb_top = tk.Frame(side, bg="#0a0a0f", height=40)
         _sb_top.pack(fill="x")
         _sb_top.pack_propagate(False)
         tk.Frame(_sb_top, bg=ACC, width=3).pack(side="left", fill="y")
-        tk.Label(_sb_top, text="⚡ Menu", bg="#0A0A16", fg="#3A3A60",
+        tk.Label(_sb_top, text="⚡ Menu", bg="#0a0a0f", fg="#64748b",
                  font=("Segoe UI", 8, "bold")).pack(side="left", padx=10)
-        tk.Frame(side, bg="#1A1A2E", height=1).pack(fill="x")
+        tk.Frame(side, bg="#1c1c2e", height=1).pack(fill="x")
 
         # Bottom status bar
         self._sv = tk.StringVar(value="")
         _sb_bottom = tk.Frame(side, bg=SIDE)
         _sb_bottom.pack(side="bottom", fill="x")
-        tk.Frame(_sb_bottom, bg="#1A1A2E", height=1).pack(fill="x")
+        tk.Frame(_sb_bottom, bg="#1c1c2e", height=1).pack(fill="x")
         tk.Label(_sb_bottom, textvariable=self._sv, bg=SIDE, fg=MUT,
-                 font=("Segoe UI", 7), wraplength=SIDE_W - 20,
-                 justify="left").pack(anchor="w", padx=12, pady=(4, 6))
+                 font=("Segoe UI", 8), wraplength=SIDE_W - 20,
+                 justify="left").pack(anchor="w", padx=14, pady=(6, 8))
 
         # Scrollable nav area
         _side_sb = ttk.Scrollbar(side, orient="vertical")
@@ -981,11 +983,11 @@ class SynthexApp:
             if key == "":
                 # Category separator
                 sep_f = tk.Frame(_side_inner, bg=SIDE)
-                sep_f.pack(fill="x", padx=10, pady=(10, 2))
-                tk.Frame(sep_f, bg="#222238", height=1).pack(fill="x", pady=(0, 5))
-                _sep_clr = "#5540CC" if label == "MASTER" else "#3A3A5A"
-                tk.Label(sep_f, text="  " + label, bg=SIDE, fg=_sep_clr,
-                         font=("Segoe UI", 7, "bold"), anchor="w").pack(anchor="w")
+                sep_f.pack(fill="x", padx=12, pady=(12, 2))
+                tk.Frame(sep_f, bg="#1c1c2e", height=1).pack(fill="x", pady=(0, 6))
+                _sep_clr = ACC if label == "MASTER" else MUT
+                tk.Label(sep_f, text=label.lower(), bg=SIDE, fg=_sep_clr,
+                         font=("Segoe UI", 8, "bold"), anchor="w").pack(anchor="w")
                 continue
 
             # Nav row
@@ -1016,10 +1018,10 @@ class SynthexApp:
             self._nav_icons[key] = icon_lbl
 
             # Text label — brighter default color so it's always readable
-            _NAV_FG = "#9090B8"   # readable but not fully active
+            _NAV_FG = "#94a3b8"   # readable but not fully active
             text_lbl = tk.Label(row_inner, text=label, bg=SIDE, fg=_NAV_FG,
-                                font=("Segoe UI", 9), anchor="w", cursor="hand2",
-                                padx=0, pady=9)
+                                font=("Segoe UI", 10), anchor="w", cursor="hand2",
+                                padx=0, pady=10)
             text_lbl.pack(side="left", fill="x", expand=True)
             text_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
@@ -1148,7 +1150,7 @@ class SynthexApp:
 
         if self._cur in self._pages:
             self._pages[self._cur].pack_forget()
-        _NAV_FG_INACTIVE = "#9090B8"
+        _NAV_FG_INACTIVE = "#94a3b8"
         for k, lbl in self._nav.items():
             try:
                 lbl.configure(fg=_NAV_FG_INACTIVE)
@@ -1172,12 +1174,12 @@ class SynthexApp:
             try:
                 lbl.configure(fg=FG)
                 parent = lbl.master
-                _deep_bg(parent, CARD)
+                _deep_bg(parent, "#1a0a3e")
                 # glow icon for active
                 ph_glow = self._nav_photo_glow.get(key)
                 il = self._nav_icons.get(key)
                 if il and ph_glow:
-                    il.configure(image=ph_glow, bg=CARD)
+                    il.configure(image=ph_glow, bg="#1a0a3e")
             except Exception:
                 pass
             bar_w = self._nav_bars.get(key)
@@ -1338,11 +1340,16 @@ class SynthexApp:
             pass
 
     def _hdr(self, f, title, sub=""):
-        _lbl(f, title, font=("Segoe UI", 14, "bold")).pack(
-            anchor="w", padx=24, pady=(20, 0))
+        hdr_f = tk.Frame(f, bg=BG)
+        hdr_f.pack(fill="x", padx=24, pady=(20, 0))
+        tk.Frame(hdr_f, bg=ACC, width=3, height=22).pack(side="left", padx=(0, 12))
+        hdr_inner = tk.Frame(hdr_f, bg=BG)
+        hdr_inner.pack(side="left")
+        _lbl(hdr_inner, title, font=("Segoe UI", 15, "bold")).pack(anchor="w")
         if sub:
-            _lbl(f, sub, fg=MUT, font=("Segoe UI", 9)).pack(
-                anchor="w", padx=24, pady=(2, 10))
+            _lbl(hdr_inner, sub, fg=MUT, font=("Segoe UI", 10)).pack(
+                anchor="w", pady=(2, 0))
+        tk.Frame(f, bg="#1c1c2e", height=1).pack(fill="x", padx=24, pady=(10, 12))
 
     # ================================================================
     #  HOME PAGE
@@ -1390,7 +1397,7 @@ class SynthexApp:
         # ── Hero banner ──────────────────────────────────────────────────────
         hero_wrap = tk.Frame(body, bg=BG)
         hero_wrap.pack(fill="x", padx=20, pady=(16, 0))
-        hero = tk.Frame(hero_wrap, bg="#10012A", padx=28, pady=20)
+        hero = tk.Frame(hero_wrap, bg="#0d0520", padx=28, pady=22)
         hero.pack(fill="x")
         # Animated bottom accent line
         hero_line = tk.Canvas(hero_wrap, height=2, bg=BG, highlightthickness=0)
@@ -1413,17 +1420,17 @@ class SynthexApp:
         hero_line.bind("<Configure>", _draw_hero_line)
         hero_wrap.after(80, _draw_hero_line)
 
-        tk.Frame(hero, bg="#7C3AED", width=4).pack(side="left", fill="y", padx=(0, 16))
-        hero_text = tk.Frame(hero, bg="#10012A")
+        tk.Frame(hero, bg=ACC, width=4).pack(side="left", fill="y", padx=(0, 18))
+        hero_text = tk.Frame(hero, bg="#0d0520")
         hero_text.pack(side="left", fill="both", expand=True)
         tk.Label(hero_text,
                  text="{}, {}!".format(_greeting(), name),
-                 bg="#10012A", fg="white",
-                 font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        tk.Label(hero_text, text=today, bg="#10012A", fg="#6060A0",
-                 font=("Segoe UI", 10)).pack(anchor="w", pady=(2, 0))
+                 bg="#0d0520", fg="#e2e8f0",
+                 font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        tk.Label(hero_text, text=today, bg="#0d0520", fg=MUT,
+                 font=("Segoe UI", 11)).pack(anchor="w", pady=(3, 0))
         ver = self.config.get("app.version", "")
-        ver_lbl = tk.Label(hero, text="v{}".format(ver), bg="#10012A", fg="#3A3A5A",
+        ver_lbl = tk.Label(hero, text="v{}".format(ver), bg="#0d0520", fg="#3a3a5a",
                            font=("Segoe UI", 9))
         ver_lbl.pack(side="right", anchor="ne")
 
@@ -1465,21 +1472,21 @@ class SynthexApp:
             _chip_icon_keys,
             _chip_icon_colors,
         ):
-            chip = tk.Frame(chips_row, bg=CARD, padx=14, pady=10)
-            chip.pack(side="left", fill="both", expand=True, padx=(0, 6))
+            chip = tk.Frame(chips_row, bg=CARD, padx=18, pady=14)
+            chip.pack(side="left", fill="both", expand=True, padx=(0, 8))
             # Top accent line
-            tk.Frame(chip, bg=clr, height=2).pack(fill="x", pady=(0, 8))
+            tk.Frame(chip, bg=clr, height=3).pack(fill="x", pady=(0, 10))
             # Icon + label row
             icon_row = tk.Frame(chip, bg=CARD)
-            icon_row.pack(anchor="w", pady=(0, 2))
+            icon_row.pack(anchor="w", pady=(0, 4))
             _ckey = "{}_{}".format(icon_key, icon_color)
             _ph = self._home_chip_photos.get(_ckey)
             if _ph:
                 tk.Label(icon_row, image=_ph, bg=CARD).pack(side="left", padx=(0, 8))
             tk.Label(icon_row, text=lbl, bg=CARD, fg=MUT,
-                     font=("Segoe UI", 8, "bold")).pack(side="left", anchor="w")
+                     font=("Segoe UI", 9, "bold")).pack(side="left", anchor="w")
             tk.Label(chip, text=val, bg=CARD, fg=clr,
-                     font=("Segoe UI", 13, "bold")).pack(anchor="w")
+                     font=("Segoe UI", 14, "bold")).pack(anchor="w")
             # Hover glow
             def _chip_enter(e, c=chip):
                 _deep_bg(c, CARD2)
@@ -1509,8 +1516,8 @@ class SynthexApp:
 
         qa_wrap = tk.Frame(body, bg=BG)
         qa_wrap.pack(fill="x", padx=20, pady=(10, 0))
-        tk.Label(qa_wrap, text="AKSI CEPAT", bg=BG, fg="#3A3A5A",
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 6))
+        tk.Label(qa_wrap, text="aksi cepat", bg=BG, fg=MUT,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 8))
         qa = tk.Frame(qa_wrap, bg=BG)
         qa.pack(fill="x")
 
@@ -1553,9 +1560,9 @@ class SynthexApp:
         # ── My Tasks ─────────────────────────────────────────────────────────
         my_tasks = list(enumerate(self._ud.tasks[:5]))
         if my_tasks:
-            tk.Label(body, text="MY TASKS", bg=BG, fg="#4A4A6A",
-                     font=("Segoe UI", 8, "bold")).pack(
-                anchor="w", padx=22, pady=(14, 4))
+            tk.Label(body, text="my tasks", bg=BG, fg=MUT,
+                     font=("Segoe UI", 9, "bold")).pack(
+                anchor="w", padx=22, pady=(16, 6))
             mt_card = tk.Frame(body, bg=CARD)
             mt_card.pack(fill="x", padx=20, pady=(0, 4))
             for task_idx, t in my_tasks:
@@ -1573,13 +1580,13 @@ class SynthexApp:
 
                 row = tk.Frame(mt_card, bg=CARD, padx=14, pady=7, cursor="hand2")
                 row.pack(fill="x")
-                tk.Frame(mt_card, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
+                tk.Frame(mt_card, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
                 row.bind("<Enter>", lambda e, rw=row: _deep_bg(rw, CARD2))
                 row.bind("<Leave>", lambda e, rw=row: _deep_bg(rw, CARD))
 
                 # Status dot
                 tk.Label(row, text="●", bg=CARD,
-                         fg=GRN if enabled else "#3A3A5A",
+                         fg=GRN if enabled else "#64748b",
                          font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
                 tk.Label(row, text=t.get("name", "Tanpa Nama")[:32], bg=CARD, fg=FG,
                          font=("Segoe UI", 9, "bold")).pack(side="left")
@@ -1612,10 +1619,10 @@ class SynthexApp:
 
         def _section_hdr(parent, title):
             row = tk.Frame(parent, bg=BG)
-            row.pack(fill="x", padx=20, pady=(22, 10))
-            tk.Frame(row, bg=ACC, width=3, height=18).pack(side="left", padx=(0, 10))
+            row.pack(fill="x", padx=20, pady=(24, 12))
+            tk.Frame(row, bg=ACC, width=3, height=20).pack(side="left", padx=(0, 12))
             tk.Label(row, text=title, bg=BG, fg=FG,
-                     font=("Segoe UI", 10, "bold")).pack(side="left")
+                     font=("Segoe UI", 12, "bold")).pack(side="left")
 
         def _feat_card(parent, key, icon, title, desc, accent):
             badge_bg  = _hex_blend(_CARD_HEX, accent, 0.22)
@@ -1649,38 +1656,38 @@ class SynthexApp:
             grad_cv.bind("<Configure>", _draw_grad)
             cell.after(60, _draw_grad)
 
-            inner = tk.Frame(cell, bg=_CARD_HEX, padx=14, pady=12)
+            inner = tk.Frame(cell, bg=_CARD_HEX, padx=18, pady=16)
             inner.pack(fill="both", expand=True)
 
             # Icon badge
-            badge = tk.Frame(inner, bg=badge_bg, padx=10, pady=8)
-            badge.pack(anchor="w", pady=(0, 10))
+            badge = tk.Frame(inner, bg=badge_bg, padx=12, pady=10)
+            badge.pack(anchor="w", pady=(0, 12))
             badge_icon = tk.Label(badge, text=icon, bg=badge_bg,
-                                  font=("Segoe UI", 20))
+                                  font=("Segoe UI", 22))
             badge_icon.pack()
 
             # Title
-            title_lbl = tk.Label(inner, text=title, bg=_CARD_HEX, fg="white",
-                                  font=("Segoe UI", 11, "bold"))
-            title_lbl.pack(anchor="w", pady=(0, 4))
+            title_lbl = tk.Label(inner, text=title, bg=_CARD_HEX, fg="#e2e8f0",
+                                  font=("Segoe UI", 12, "bold"))
+            title_lbl.pack(anchor="w", pady=(0, 5))
 
             # Description
             desc_lbl = tk.Label(inner, text=desc, bg=_CARD_HEX, fg=MUT,
-                                 font=("Segoe UI", 8), wraplength=160,
+                                 font=("Segoe UI", 10), wraplength=180,
                                  justify="left")
-            desc_lbl.pack(anchor="w", pady=(0, 12))
+            desc_lbl.pack(anchor="w", pady=(0, 14))
 
             # Full-width button (Canvas)
-            btn_cv = tk.Canvas(inner, height=32, highlightthickness=0,
+            btn_cv = tk.Canvas(inner, height=36, highlightthickness=0,
                                bd=0, bg=_CARD_HEX, cursor="hand2")
             btn_cv.pack(fill="x")
 
             def _draw_btn(e=None, cv=btn_cv, ac=accent):
                 cv.delete("all")
                 W = cv.winfo_width() or 200
-                cv.create_rectangle(0, 0, W, 32, fill=ac, outline="")
-                cv.create_text(W//2, 16, text="Buka  →",
-                               fill="white", font=("Segoe UI", 9, "bold"))
+                cv.create_rectangle(0, 0, W, 36, fill=ac, outline="")
+                cv.create_text(W//2, 18, text="Buka  →",
+                               fill="white", font=("Segoe UI", 10, "bold"))
 
             btn_cv.bind("<Configure>", _draw_btn)
             inner.after(80, _draw_btn)
@@ -1763,7 +1770,7 @@ class SynthexApp:
                 ok = act.get("ok")
                 arow = tk.Frame(ac, bg=CARD, padx=14, pady=6)
                 arow.pack(fill="x")
-                tk.Frame(ac, bg="#1A1A2E", height=1).pack(fill="x", padx=14)
+                tk.Frame(ac, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
                 tk.Label(arow, text="●", fg=GRN if ok else RED,
                          bg=CARD, font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
                 tk.Label(arow, text=act.get("time", ""), fg=MUT, bg=CARD,
@@ -1773,7 +1780,7 @@ class SynthexApp:
                 tk.Label(arow, text="✓ OK" if ok else "✗ FAIL",
                          fg=GRN if ok else RED,
                          bg=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
-                arow.bind("<Enter>", lambda e, rw=arow: _deep_bg(rw, "#22223A"))
+                arow.bind("<Enter>", lambda e, rw=arow: _deep_bg(rw, "#16162a"))
                 arow.bind("<Leave>", lambda e, rw=arow: _deep_bg(rw, CARD))
         else:
             tk.Label(ac, text="Belum ada aktivitas.", fg=MUT, bg=CARD,
@@ -4300,29 +4307,29 @@ class SynthexApp:
             is_wifi = ":" in serial
             accent_clr = "#7C3AED" if is_wifi else "#0EA5E9"
 
-            card = tk.Frame(cards_frame, bg="#16162A", bd=0)
+            card = tk.Frame(cards_frame, bg="#16162a", bd=0)
             card.pack(fill="x", pady=(0, 6))
 
             tk.Frame(card, bg=accent_clr, width=4).pack(side="left", fill="y")
 
-            inner = tk.Frame(card, bg="#16162A", padx=12, pady=10)
+            inner = tk.Frame(card, bg="#16162a", padx=12, pady=10)
             inner.pack(side="left", fill="both", expand=True)
 
-            row = tk.Frame(inner, bg="#16162A")
+            row = tk.Frame(inner, bg="#16162a")
             row.pack(fill="x")
 
             icon = "wifi" if is_wifi else "usb "
-            mir_dot = tk.Label(row, text="\u25cf", bg="#16162A", fg=MUT,
+            mir_dot = tk.Label(row, text="\u25cf", bg="#16162a", fg=MUT,
                                font=("Segoe UI", 11))
             mir_dot.pack(side="left")
             tk.Label(row, text="[{}]  {}".format(icon, serial),
-                     bg="#16162A", fg=FG,
+                     bg="#16162a", fg=FG,
                      font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
-            mir_lbl = tk.Label(row, text="", bg="#16162A", fg=MUT,
+            mir_lbl = tk.Label(row, text="", bg="#16162a", fg=MUT,
                                font=("Segoe UI", 8))
             mir_lbl.pack(side="left", padx=(10, 0))
 
-            btn_f = tk.Frame(row, bg="#16162A")
+            btn_f = tk.Frame(row, bg="#16162a")
             btn_f.pack(side="right")
 
             def _disc():
@@ -4562,7 +4569,7 @@ class SynthexApp:
                       bd=0, font=("Segoe UI", 9), cursor="hand2",
                       command=win.destroy).pack(side="right")
 
-            def _mbtn(parent, text, cmd, bg="#1A1A2E", fg=FG, w=5):
+            def _mbtn(parent, text, cmd, bg="#1c1c2e", fg=FG, w=5):
                 return tk.Button(parent, text=text, command=cmd,
                                  bg=bg, fg=fg, relief="flat", bd=0,
                                  font=("Segoe UI", 12), width=w,
@@ -4581,7 +4588,7 @@ class SynthexApp:
                 _mbtn(nr, txt, lambda c=code: _kev(c), w=9).pack(
                     side="left", padx=2)
 
-            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── Volume + Brightness row ──
             vb = tk.Frame(win, bg="#0D0D14", padx=10)
@@ -4595,7 +4602,7 @@ class SynthexApp:
                 _mbtn(vr, txt, lambda c=code: _kev(c), w=9).pack(
                     side="left", padx=2)
 
-            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── System row ──
             sys_f = tk.Frame(win, bg="#0D0D14", padx=10)
@@ -4612,7 +4619,7 @@ class SynthexApp:
             ]:
                 _mbtn(sr, txt, cmd, w=9).pack(side="left", padx=2)
 
-            tk.Frame(win, bg="#1A1A2E", height=1).pack(fill="x", padx=10, pady=4)
+            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── Text input ──
             ti = tk.Frame(win, bg="#0D0D14", padx=10, pady=6)
@@ -4622,7 +4629,7 @@ class SynthexApp:
             ti_row = tk.Frame(ti, bg="#0D0D14")
             ti_row.pack(fill="x")
             ti_var = tk.StringVar()
-            ti_entry = tk.Entry(ti_row, textvariable=ti_var, bg="#16162A", fg=FG,
+            ti_entry = tk.Entry(ti_row, textvariable=ti_var, bg="#16162a", fg=FG,
                                 insertbackground=FG, relief="flat",
                                 font=("Segoe UI", 10), bd=6)
             ti_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
@@ -4663,14 +4670,14 @@ class SynthexApp:
                  font=("Segoe UI", 9)).pack(side="left")
         ip_var = tk.StringVar(value=self.config.get("remote.last_ip", ""))
         tk.Entry(ip_row, textvariable=ip_var,
-                 bg="#16162A", fg=FG, insertbackground=FG,
+                 bg="#16162a", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=18, bd=4).pack(side="left", padx=(6, 4))
         tk.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
         port_var = tk.StringVar(value=str(self.config.get("remote.last_port", "5555")))
         tk.Entry(ip_row, textvariable=port_var,
-                 bg="#16162A", fg=FG, insertbackground=FG,
+                 bg="#16162a", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=6, bd=4).pack(side="left", padx=(4, 10))
 
@@ -4866,7 +4873,7 @@ class SynthexApp:
                       relief="flat", cursor="hand2",
                       command=_do_connect_mirror).pack(side="left", padx=(0, 8))
             tk.Button(br, text="Tutup",
-                      bg="#1A1A2E", fg="#8080A0",
+                      bg="#1c1c2e", fg="#8080A0",
                       font=("Segoe UI", 9), padx=12, pady=7,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
@@ -5279,18 +5286,18 @@ class SynthexApp:
                                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
                         return
                     for p in peer_list:
-                        row = tk.Frame(ts_peers_frame, bg="#16162A", pady=6, padx=10)
+                        row = tk.Frame(ts_peers_frame, bg="#16162a", pady=6, padx=10)
                         row.pack(fill="x", pady=(0, 4))
                         clr = GRN if p["online"] else MUT
                         dot_t = "🟢" if p["online"] else "⚪"
-                        tk.Label(row, text=dot_t, bg="#16162A",
+                        tk.Label(row, text=dot_t, bg="#16162a",
                                  font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
-                        info = tk.Frame(row, bg="#16162A")
+                        info = tk.Frame(row, bg="#16162a")
                         info.pack(side="left", fill="both", expand=True)
-                        tk.Label(info, text=p["name"], bg="#16162A", fg=FG,
+                        tk.Label(info, text=p["name"], bg="#16162a", fg=FG,
                                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
                         tk.Label(info, text="{} • {}".format(p["ip"], p["os"]),
-                                 bg="#16162A", fg=MUT,
+                                 bg="#16162a", fg=MUT,
                                  font=("Segoe UI", 8)).pack(anchor="w")
                         def _connect_ts(ip=p["ip"], name=p["name"]):
                             def _auto_mirror(serial, attempt=0):
@@ -5406,7 +5413,7 @@ class SynthexApp:
         tk.Checkbutton(auto_row, text="Auto-bypass tiap kali HP connect (selalu aktif)",
                        variable=auto_bypass_var,
                        command=_toggle_auto_bypass,
-                       bg=CARD, fg=FG, selectcolor="#1A1A2E",
+                       bg=CARD, fg=FG, selectcolor="#1c1c2e",
                        activebackground=CARD, activeforeground=FG,
                        font=("Segoe UI", 9), cursor="hand2").pack(side="left")
 
@@ -5537,7 +5544,7 @@ class SynthexApp:
                                background="#2A1A00")
 
         # Input row
-        inp_row = tk.Frame(right, bg="#16162A", padx=10, pady=8)
+        inp_row = tk.Frame(right, bg="#16162a", padx=10, pady=8)
         inp_row.pack(fill="x")
         inp_var = tk.StringVar()
         inp_entry = tk.Entry(inp_row, textvariable=inp_var,
@@ -5585,7 +5592,7 @@ class SynthexApp:
             _close_mention_popup()
             popup = tk.Toplevel(self._root)
             popup.overrideredirect(True)
-            popup.configure(bg="#1A1A2E")
+            popup.configure(bg="#1c1c2e")
             _mention_popup[0] = popup
             x = inp_entry.winfo_rootx()
             y = inp_entry.winfo_rooty() - len(matches) * 26 - 4
@@ -5599,7 +5606,7 @@ class SynthexApp:
                     _close_mention_popup()
                     inp_entry.focus_set()
                 btn = tk.Button(popup, text="@{}".format(name),
-                                bg="#1A1A2E", fg="#FFD700",
+                                bg="#1c1c2e", fg="#FFD700",
                                 font=("Segoe UI", 9), relief="flat", bd=0,
                                 padx=10, pady=3, cursor="hand2",
                                 command=_pick)
@@ -5999,7 +6006,7 @@ class SynthexApp:
 
         inp_var = tk.StringVar()
         inp_entry = tk.Entry(inp_frame, textvariable=inp_var,
-                             bg="#16162A", fg=FG, insertbackground=FG,
+                             bg="#16162a", fg=FG, insertbackground=FG,
                              relief="flat", font=("Segoe UI", 10),
                              bd=8)
         inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -6394,7 +6401,7 @@ class SynthexApp:
                      font=("Segoe UI", 8)).pack(anchor="w")
             title_var = tk.StringVar(value=post.get("title", "") if post else "")
             tk.Entry(ed, textvariable=title_var,
-                     bg="#16162A", fg=FG, insertbackground=FG,
+                     bg="#16162a", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 11), bd=6).pack(
                 fill="x", pady=(2, 8))
 
@@ -6402,15 +6409,15 @@ class SynthexApp:
                      font=("Segoe UI", 8)).pack(anchor="w")
             sum_var = tk.StringVar(value=post.get("summary", "") if post else "")
             tk.Entry(ed, textvariable=sum_var,
-                     bg="#16162A", fg=FG, insertbackground=FG,
+                     bg="#16162a", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 9), bd=6).pack(
                 fill="x", pady=(2, 8))
 
             tk.Label(ed, text="Isi Artikel", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
-            fmt_bar = tk.Frame(ed, bg="#1A1A2E")
+            fmt_bar = tk.Frame(ed, bg="#1c1c2e")
             fmt_bar.pack(fill="x", pady=(2, 0))
-            content_box = tk.Text(ed, bg="#16162A", fg=FG, insertbackground=FG,
+            content_box = tk.Text(ed, bg="#16162a", fg=FG, insertbackground=FG,
                                   relief="flat", font=("Segoe UI", 10),
                                   bd=6, wrap="word", height=9)
             content_box.pack(fill="both", expand=True, pady=(0, 8))
@@ -6447,7 +6454,7 @@ class SynthexApp:
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                           padx=9, pady=3, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 2), pady=3)
-            tk.Label(fmt_bar, text="Markdown", bg="#1A1A2E", fg="#4A4A6A",
+            tk.Label(fmt_bar, text="Markdown", bg="#1c1c2e", fg="#4A4A6A",
                      font=("Segoe UI", 7)).pack(side="right", padx=8)
 
             # ── Media section ─────────────────────────────────────────────────
@@ -6472,12 +6479,12 @@ class SynthexApp:
                     url   = item.get("url", "")
                     cap   = item.get("caption", "")
                     icon  = "\U0001f5bc" if mtype == "image" else "▶"
-                    row = tk.Frame(media_frame, bg="#16162A")
+                    row = tk.Frame(media_frame, bg="#16162a")
                     row.pack(fill="x", pady=(0, 3))
-                    tk.Label(row, text=icon, bg="#16162A",
+                    tk.Label(row, text=icon, bg="#16162a",
                              font=("Segoe UI", 10)).pack(side="left", padx=(6, 4))
                     tk.Label(row, text=(url[:52] + "..." if len(url) > 52 else url),
-                             bg="#16162A", fg=FG,
+                             bg="#16162a", fg=FG,
                              font=("Segoe UI", 8)).pack(side="left")
                     cap_var = tk.StringVar(value=cap)
                     cap_e = tk.Entry(row, textvariable=cap_var, width=16,
@@ -6510,7 +6517,7 @@ class SynthexApp:
                          bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
-                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162A", fg=FG,
+                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
                               insertbackground=FG, relief="flat",
                               font=("Segoe UI", 10), bd=6)
                 ue.pack(fill="x", padx=16)
@@ -6559,7 +6566,7 @@ class SynthexApp:
                          bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
-                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162A", fg=FG,
+                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
                               insertbackground=FG, relief="flat",
                               font=("Segoe UI", 10), bd=6)
                 ue.pack(fill="x", padx=16)
@@ -6624,7 +6631,7 @@ class SynthexApp:
                       font=("Segoe UI", 9, "bold"), padx=16, pady=6,
                       relief="flat", cursor="hand2",
                       command=_submit).pack(side="left", padx=(0, 8))
-            tk.Button(sub_row, text="Batal", bg="#1A1A2E", fg=MUT,
+            tk.Button(sub_row, text="Batal", bg="#1c1c2e", fg=MUT,
                       font=("Segoe UI", 9), padx=12, pady=6,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
@@ -7227,7 +7234,7 @@ class SynthexApp:
                     self._root.after(0, lambda: _status.set("Gagal memuat: {}".format(ex)))
 
         # ── Input area ────────────────────────────────────────────────────────
-        sep = tk.Frame(f, bg="#1A1A2E", height=1)
+        sep = tk.Frame(f, bg="#1c1c2e", height=1)
         sep.pack(fill="x", padx=18)
 
         inp_area = tk.Frame(f, bg=BG, padx=18, pady=10)
@@ -8159,7 +8166,7 @@ class SynthexApp:
         tk.Label(dm_right, textvariable=_conv_title, bg=CARD2, fg=ACC,
                  font=("Segoe UI", 9, "bold"), anchor="w", padx=10,
                  pady=6).pack(fill="x")
-        tk.Frame(dm_right, bg="#1A1A2E", height=1).pack(fill="x")
+        tk.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
         conv_sb = ttk.Scrollbar(dm_right, orient="vertical")
         conv_sb.pack(side="right", fill="y")
         conv_cv = tk.Canvas(dm_right, bg=CARD2, highlightthickness=0,
@@ -8173,7 +8180,7 @@ class SynthexApp:
                             scrollregion=conv_cv.bbox("all")))
         conv_cv.bind("<Configure>",
                      lambda e: conv_cv.itemconfig(_cwid, width=e.width))
-        tk.Frame(dm_right, bg="#1A1A2E", height=1).pack(fill="x")
+        tk.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
         dm_ir = tk.Frame(dm_right, bg=CARD2, padx=8, pady=6)
         dm_ir.pack(fill="x")
         dm_inp = tk.Text(dm_ir, bg="#0D0D18", fg=FG, insertbackground=FG,
@@ -11895,7 +11902,7 @@ class SynthexApp:
             except Exception: t_str = ""
             mf = tk.Frame(msg_frame, bg=CARD, padx=12, pady=8)
             mf.pack(fill="x")
-            tk.Frame(msg_frame, bg="#1A1A2E", height=1).pack(fill="x")
+            tk.Frame(msg_frame, bg="#1c1c2e", height=1).pack(fill="x")
             tk.Label(mf, text=t_str, bg=CARD, fg=MUT,
                      font=("Segoe UI", 7)).pack(anchor="w")
             tk.Label(mf, text=m.get("message",""), bg=CARD, fg=FG,
@@ -13121,7 +13128,7 @@ class SynthexApp:
         tk.Label(s_row, text="Esc", bg="#1A1A28", fg=MUT,
                  font=("Segoe UI", 7), padx=5, pady=2).pack(side="right")
 
-        tk.Frame(body, bg="#1A1A2E", height=1).pack(fill="x", pady=(PAD, 0))
+        tk.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(PAD, 0))
 
         # results frame (scrollable)
         results_frame = tk.Frame(body, bg="#0D0D18")
@@ -13153,9 +13160,9 @@ class SynthexApp:
 
         def _highlight(idx):
             for i, (rf, _) in enumerate(_rows):
-                rf.configure(bg="#1A1A2E" if i == idx else "#0D0D18")
+                rf.configure(bg="#1c1c2e" if i == idx else "#0D0D18")
                 for child in rf.winfo_children():
-                    child.configure(bg="#1A1A2E" if i == idx else "#0D0D18")
+                    child.configure(bg="#1c1c2e" if i == idx else "#0D0D18")
 
         def _render(query=""):
             # clear existing rows
