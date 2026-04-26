@@ -26,15 +26,12 @@ PROVIDER_LABELS = list(_PROVIDERS.values())
 
 
 def _post(url, headers, body, timeout=30):
-    last = None
     try:
-        r = requests.post(url, headers=headers,
-                          data=json.dumps(body), timeout=timeout,
-                          verify=certifi.where())
-        return r
+        return requests.post(url, headers=headers,
+                             data=json.dumps(body), timeout=timeout,
+                             verify=certifi.where())
     except Exception as e:
-        last = e
-    raise RuntimeError("Koneksi ke AI gagal: {}".format(last))
+        raise RuntimeError("Koneksi ke AI gagal: {}".format(e))
 
 
 def _safe_get(data, *keys):
@@ -125,10 +122,15 @@ def call_ai(prompt: str, provider: str, api_key: str,
 
     elif provider == "gemini":
         contents = []
-        for h in history:
+        for i, h in enumerate(history):
             role = "user" if h["role"] == "user" else "model"
-            contents.append({"role": role, "parts": [{"text": h["content"]}]})
-        user_text = (sys_msg + "\n\n" + prompt) if sys_msg and not contents else prompt
+            text = h["content"]
+            # System prompt prepended to the very first user message in the conversation
+            if i == 0 and role == "user" and sys_msg:
+                text = sys_msg + "\n\n" + text
+            contents.append({"role": role, "parts": [{"text": text}]})
+        # If no history yet, prepend system prompt to the current first message
+        user_text = (sys_msg + "\n\n" + prompt) if (sys_msg and not contents) else prompt
         contents.append({"role": "user", "parts": [{"text": user_text}]})
         body = {"contents": contents,
                 "generationConfig": {"maxOutputTokens": max_tokens}}
