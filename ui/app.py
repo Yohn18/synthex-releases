@@ -4422,15 +4422,21 @@ class SynthexApp:
                         empty_lbl.pack_forget()
                         status_var.set("{} perangkat terhubung".format(len(vals)))
                         dot.configure(fg=GRN)
-                        if new_devices and self.config.get("remote.auto_bypass_secure", False):
+                        if new_devices:
                             first_serial = new_devices[0]
-                            def _do_bypass(s=first_serial):
-                                if self._adb:
-                                    self._adb._run(
-                                        "-s", s, "shell",
-                                        "service", "call", "SurfaceFlinger",
-                                        "1008", "i32", "0")
-                            _thr.Thread(target=_do_bypass, daemon=True).start()
+                            if self.config.get("remote.auto_bypass_secure", False):
+                                def _do_bypass(s=first_serial):
+                                    if self._adb:
+                                        self._adb._run(
+                                            "-s", s, "shell",
+                                            "service", "call", "SurfaceFlinger",
+                                            "1008", "i32", "0")
+                                _thr.Thread(target=_do_bypass, daemon=True).start()
+                            # Auto-install Synthex companion jika belum ada
+                            if self.config.get("remote.auto_install_companion", True):
+                                _thr.Thread(
+                                    target=lambda s=first_serial: self._auto_install_companion(s, msg_var),
+                                    daemon=True).start()
                     else:
                         empty_lbl.pack(anchor="w", pady=6)
                         status_var.set("Tidak ada perangkat")
@@ -5465,6 +5471,27 @@ class SynthexApp:
                   relief="flat", bd=0, cursor="hand2",
                   command=lambda: self._show_usb_wizard(msg_var, ip_var, _refresh_devs)
                   ).pack(side="left", padx=(0, 12))
+
+        # Auto-install companion toggle
+        auto_install_var = tk.BooleanVar(
+            value=self.config.get("remote.auto_install_companion", True))
+        def _toggle_auto_install():
+            self.config.set("remote.auto_install_companion", auto_install_var.get())
+            self.config.save()
+        tk.Checkbutton(usb_wiz_sec,
+                       text="Auto-install Synthex App ke HP saat pertama terhubung",
+                       variable=auto_install_var,
+                       command=_toggle_auto_install,
+                       bg=CARD, fg=FG, selectcolor="#1c1c2e",
+                       activebackground=CARD, activeforeground=FG,
+                       font=("Segoe UI", 9), cursor="hand2").pack(
+            anchor="w", pady=(8, 0))
+        tk.Label(usb_wiz_sec,
+                 text="Letakkan Synthex.apk di folder  synthex/tools/Synthex.apk  "
+                      "setelah download dari GitHub Actions.",
+                 bg=CARD, fg="#3A3A5A", font=("Segoe UI", 8)).pack(
+            anchor="w", pady=(2, 0))
+
         tk.Label(wiz_btn_row,
                  text="Sudah terhubung sebelumnya? Gunakan IP History di atas.",
                  bg=CARD, fg="#3A3A5A", font=("Segoe UI", 8)).pack(side="left")
@@ -5955,6 +5982,108 @@ class SynthexApp:
         self._adb_poll_id = self._root.after(10000, _poll_adb)
 
         return f
+
+    # ================================================================
+    #  SYNTHEX COMPANION AUTO-INSTALL
+    # ================================================================
+
+    def _auto_install_companion(self, serial: str, msg_var=None):
+        """
+        Called when a new device is detected.
+        Checks if Synthex app is installed; if not, prompts + installs via ADB.
+        """
+        import time as _t
+        if not self._adb or not self._adb.available:
+            return
+
+        def _set_msg(txt):
+            if self._root and msg_var:
+                self._root.after(0, lambda t=txt: msg_var.set(t))
+
+        # Check if already installed
+        installed = self._adb.is_companion_installed(serial)
+        if installed:
+            return  # already there, nothing to do
+
+        # Not installed — check if APK is available locally
+        apk_path = self._adb.get_companion_apk_path()
+
+        if not apk_path:
+            # APK not downloaded yet — show download prompt in UI
+            if self._root:
+                self._root.after(0, lambda: self._show_companion_download_prompt(serial, msg_var))
+            return
+
+        # APK available — install silently
+        _set_msg("HP baru terdeteksi — menginstall Synthex App...")
+        ok, msg = self._adb.install_companion(apk_path, serial)
+        if ok:
+            _set_msg("Synthex App berhasil diinstall!")
+            _t.sleep(1)
+            self._adb.launch_companion(serial)
+            _set_msg("Synthex App diluncurkan di HP")
+        else:
+            _set_msg("Install Synthex App gagal: {}".format(msg[:80]))
+
+    def _show_companion_download_prompt(self, serial: str, msg_var=None):
+        """Show a dialog asking user to download companion APK first."""
+        import webbrowser as _wb
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Synthex App diperlukan")
+        dlg.configure(bg="#0A0A0F")
+        dlg.resizable(False, False)
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        dlg.update_idletasks()
+        dlg.geometry("+{}+{}".format(
+            (dlg.winfo_screenwidth()  - 460) // 2,
+            (dlg.winfo_screenheight() - 280) // 2))
+
+        tk.Frame(dlg, bg="#6C4AFF", height=4).pack(fill="x")
+        body = tk.Frame(dlg, bg="#0A0A0F", padx=28, pady=22)
+        body.pack(fill="both", expand=True)
+
+        tk.Label(body, text="HP Baru Terdeteksi!",
+                 bg="#0A0A0F", fg="white",
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(body,
+                 text="HP kamu belum punya Synthex App.\n"
+                      "Install sekarang supaya bisa dikontrol dari app ini.",
+                 bg="#0A0A0F", fg="#8080A0",
+                 font=("Segoe UI", 9),
+                 wraplength=400, justify="left").pack(anchor="w", pady=(6, 0))
+
+        tk.Label(body, text="Serial: {}".format(serial),
+                 bg="#0A0A0F", fg="#6C4AFF",
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 0))
+
+        info = tk.Label(body,
+                 text="Download Synthex.apk dari GitHub Actions lalu letakkan di:\n"
+                      "synthex/tools/Synthex.apk\n\n"
+                      "Setelah file ada, colok HP lagi → install otomatis.",
+                 bg="#0A0A0F", fg="#555577",
+                 font=("Segoe UI", 8),
+                 wraplength=400, justify="left")
+        info.pack(anchor="w", pady=(6, 0))
+
+        br = tk.Frame(body, bg="#0A0A0F")
+        br.pack(anchor="e", pady=(16, 0))
+
+        def _open_actions():
+            _wb.open("https://github.com/Yohn18/synthex-releases/actions")
+            dlg.destroy()
+
+        tk.Button(br, text="Buka GitHub Actions",
+                  bg="#6C4AFF", fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=16, pady=7,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_open_actions).pack(side="left", padx=(0, 8))
+        tk.Button(br, text="Nanti",
+                  bg="#1c1c2e", fg="#555577",
+                  font=("Segoe UI", 9), padx=12, pady=7,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=dlg.destroy).pack(side="left")
 
     # ================================================================
     #  USB SETUP WIZARD

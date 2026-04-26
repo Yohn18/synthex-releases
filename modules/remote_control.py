@@ -205,6 +205,52 @@ class AdbManager:
         except Exception:
             return "timeout"
 
+    # ── Synthex Companion App helpers ─────────────────────────────────────────
+
+    _COMPANION_PKG = "com.yohn18.synthex"
+
+    def is_companion_installed(self, serial: str = "") -> bool:
+        """Check if Synthex companion APK is installed on device."""
+        s = ["-s", serial] if serial else []
+        _, out, _ = self._run(*s, "shell", "pm", "list", "packages",
+                              self._COMPANION_PKG)
+        return self._COMPANION_PKG in out
+
+    def install_companion(self, apk_path: str,
+                          serial: str = "") -> tuple[bool, str]:
+        """
+        Install Synthex companion APK on device.
+        Returns (ok, message).
+        """
+        if not os.path.isfile(apk_path):
+            return (False, "APK tidak ditemukan: {}".format(apk_path))
+        s = ["-s", serial] if serial else []
+        rc, out, err = self._run(*s, "install", "-r", "-d", apk_path,
+                                 timeout=60)
+        msg = out or err
+        ok  = rc == 0 and ("success" in msg.lower() or not err)
+        return (ok, msg)
+
+    def launch_companion(self, serial: str = "") -> tuple[bool, str]:
+        """Launch Synthex companion app on device."""
+        s = ["-s", serial] if serial else []
+        rc, out, err = self._run(
+            *s, "shell", "am", "start", "-n",
+            "{}/com.yohn18.synthex.MainActivity".format(self._COMPANION_PKG))
+        return (rc == 0, out or err)
+
+    def get_companion_apk_path(self) -> str:
+        """Return path to bundled Synthex.apk if it exists."""
+        base = (os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        candidates = [
+            os.path.join(base, "tools", "Synthex.apk"),
+            os.path.join(base, "assets", "Synthex.apk"),
+        ]
+        for p in candidates:
+            if os.path.isfile(p):
+                return p
+        return ""
+
 
 class NotifReader:
     """Read active Android notifications via adb."""

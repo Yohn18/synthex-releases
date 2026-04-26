@@ -1,0 +1,3 @@
+-keep class com.yohn18.synthex.** { *; }
+-keepattributes *Annotation*
+-dontwarn okhttp3.**
