@@ -324,6 +324,10 @@ class SmartMacro:
         if t == "ai_prompt":
             return self._run_ai_prompt(step, variables)
 
+        # -- Scrape URL ----------------------------------------------------
+        if t == "scrape_url":
+            return self._run_scrape_url(step, variables)
+
         self.logger.warning(f"Unknown step type: {t}")
         return f"unknown: {t}"
 
@@ -494,6 +498,35 @@ class SmartMacro:
         variables[var_name] = response
         self.logger.info("AI Prompt → %s = %s…", var_name, response[:60])
         return "AI response saved to {{{}}}: {}…".format(var_name, response[:50])
+
+    # ------------------------------------------------------------------ #
+    #  Scrape URL                                                          #
+    # ------------------------------------------------------------------ #
+
+    def _run_scrape_url(self, step: dict, variables: dict) -> str:
+        """Execute a scrape_url step: fetch URL text and save to variable."""
+        from modules.web_scraper import scrape_url
+
+        url = step.get("url", "").strip()
+        if not url:
+            raise ValueError("scrape_url: URL kosong")
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+
+        self.logger.info("Scraping: %s", url)
+        text = scrape_url(url)
+
+        # Optional keyword filter — keep only lines containing keyword
+        keyword = step.get("keyword", "").strip()
+        if keyword:
+            lines = [l for l in text.splitlines()
+                     if keyword.lower() in l.lower() and l.strip()]
+            text = "\n".join(lines) if lines else "(keyword '{}' tidak ditemukan)".format(keyword)
+
+        var = step.get("var", "scraped_text") or "scraped_text"
+        variables[var] = text
+        self.logger.info("scrape_url → {%s} = %s…", var, text[:60])
+        return "Scraped {} chars → {{{}}}".format(len(text), var)
 
     # ------------------------------------------------------------------ #
     #  Bulk Order Confirmation                                             #

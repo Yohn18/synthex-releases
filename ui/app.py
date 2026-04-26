@@ -57,6 +57,7 @@ _STEP_ICONS = {
     "if_greater":                   "[>]",
     "notify":                       "[!]",
     "ai_prompt":                    "[AI]",
+    "scrape_url":                   "[SC]",
     "sheet_get_pending_rows":       "[P]",
     "web_get_order_list":           "[O]",
     "validate_and_confirm_orders":  "[V]",
@@ -315,6 +316,8 @@ def _step_label(step):
         step.get("message",""))
     if t == "ai_prompt":        return "🤖 AI: {}… → {{{}}}".format(
         step.get("prompt","")[:40], step.get("var","ai_result"))
+    if t == "scrape_url":       return "🌐 Scrape: {} → {{{}}}".format(
+        step.get("url","")[:40], step.get("var","scraped_text"))
     return t or "(empty step)"
 
 
@@ -2544,6 +2547,7 @@ class SynthexApp:
             ("if_contains",      "If Contains"),
             ("notify",           "Notify"),
             ("ai_prompt",        "🤖 AI Prompt"),
+            ("scrape_url",       "🌐 Scrape URL"),
         ]
         display_names = [d for _, d in TYPE_OPTIONS]
         type_to_key   = {d: k for k, d in TYPE_OPTIONS}
@@ -2849,6 +2853,37 @@ class SynthexApp:
             _lbl(parent,
                  "Hasil AI tersimpan di {ai_result} (atau nama variabel di atas) "
                  "dan bisa dipakai di step berikutnya.",
+                 fg=MUT, bg=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+
+        elif step_type == "scrape_url":
+            info_fr = tk.Frame(parent, bg="#0A100A", padx=10, pady=6)
+            info_fr.pack(fill="x", pady=(0, 10))
+            tk.Label(info_fr,
+                     text="Ambil teks dari halaman web — tidak butuh browser/Playwright.",
+                     bg="#0A100A", fg=GRN,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+            _field("URL halaman", "url", existing.get("url", "https://"),
+                   helper="Dukung {variabel} dari step sebelumnya")
+
+            _field("Filter keyword (opsional)", "keyword",
+                   existing.get("keyword", ""),
+                   helper="Jika diisi, hanya ambil baris yang mengandung kata ini. "
+                          "Contoh: harga, stok, price")
+
+            sv_row = tk.Frame(parent, bg=BG)
+            sv_row.pack(fill="x", pady=(0, 10))
+            _lbl(sv_row, "Simpan sebagai variabel:", fg=MUT, bg=BG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+            sv_var = tk.StringVar(value=existing.get("var", "scraped_text"))
+            tk.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
+                     insertbackground=FG, relief="flat",
+                     font=("Segoe UI", 9), width=18).pack(side="left")
+            self._mb_field_vars["var"] = sv_var
+
+            _lbl(parent,
+                 "Hasil tersimpan di {scraped_text} — bisa dipakai di step AI Prompt, "
+                 "Write Sheet, atau If Contains berikutnya.",
                  fg=MUT, bg=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
 
         else:
@@ -3930,14 +3965,33 @@ class SynthexApp:
         from modules.price_monitor import PriceMonitor
 
         f = tk.Frame(self._content, bg=BG)
-        self._hdr(f, "Dashboard Update")
+        self._hdr(f, "Monitor", "Pantau data tabel & perubahan halaman web secara otomatis")
 
-        # State: satu instance PriceMonitor per session
+        # State
         if not hasattr(self, "_price_monitor"):
             self._price_monitor = None
 
+        # ── Notebook tabs ────────────────────────────────────────────────────
+        style = ttk.Style()
+        style.configure("Mon.TNotebook",        background=BG, borderwidth=0)
+        style.configure("Mon.TNotebook.Tab",    background=CARD2, foreground=MUT,
+                        padding=[14, 6], font=("Segoe UI", 9))
+        style.map("Mon.TNotebook.Tab",
+                  background=[("selected", CARD)],
+                  foreground=[("selected", FG)])
+
+        nb = ttk.Notebook(f, style="Mon.TNotebook")
+        nb.pack(fill="both", expand=True, padx=0, pady=(4, 0))
+
+        tab1 = tk.Frame(nb, bg=BG)
+        tab2 = tk.Frame(nb, bg=BG)
+        nb.add(tab1, text="📊  Tabel Otomatis")
+        nb.add(tab2, text="👁  Pantau Perubahan")
+        nb_tabs = [tab1, tab2]
+
+        # ── Tab 1: Tabel Otomatis ────────────────────────────────────────────
         # ── Outer scroll area ─────────────────────────────────────────────────
-        body = tk.Frame(f, bg=BG)
+        body = tk.Frame(tab1, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         # ── Konfigurasi ───────────────────────────────────────────────────────
@@ -4243,6 +4297,224 @@ class SynthexApp:
             self._price_monitor._on_status = _on_status
             self._price_monitor._on_data   = _on_data
             _log("Monitor sudah berjalan (dilanjutkan dari sesi sebelumnya).")
+
+        # ── Tab 2: Pantau Perubahan ───────────────────────────────────────────
+        tab2 = nb_tabs[1]
+        body2 = tk.Frame(tab2, bg=BG)
+        body2.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        if not hasattr(self, "_wcm"):
+            self._wcm = None   # WebChangeMonitor instance
+
+        # Config card
+        wc_cfg = _card(body2, "Konfigurasi Pantau Perubahan")
+        wc_cfg.pack(fill="x", pady=(8, 0))
+
+        def _wrow(parent, label, widget_fn):
+            row = tk.Frame(parent, bg=CARD)
+            row.pack(fill="x", padx=10, pady=3)
+            tk.Label(row, text=label, bg=CARD, fg=MUT,
+                     font=("Segoe UI", 9), width=24, anchor="w").pack(
+                side="left", padx=(0, 6))
+            w = widget_fn(row)
+            w.pack(side="left", fill="x", expand=True)
+            return w
+
+        v_wc_url = tk.StringVar()
+        _wrow(wc_cfg, "URL yang dipantau *",
+              lambda p: tk.Entry(p, textvariable=v_wc_url, bg=CARD2, fg=FG,
+                                 insertbackground=FG, relief="flat",
+                                 font=("Segoe UI", 9)))
+
+        v_wc_kw = tk.StringVar()
+        _wrow(wc_cfg, "Keyword (opsional)",
+              lambda p: tk.Entry(p, textvariable=v_wc_kw, bg=CARD2, fg=FG,
+                                 insertbackground=FG, relief="flat",
+                                 font=("Segoe UI", 9)))
+        tk.Label(wc_cfg,
+                 text="   Kosongkan = pantau semua perubahan. "
+                      "Isi = pantau keyword ini muncul/hilang. "
+                      "Contoh: Stok habis, Out of stock",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(
+            anchor="w", padx=10, pady=(0, 4))
+
+        v_wc_intv = tk.StringVar(value="5")
+        intv_row2 = tk.Frame(wc_cfg, bg=CARD)
+        intv_row2.pack(fill="x", padx=10, pady=3)
+        tk.Label(intv_row2, text="Interval (menit)", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9), width=24, anchor="w").pack(side="left")
+        tk.Spinbox(intv_row2, from_=1, to=1440, textvariable=v_wc_intv,
+                   width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
+                   relief="flat", font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(intv_row2, text="menit", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left", padx=4)
+
+        # AI analysis toggle
+        v_wc_ai = tk.BooleanVar(value=False)
+        tk.Checkbutton(wc_cfg,
+                       text="Analisis perubahan dengan AI (butuh API key di Settings)",
+                       variable=v_wc_ai,
+                       bg=CARD, fg=FG, selectcolor=CARD2,
+                       activebackground=CARD, activeforeground=FG,
+                       font=("Segoe UI", 9)).pack(anchor="w", padx=10, pady=(0, 6))
+
+        # Status card
+        wc_ctrl = _card(body2, "Status & Log")
+        wc_ctrl.pack(fill="both", expand=True, pady=(10, 0))
+
+        wc_stats_row = tk.Frame(wc_ctrl, bg=CARD)
+        wc_stats_row.pack(fill="x", padx=10, pady=(6, 4))
+        v_wc_status = tk.StringVar(value="Belum berjalan")
+        v_wc_changes = tk.StringVar(value="0")
+        v_wc_last = tk.StringVar(value="-")
+        tk.Label(wc_stats_row, text="Status:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(wc_stats_row, textvariable=v_wc_status, bg=CARD, fg=YEL,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+        tk.Label(wc_stats_row, text="Perubahan:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(wc_stats_row, textvariable=v_wc_changes, bg=CARD, fg=RED,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+        tk.Label(wc_stats_row, text="Terakhir berubah:", bg=CARD, fg=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(wc_stats_row, textvariable=v_wc_last, bg=CARD, fg=GRN,
+                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+
+        # Log
+        wc_log_f = tk.Frame(wc_ctrl, bg=CARD2, relief="flat")
+        wc_log_f.pack(fill="both", expand=True, padx=10, pady=(0, 4))
+        wc_log_txt = tk.Text(wc_log_f, height=6, bg=CARD2, fg=FG,
+                             font=("Consolas", 8), relief="flat",
+                             state="disabled", wrap="word")
+        wc_log_sb = tk.Scrollbar(wc_log_f, command=wc_log_txt.yview,
+                                 bg=CARD2, troughcolor=CARD2)
+        wc_log_txt.configure(yscrollcommand=wc_log_sb.set)
+        wc_log_sb.pack(side="right", fill="y")
+        wc_log_txt.pack(fill="both", expand=True, padx=4, pady=4)
+
+        # Change detail area
+        wc_change_card = _card(body2, "Detail Perubahan Terakhir")
+        wc_change_card.pack(fill="both", expand=True, pady=(10, 0))
+        wc_diff_txt = tk.Text(wc_change_card, height=5, bg=CARD2, fg=YEL,
+                              font=("Consolas", 8), relief="flat",
+                              state="disabled", wrap="word")
+        wc_diff_txt.pack(fill="both", expand=True, padx=6, pady=6)
+
+        def _wc_log(msg: str):
+            import datetime as _dtt
+            ts = _dtt.datetime.now().strftime("%H:%M:%S")
+            line = "[{}] {}\n".format(ts, msg)
+            def _do():
+                wc_log_txt.configure(state="normal")
+                wc_log_txt.insert("end", line)
+                wc_log_txt.see("end")
+                wc_log_txt.configure(state="disabled")
+                if self._wcm:
+                    v_wc_changes.set(str(self._wcm.change_count))
+                    if self._wcm.last_change:
+                        v_wc_last.set(
+                            self._wcm.last_change.strftime("%H:%M:%S"))
+            try: f.after(0, _do)
+            except Exception: pass
+
+        def _wc_on_change(old_text, new_text, summary):
+            def _do():
+                wc_diff_txt.configure(state="normal")
+                wc_diff_txt.delete("1.0", "end")
+                wc_diff_txt.insert("end", summary)
+                wc_diff_txt.configure(state="disabled")
+                _wc_log("BERUBAH: " + summary[:80])
+            try: f.after(0, _do)
+            except Exception: pass
+
+        def _wc_build():
+            url = v_wc_url.get().strip()
+            if not url:
+                return None
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            try:
+                intv = max(1, int(v_wc_intv.get())) * 60
+            except ValueError:
+                intv = 300
+            from modules.web_change_monitor import WebChangeMonitor as _WCM
+            wm = _WCM(on_status=_wc_log, on_change=_wc_on_change)
+            ai_key = self.config.get("ai.api_key", "").strip() if v_wc_ai.get() else ""
+            wm.configure(
+                url=url,
+                interval_sec=intv,
+                keyword=v_wc_kw.get().strip(),
+                ai_analysis=v_wc_ai.get() and bool(ai_key),
+                ai_key=ai_key,
+                ai_provider=self.config.get("ai.provider", "openai"),
+                ai_model=self.config.get("ai.model", ""),
+            )
+            return wm
+
+        wc_btn_row = tk.Frame(wc_ctrl, bg=CARD)
+        wc_btn_row.pack(fill="x", padx=10, pady=(0, 8))
+
+        wc_btn_start = tk.Button(wc_btn_row, text="MULAI PANTAU", bg=GRN, fg=BG,
+                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 padx=14, pady=6, cursor="hand2")
+        wc_btn_stop  = tk.Button(wc_btn_row, text="STOP", bg=RED, fg="#fff",
+                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 padx=14, pady=6, cursor="hand2", state="disabled")
+        wc_btn_once  = tk.Button(wc_btn_row, text="CEK SEKARANG", bg=ACC2, fg="#fff",
+                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 padx=14, pady=6, cursor="hand2")
+
+        def _wc_start():
+            if self._wcm and self._wcm.running:
+                return
+            wm = _wc_build()
+            if not wm:
+                _wc_log("ERROR: URL wajib diisi")
+                return
+            self._wcm = wm
+            wm.start()
+            v_wc_status.set("Berjalan")
+            wc_btn_start.configure(state="disabled")
+            wc_btn_stop.configure(state="normal")
+            wc_btn_once.configure(state="disabled")
+
+        def _wc_stop():
+            if self._wcm:
+                self._wcm.stop()
+                self._wcm = None
+            v_wc_status.set("Dihentikan")
+            wc_btn_start.configure(state="normal")
+            wc_btn_stop.configure(state="disabled")
+            wc_btn_once.configure(state="normal")
+
+        def _wc_once():
+            wm = _wc_build()
+            if not wm:
+                _wc_log("ERROR: URL wajib diisi")
+                return
+            self._wcm = wm
+            wc_btn_once.configure(state="disabled")
+            _wc_log("Menjalankan satu pengecekan…")
+            def _w():
+                wm.check_now()
+                try: f.after(0, lambda: wc_btn_once.configure(state="normal"))
+                except Exception: pass
+            threading.Thread(target=_w, daemon=True).start()
+
+        wc_btn_start.configure(command=_wc_start)
+        wc_btn_stop.configure(command=_wc_stop)
+        wc_btn_once.configure(command=_wc_once)
+        wc_btn_start.pack(side="left", padx=(0, 8))
+        wc_btn_stop.pack(side="left", padx=(0, 8))
+        wc_btn_once.pack(side="left")
+
+        if self._wcm and self._wcm.running:
+            v_wc_status.set("Berjalan")
+            wc_btn_start.configure(state="disabled")
+            wc_btn_stop.configure(state="normal")
+            wc_btn_once.configure(state="disabled")
+            self._wcm._on_status  = _wc_log
+            self._wcm._on_change  = _wc_on_change
 
         return f
 
