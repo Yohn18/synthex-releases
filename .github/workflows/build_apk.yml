@@ -1,0 +1,81 @@
+name: Build Synthex APK
+
+on:
+  push:
+    paths:
+      - 'android_app/**'
+      - '.github/workflows/build_apk.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            git zip unzip openjdk-17-jdk \
+            autoconf libtool pkg-config \
+            libffi-dev libssl-dev \
+            zlib1g-dev libncurses5-dev \
+            libsqlite3-dev libreadline-dev \
+            libbz2-dev libgdbm-dev liblzma-dev \
+            python3-dev python3-pip \
+            build-essential ccache
+
+      - name: Cache pip + buildozer
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.buildozer
+          key: buildozer-${{ hashFiles('android_app/buildozer.spec') }}
+          restore-keys: buildozer-
+
+      - name: Install buildozer + cython
+        run: |
+          pip install --upgrade pip
+          pip install buildozer cython==0.29.37
+
+      - name: Set up Android SDK accept license
+        run: |
+          mkdir -p ~/.android
+          echo "count=0" > ~/.android/repositories.cfg
+
+      - name: Build APK
+        working-directory: android_app
+        run: |
+          yes | buildozer android debug 2>&1 | tail -200
+        env:
+          ANDROID_HOME: /home/runner/.buildozer/android/platform/android-sdk
+
+      - name: Find APK
+        id: find_apk
+        run: |
+          APK=$(find android_app/bin -name "*.apk" 2>/dev/null | head -1)
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          echo "Found: $APK"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Synthex-Android-APK
+          path: android_app/bin/*.apk
+          retention-days: 30
+
+      - name: Summary
+        run: |
+          echo "## Synthex APK Build" >> $GITHUB_STEP_SUMMARY
+          echo "APK siap di-download dari tab Artifacts di atas." >> $GITHUB_STEP_SUMMARY
+          ls -lh android_app/bin/*.apk 2>/dev/null || echo "Tidak ada APK"
