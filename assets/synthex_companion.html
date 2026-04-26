@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#6c4aff">
+<link rel="manifest" href="/manifest.json">
+<title>Synthex</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+body{background:#0a0a0f;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+
+/* ── Header ── */
+.hdr{background:#111118;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:2px solid #6c4aff;position:sticky;top:0;z-index:100}
+.hdr-logo{width:32px;height:32px;background:#6c4aff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
+.hdr-title{font-weight:700;font-size:16px;flex:1}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:#ef4444}
+.conn-dot.ok{background:#10b981}
+.conn-lbl{font-size:11px;color:#64748b}
+
+/* ── Body ── */
+.page{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+
+/* ── Cards ── */
+.card{background:#111118;border-radius:12px;overflow:hidden}
+.card-hdr{background:#1a1a2e;padding:10px 14px;font-size:12px;font-weight:700;color:#6c4aff;letter-spacing:.5px;text-transform:uppercase}
+.card-body{padding:12px 14px}
+
+/* ── Device badge ── */
+.dev-badge{display:inline-flex;align-items:center;gap:6px;background:#16162a;border-radius:6px;padding:5px 10px;margin:3px;font-size:12px;color:#e2e8f0}
+.dev-badge .icon{font-size:14px}
+.no-dev{color:#64748b;font-size:12px;padding:4px 0}
+
+/* ── Macro list ── */
+.macro-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #16162a}
+.macro-item:last-child{border-bottom:none}
+.macro-delay{background:#6c4aff22;color:#9d5cf6;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
+.macro-label{font-size:13px;flex:1}
+.macro-btn{background:#6c4aff;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
+.macro-btn:active{background:#5a3add}
+.no-macro{color:#64748b;font-size:12px}
+
+/* ── Control pad ── */
+.ctrl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ctrl-btn{background:#16162a;border:none;border-radius:10px;color:#e2e8f0;font-size:22px;padding:18px 0;cursor:pointer;transition:background .1s}
+.ctrl-btn:active{background:#6c4aff}
+.ctrl-btn.wide{grid-column:span 3;font-size:14px;font-weight:700;padding:14px 0}
+.ctrl-btn.red{color:#f87171}
+.ctrl-btn.grn{color:#10b981}
+.ctrl-btn.yel{color:#f59e0b}
+
+/* ── Input ── */
+.inp-row{display:flex;gap:8px}
+.inp-row input{flex:1;background:#16162a;border:1px solid #1c1c2e;border-radius:8px;color:#e2e8f0;font-size:14px;padding:10px 12px;outline:none}
+.inp-row input::placeholder{color:#64748b}
+.inp-row button{background:#6c4aff;border:none;border-radius:8px;color:#fff;font-weight:700;padding:10px 16px;cursor:pointer;font-size:13px}
+.inp-row button:active{background:#5a3add}
+
+/* ── Coord tap ── */
+.coord-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.coord-row input{background:#16162a;border:1px solid #1c1c2e;border-radius:8px;color:#e2e8f0;font-size:14px;padding:9px 12px;outline:none;width:100%}
+.tap-btn{width:100%;background:#0ea5e9;border:none;border-radius:8px;color:#fff;font-weight:700;padding:11px 0;cursor:pointer;font-size:14px}
+.tap-btn:active{background:#0284c7}
+
+/* ── Status bar ── */
+.status-bar{text-align:center;font-size:11px;color:#374151;padding:4px 0}
+
+/* ── Swipe area ── */
+.swipe-pad{background:#111118;border-radius:12px;overflow:hidden}
+.swipe-inner{display:flex;flex-direction:column;align-items:center;padding:14px;gap:8px}
+.swipe-row{display:flex;gap:8px;justify-content:center}
+.sw-btn{background:#16162a;border:none;border-radius:10px;color:#e2e8f0;font-size:20px;padding:16px 24px;cursor:pointer;min-width:64px}
+.sw-btn:active{background:#7c3aed}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e1e2e;color:#e2e8f0;border-radius:10px;padding:10px 20px;font-size:13px;box-shadow:0 4px 20px #0006;opacity:0;pointer-events:none;transition:opacity .25s;z-index:999;white-space:nowrap}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-logo">SX</div>
+  <div class="hdr-title">Synthex</div>
+  <span class="conn-dot" id="connDot"></span>
+  <span class="conn-lbl" id="connLbl">Menghubungkan...</span>
+</div>
+
+<div class="page">
+
+  <!-- Perangkat -->
+  <div class="card">
+    <div class="card-hdr">Perangkat Terhubung</div>
+    <div class="card-body" id="devList">
+      <div class="no-dev">Memuat...</div>
+    </div>
+  </div>
+
+  <!-- Kontrol Langsung -->
+  <div class="card">
+    <div class="card-hdr">Kontrol HP</div>
+    <div class="card-body">
+      <div class="ctrl-grid">
+        <button class="ctrl-btn" onclick="sendKey(4)" title="Back">&#8592;</button>
+        <button class="ctrl-btn" onclick="sendKey(3)" title="Home">&#9711;</button>
+        <button class="ctrl-btn" onclick="sendKey(187)" title="Recent">&#9776;</button>
+        <button class="ctrl-btn" onclick="sendSwipe('up')" title="Swipe Up">&#8679;</button>
+        <button class="ctrl-btn" onclick="sendSwipe('down')" title="Swipe Down">&#8681;</button>
+        <button class="ctrl-btn" onclick="sendKey(26)" title="Power">&#9211;</button>
+        <button class="ctrl-btn wide" onclick="sendKey(224)">Wake Up Layar</button>
+        <button class="ctrl-btn wide yel" onclick="sendSwipe('left')">&#8678; Swipe Kiri</button>
+        <button class="ctrl-btn wide yel" onclick="sendSwipe('right')">Swipe Kanan &#8680;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Swipe Koordinat Custom -->
+  <div class="card">
+    <div class="card-hdr">Tap Koordinat</div>
+    <div class="card-body">
+      <div class="coord-row">
+        <input type="number" id="tapX" placeholder="X (misal 540)" inputmode="numeric">
+        <input type="number" id="tapY" placeholder="Y (misal 960)" inputmode="numeric">
+      </div>
+      <button class="tap-btn" onclick="sendTap()">&#128393; Tap Sekarang</button>
+    </div>
+  </div>
+
+  <!-- Kirim Teks -->
+  <div class="card">
+    <div class="card-hdr">Kirim Teks ke HP</div>
+    <div class="card-body">
+      <div class="inp-row">
+        <input type="text" id="textInput" placeholder="Ketik teks..." autocomplete="off">
+        <button onclick="sendText()">Kirim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Macro List -->
+  <div class="card">
+    <div class="card-hdr">Macro Aktif</div>
+    <div class="card-body" id="macroList">
+      <div class="no-macro">Belum ada macro</div>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">Menghubungkan ke Synthex PC...</div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const BASE = window.location.origin;
+let _serial = "";
+let _pollTimer = null;
+let _toastTimer = null;
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+function fmt(sec) {
+  if (sec < 60) return sec + "d";
+  if (sec < 3600) return Math.floor(sec/60) + "m";
+  return Math.floor(sec/3600) + "j " + (Math.floor(sec/60)%60) + "m";
+}
+
+function setConnected(ok) {
+  document.getElementById("connDot").className = "conn-dot" + (ok ? " ok" : "");
+  document.getElementById("connLbl").textContent = ok ? "Terhubung" : "Terputus";
+}
+
+async function poll() {
+  try {
+    const r = await fetch(BASE + "/api/status", {cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    setConnected(true);
+    renderDevices(d.devices || []);
+    renderMacros(d.macros || []);
+    _serial = d.mirror_serial || (d.devices?.[0]?.serial || "");
+    document.getElementById("statusBar").textContent =
+      "Tersambung · serial: " + (_serial || "—") + " · " + new Date().toLocaleTimeString();
+  } catch(e) {
+    setConnected(false);
+    document.getElementById("statusBar").textContent = "Tidak dapat terhubung ke Synthex PC";
+  }
+  _pollTimer = setTimeout(poll, 3000);
+}
+
+function renderDevices(devs) {
+  const el = document.getElementById("devList");
+  if (!devs.length) { el.innerHTML = '<div class="no-dev">Tidak ada HP terhubung</div>'; return; }
+  el.innerHTML = devs.map(d => {
+    const icon = d.serial.includes(":") ? "📶" : "🔌";
+    return `<span class="dev-badge"><span class="icon">${icon}</span>${d.serial} <small style="color:#64748b">${d.state||""}</small></span>`;
+  }).join("");
+}
+
+function renderMacros(macros) {
+  const el = document.getElementById("macroList");
+  const enabled = macros.filter(m => m.enabled !== false);
+  if (!enabled.length) { el.innerHTML = '<div class="no-macro">Belum ada macro aktif</div>'; return; }
+  el.innerHTML = enabled.map((m, i) =>
+    `<div class="macro-item">
+      <span class="macro-delay">${fmt(m.delay_sec || 180)}</span>
+      <span class="macro-label">${m.label || m.action || "Macro " + (i+1)}</span>
+      <button class="macro-btn" onclick="fireMacro(${i})">&#9654; Jalankan</button>
+    </div>`
+  ).join("");
+}
+
+async function post(path, body) {
+  try {
+    const r = await fetch(BASE + path, {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(body)
+    });
+    return r.ok ? await r.json() : {ok:false};
+  } catch(e) {
+    toast("Koneksi gagal: " + e.message);
+    return {ok:false};
+  }
+}
+
+async function sendKey(code) {
+  const r = await post("/api/adb", {action:"key", keycode:code, serial:_serial});
+  toast(r.ok ? "Keyevent " + code + " terkirim" : "Gagal");
+}
+
+async function sendSwipe(dir) {
+  const presets = {
+    up:    {x1:540,y1:1200,x2:540,y2:300,ms:350},
+    down:  {x1:540,y1:300,x2:540,y2:1200,ms:350},
+    left:  {x1:900,y1:960,x2:100,y2:960,ms:300},
+    right: {x1:100,y1:960,x2:900,y2:960,ms:300},
+  };
+  const p = presets[dir];
+  if (!p) return;
+  const r = await post("/api/adb", {...p, action:"swipe", serial:_serial});
+  toast(r.ok ? "Swipe " + dir : "Gagal");
+}
+
+async function sendTap() {
+  const x = parseInt(document.getElementById("tapX").value);
+  const y = parseInt(document.getElementById("tapY").value);
+  if (isNaN(x) || isNaN(y)) { toast("Isi koordinat X dan Y dulu"); return; }
+  const r = await post("/api/adb", {action:"tap", x, y, serial:_serial});
+  toast(r.ok ? `Tap (${x},${y}) OK` : "Gagal");
+}
+
+async function sendText() {
+  const txt = document.getElementById("textInput").value.trim();
+  if (!txt) return;
+  const r = await post("/api/adb", {action:"text", text:txt, serial:_serial});
+  if (r.ok) { toast("Teks terkirim"); document.getElementById("textInput").value = ""; }
+  else toast("Gagal kirim teks");
+}
+
+async function fireMacro(idx) {
+  const r = await post("/api/command", {type:"fire_macro", index:idx});
+  toast(r.ok ? "Macro dijalankan" : "Gagal");
+}
+
+// Start polling
+poll();
+</script>
+</body>
+</html>

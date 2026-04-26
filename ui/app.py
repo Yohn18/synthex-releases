@@ -478,6 +478,11 @@ class SynthexApp:
         # AI Chat — persists across page navigations
         self._ai_chat_history: list = []
 
+        # Remote macro + companion bridge
+        self._macro_engine  = None   # MacroEngine instance
+        self._bridge        = None   # SynthexBridge instance
+        self._bridge_serial = ""     # serial that bridge tracks
+
     def set_auth(self, email, token, session_id=None):
         self._email      = email
         self._token      = token
@@ -5438,6 +5443,454 @@ class SynthexApp:
                        activebackground=CARD, activeforeground=FG,
                        font=("Segoe UI", 9), cursor="hand2").pack(side="left")
 
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — USB First-time Wizard (tombol launcher)
+        # ══════════════════════════════════════════════════════════════
+        usb_wiz_sec = _sec("USB Setup Wizard",
+                           accent="#0D2240",
+                           subtitle="Koneksi USB pertama kali — panduan otomatis")
+
+        tk.Label(usb_wiz_sec,
+                 text="Wizard ini memandu kamu menghubungkan HP via USB lalu beralih ke WiFi "
+                      "secara otomatis — tinggal ikuti langkah yang muncul.",
+                 bg=CARD, fg=MUT, font=("Segoe UI", 9),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(0, 10))
+
+        wiz_btn_row = tk.Frame(usb_wiz_sec, bg=CARD)
+        wiz_btn_row.pack(anchor="w")
+        tk.Button(wiz_btn_row,
+                  text="  Buka USB Setup Wizard",
+                  bg="#0EA5E9", fg="white",
+                  font=("Segoe UI", 10, "bold"), padx=18, pady=8,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: self._show_usb_wizard(msg_var, ip_var, _refresh_devs)
+                  ).pack(side="left", padx=(0, 12))
+        tk.Label(wiz_btn_row,
+                 text="Sudah terhubung sebelumnya? Gunakan IP History di atas.",
+                 bg=CARD, fg="#3A3A5A", font=("Segoe UI", 8)).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Macro Remote
+        # ══════════════════════════════════════════════════════════════
+        mac_sec = _sec("Macro Remote", accent="#1A0A30",
+                       subtitle="Auto-action saat tidak ada gerakan")
+
+        mac_hdr_row = tk.Frame(mac_sec, bg=CARD)
+        mac_hdr_row.pack(fill="x", pady=(0, 8))
+
+        mac_enable_var = tk.BooleanVar(
+            value=self.config.get("remote.macro_enabled", False))
+        tk.Checkbutton(mac_hdr_row,
+                       text="Aktifkan Macro Engine",
+                       variable=mac_enable_var,
+                       bg=CARD, fg=FG, selectcolor="#1c1c2e",
+                       activebackground=CARD, activeforeground=FG,
+                       font=("Segoe UI", 9, "bold"), cursor="hand2").pack(
+            side="left")
+
+        mac_status_var = tk.StringVar(value="")
+        tk.Label(mac_hdr_row, textvariable=mac_status_var,
+                 bg=CARD, fg=GRN, font=("Segoe UI", 8)).pack(
+            side="right")
+
+        # Macro rules list container
+        mac_rules_frame = tk.Frame(mac_sec, bg="#0D0D18")
+        mac_rules_frame.pack(fill="x", pady=(0, 8))
+
+        # Stored rules from config
+        _mac_rules: list = list(self.config.get("remote.macro_rules", []))
+
+        def _fmt_delay(sec):
+            if sec < 60:  return "{}d".format(sec)
+            if sec < 3600: return "{}m".format(sec // 60)
+            return "{}j {}m".format(sec // 3600, (sec // 60) % 60)
+
+        def _rebuild_mac_rows():
+            for w in mac_rules_frame.winfo_children():
+                try: w.destroy()
+                except Exception: pass
+            if not _mac_rules:
+                tk.Label(mac_rules_frame, text="  Belum ada rule macro — klik + Tambah Rule di bawah.",
+                         bg="#0D0D18", fg=MUT, font=("Segoe UI", 8)).pack(
+                    anchor="w", pady=6, padx=10)
+                return
+            for i, rule in enumerate(_mac_rules):
+                _make_mac_row(i, rule)
+
+        _ACTION_LABELS_LOCAL = {
+            "tap":          "Tap Koordinat",
+            "swipe_down":   "Swipe Bawah",
+            "swipe_up":     "Swipe Atas",
+            "swipe_left":   "Swipe Kiri",
+            "swipe_right":  "Swipe Kanan",
+            "swipe_custom": "Swipe Custom",
+            "key_home":     "Home",
+            "key_back":     "Back",
+            "key_wakeup":   "Wake Up",
+        }
+
+        def _make_mac_row(i: int, rule: dict):
+            enabled = rule.get("enabled", True)
+            row = tk.Frame(mac_rules_frame, bg="#0D0D18", padx=10, pady=6)
+            row.pack(fill="x")
+            tk.Frame(mac_rules_frame, bg="#16162a", height=1).pack(fill="x")
+
+            en_var = tk.BooleanVar(value=enabled)
+            def _toggle_en(idx=i, v=en_var):
+                _mac_rules[idx]["enabled"] = v.get()
+                _save_mac_rules()
+            tk.Checkbutton(row, variable=en_var,
+                           bg="#0D0D18", fg=FG, selectcolor="#1c1c2e",
+                           activebackground="#0D0D18",
+                           command=_toggle_en).pack(side="left")
+
+            delay_txt = _fmt_delay(rule.get("delay_sec", 180))
+            act_txt   = _ACTION_LABELS_LOCAL.get(rule.get("action", "tap"), rule.get("action", ""))
+            coord_txt = ""
+            if rule.get("action") == "tap":
+                coord_txt = "  ({}, {})".format(rule.get("x",540), rule.get("y",960))
+            elif rule.get("action") == "swipe_custom":
+                coord_txt = "  ({},{})→({},{})".format(
+                    rule.get("x1",540), rule.get("y1",300),
+                    rule.get("x2",540), rule.get("y2",1200))
+
+            tk.Label(row,
+                     text="Idle {}  →  {}{}".format(delay_txt, act_txt, coord_txt),
+                     bg="#0D0D18", fg=FG, font=("Segoe UI", 9)).pack(
+                side="left", padx=(4, 0))
+            if rule.get("label"):
+                tk.Label(row, text="  [{}]".format(rule["label"]),
+                         bg="#0D0D18", fg=MUT, font=("Segoe UI", 8)).pack(
+                    side="left")
+
+            def _del(idx=i):
+                _mac_rules.pop(idx)
+                _save_mac_rules()
+                _rebuild_mac_rows()
+                _apply_mac_engine()
+
+            def _fire(r=rule):
+                if self._macro_engine:
+                    self._macro_engine.fire_now(r)
+                elif self._adb:
+                    from modules.remote_macro import MacroEngine as _ME
+                    _tmp = _ME(self._adb)
+                    _tmp.fire_now(r)
+                mac_status_var.set("Dijalankan manual!")
+                if self._root:
+                    self._root.after(2000, lambda: mac_status_var.set(""))
+
+            tk.Button(row, text="▶", bg="#1A1A38", fg=ACC,
+                      font=("Segoe UI", 8, "bold"), padx=6, pady=2,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=_fire).pack(side="right", padx=(4, 0))
+            tk.Button(row, text="✕", bg="#1A1A38", fg=RED,
+                      font=("Segoe UI", 8), padx=6, pady=2,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=_del).pack(side="right", padx=(4, 0))
+
+        def _save_mac_rules():
+            self.config.set("remote.macro_rules", _mac_rules)
+            self.config.save()
+
+        def _apply_mac_engine():
+            enabled = mac_enable_var.get()
+            self.config.set("remote.macro_enabled", enabled)
+            self.config.save()
+            if not enabled:
+                if self._macro_engine and self._macro_engine.running:
+                    self._macro_engine.stop()
+                mac_status_var.set("Macro: nonaktif")
+                return
+            if not self._adb:
+                mac_status_var.set("ADB belum siap")
+                return
+            active_rules = [r for r in _mac_rules if r.get("enabled", True)]
+            if not active_rules:
+                mac_status_var.set("Tidak ada rule aktif")
+                return
+            from modules.remote_macro import MacroEngine as _ME
+            if self._macro_engine is None:
+                self._macro_engine = _ME(self._adb)
+
+            def _on_fire(rule):
+                label = rule.get("label") or rule.get("action", "")
+                if self._root:
+                    self._root.after(0, lambda l=label:
+                        mac_status_var.set("Fired: {}".format(l)))
+                    self._root.after(3000, lambda: mac_status_var.set(
+                        "Engine aktif — idle: ..."))
+
+            self._macro_engine.on_fire = _on_fire
+            self._macro_engine.set_rules(active_rules)
+            if not self._macro_engine.running:
+                # Pick first mirrored serial
+                mirrored = list(self._scrcpy_map.keys()) if hasattr(self, "_scrcpy_map") else []
+                serial = mirrored[0] if mirrored else ""
+                self._macro_engine.set_serial(serial)
+                self._macro_engine.start()
+            mac_status_var.set("Engine aktif — {} rule".format(len(active_rules)))
+
+        mac_enable_var.trace_add("write", lambda *_: _apply_mac_engine())
+        _rebuild_mac_rows()
+
+        # ── Add Rule dialog ──────────────────────────────────────────────────
+        def _open_add_rule():
+            dlg = tk.Toplevel(self._root)
+            dlg.title("Tambah Macro Rule")
+            dlg.configure(bg="#0D0D14")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            dlg.update_idletasks()
+            dlg.geometry("+{}+{}".format(
+                (dlg.winfo_screenwidth() - 380) // 2,
+                (dlg.winfo_screenheight() - 440) // 2))
+
+            tk.Frame(dlg, bg=ACC, height=4).pack(fill="x")
+            b = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
+            b.pack(fill="both", expand=True)
+
+            def _row(parent, lbl, widget_fn):
+                r = tk.Frame(parent, bg="#0D0D14")
+                r.pack(fill="x", pady=(0, 10))
+                tk.Label(r, text=lbl, bg="#0D0D14", fg=MUT,
+                         font=("Segoe UI", 9), width=18, anchor="w").pack(side="left")
+                return widget_fn(r)
+
+            tk.Label(b, text="Tambah Macro Rule", bg="#0D0D14", fg=FG,
+                     font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 14))
+
+            # Label (opsional)
+            lbl_var = tk.StringVar()
+            _row(b, "Label (opsional):",
+                 lambda p: tk.Entry(p, textvariable=lbl_var,
+                                    bg="#16162a", fg=FG, insertbackground=FG,
+                                    relief="flat", width=22, bd=4).pack(side="left"))
+
+            # Delay
+            delay_var = tk.StringVar(value="180")
+            dr = _row(b, "Idle sebelum fire:", lambda p: p)
+            tk.Entry(dr, textvariable=delay_var,
+                     bg="#16162a", fg=FG, insertbackground=FG,
+                     relief="flat", width=8, bd=4).pack(side="left")
+            tk.Label(dr, text="detik  (180=3 menit, 300=5 menit)",
+                     bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(side="left", padx=(6,0))
+
+            # Action
+            act_var = tk.StringVar(value="swipe_down")
+            act_options = list(_ACTION_LABELS_LOCAL.keys())
+            act_labels  = [_ACTION_LABELS_LOCAL[k] for k in act_options]
+            _row(b, "Aksi:", lambda p: ttk.Combobox(
+                p, textvariable=act_var,
+                values=act_labels, state="readonly", width=20).pack(side="left"))
+
+            # Coord frame (shown only for tap/swipe_custom)
+            coord_frame = tk.Frame(b, bg="#0D0D14")
+            coord_frame.pack(fill="x")
+            x_var  = tk.StringVar(value="540"); y_var  = tk.StringVar(value="960")
+            x1_var = tk.StringVar(value="540"); y1_var = tk.StringVar(value="300")
+            x2_var = tk.StringVar(value="540"); y2_var = tk.StringVar(value="1200")
+            ms_var = tk.StringVar(value="350")
+
+            def _entry(parent, lbl, var, w=6):
+                tk.Label(parent, text=lbl, bg="#0D0D14", fg=MUT,
+                         font=("Segoe UI", 8)).pack(side="left", padx=(0,2))
+                tk.Entry(parent, textvariable=var,
+                         bg="#16162a", fg=FG, insertbackground=FG,
+                         relief="flat", width=w, bd=3).pack(side="left", padx=(0,8))
+
+            tap_frame = tk.Frame(coord_frame, bg="#0D0D14")
+            _entry(tap_frame, "X:", x_var); _entry(tap_frame, "Y:", y_var)
+
+            cust_frame = tk.Frame(coord_frame, bg="#0D0D14")
+            _entry(cust_frame, "X1:", x1_var); _entry(cust_frame, "Y1:", y1_var)
+            _entry(cust_frame, "X2:", x2_var); _entry(cust_frame, "Y2:", y2_var)
+            _entry(cust_frame, "ms:", ms_var, 5)
+
+            def _update_coord_vis(*_):
+                # Map display label back to key
+                disp = act_var.get()
+                key  = act_options[act_labels.index(disp)] if disp in act_labels else disp
+                tap_frame.pack_forget(); cust_frame.pack_forget()
+                if key == "tap":
+                    tap_frame.pack(anchor="w", pady=(0, 8))
+                elif key == "swipe_custom":
+                    cust_frame.pack(anchor="w", pady=(0, 8))
+
+            act_var.trace_add("write", _update_coord_vis)
+            _update_coord_vis()
+
+            err_var = tk.StringVar(value="")
+            tk.Label(b, textvariable=err_var, bg="#0D0D14", fg=RED,
+                     font=("Segoe UI", 8)).pack(anchor="w")
+
+            def _save():
+                disp = act_var.get()
+                key  = act_options[act_labels.index(disp)] if disp in act_labels else disp
+                try:
+                    delay = int(delay_var.get())
+                    if delay < 5:
+                        err_var.set("Delay minimum 5 detik"); return
+                except ValueError:
+                    err_var.set("Delay harus angka"); return
+
+                rule: dict = {
+                    "delay_sec": delay,
+                    "action":    key,
+                    "enabled":   True,
+                }
+                if lbl_var.get().strip():
+                    rule["label"] = lbl_var.get().strip()
+                if key == "tap":
+                    try:
+                        rule["x"] = int(x_var.get()); rule["y"] = int(y_var.get())
+                    except ValueError:
+                        err_var.set("Koordinat tap harus angka"); return
+                elif key == "swipe_custom":
+                    try:
+                        rule["x1"] = int(x1_var.get()); rule["y1"] = int(y1_var.get())
+                        rule["x2"] = int(x2_var.get()); rule["y2"] = int(y2_var.get())
+                        rule["ms"]  = int(ms_var.get())
+                    except ValueError:
+                        err_var.set("Koordinat swipe harus angka"); return
+
+                _mac_rules.append(rule)
+                _save_mac_rules()
+                _rebuild_mac_rows()
+                _apply_mac_engine()
+                dlg.destroy()
+
+            btn_r = tk.Frame(b, bg="#0D0D14")
+            btn_r.pack(anchor="e", pady=(10, 0))
+            tk.Button(btn_r, text="Simpan", bg=ACC, fg="white",
+                      font=("Segoe UI", 9, "bold"), padx=18, pady=7,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=_save).pack(side="left", padx=(0, 8))
+            tk.Button(btn_r, text="Batal", bg="#1c1c2e", fg=MUT,
+                      font=("Segoe UI", 9), padx=12, pady=7,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=dlg.destroy).pack(side="left")
+
+        mac_add_row = tk.Frame(mac_sec, bg=CARD)
+        mac_add_row.pack(anchor="w")
+        tk.Button(mac_add_row, text="+ Tambah Rule",
+                  bg="#1A0840", fg=ACC,
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_open_add_rule).pack(side="left", padx=(0, 10))
+        tk.Button(mac_add_row, text="Stop Engine",
+                  bg="#1c1c2e", fg=MUT,
+                  font=("Segoe UI", 8), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: (
+                      self._macro_engine.stop() if self._macro_engine else None,
+                      mac_status_var.set("Dihentikan")
+                  )).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Synthex Companion (HP → PC via browser)
+        # ══════════════════════════════════════════════════════════════
+        comp_sec = _sec("Synthex Companion App",
+                        accent="#0A2A0A",
+                        subtitle="Kontrol dari HP tanpa APK — buka di Chrome")
+
+        comp_info = tk.Label(comp_sec,
+            text="PC akan menjalankan server lokal. Buka URL di bawah dari Chrome HP kamu.\n"
+                 "Tambahkan ke Home Screen (menu Chrome → Add to Home Screen) "
+                 "supaya terasa seperti app sungguhan.",
+            bg=CARD, fg=MUT, font=("Segoe UI", 9), wraplength=560, justify="left")
+        comp_info.pack(anchor="w", pady=(0, 10))
+
+        comp_url_var  = tk.StringVar(value="Server belum berjalan")
+        comp_stat_var = tk.StringVar(value="")
+
+        comp_url_lbl = tk.Label(comp_sec, textvariable=comp_url_var,
+                                bg=CARD, fg=ACC, font=("Segoe UI", 11, "bold"),
+                                cursor="hand2")
+        comp_url_lbl.pack(anchor="w", pady=(0, 6))
+
+        tk.Label(comp_sec, textvariable=comp_stat_var,
+                 bg=CARD, fg=GRN, font=("Segoe UI", 8)).pack(anchor="w")
+
+        def _comp_copy_url():
+            url = comp_url_var.get()
+            if url.startswith("http"):
+                self._root.clipboard_clear()
+                self._root.clipboard_append(url)
+                comp_stat_var.set("URL disalin ke clipboard!")
+                if self._root:
+                    self._root.after(2500, lambda: comp_stat_var.set(""))
+
+        comp_url_lbl.bind("<Button-1>", lambda e: _comp_copy_url())
+
+        def _start_companion():
+            if self._bridge and self._bridge.running:
+                comp_stat_var.set("Server sudah berjalan")
+                return
+            from modules.synthex_bridge import SynthexBridge
+            port = int(self.config.get("remote.companion_port", 8765))
+            self._bridge = SynthexBridge(
+                adb_manager=self._adb, port=port)
+
+            def _on_cmd(cmd):
+                ctype = cmd.get("type", "")
+                if ctype == "fire_macro" and self._macro_engine:
+                    idx = cmd.get("index", 0)
+                    rules = self._macro_engine._rules
+                    if 0 <= idx < len(rules):
+                        self._macro_engine.fire_now(rules[idx])
+
+            self._bridge.on_command = _on_cmd
+            ok = self._bridge.start()
+            if ok:
+                comp_url_var.set(self._bridge.url)
+                comp_stat_var.set("Server aktif — klik URL untuk salin, buka di Chrome HP")
+                _update_bridge_state()
+            else:
+                comp_stat_var.set("Gagal — port mungkin sudah dipakai")
+
+        def _stop_companion():
+            if self._bridge:
+                self._bridge.stop()
+                self._bridge = None
+            comp_url_var.set("Server belum berjalan")
+            comp_stat_var.set("Server dihentikan")
+
+        def _update_bridge_state():
+            if not self._bridge or not self._bridge.running:
+                return
+            devs = []
+            if self._adb:
+                try:
+                    devs = self._adb.list_devices()
+                except Exception:
+                    pass
+            mirrored = list(self._scrcpy_map.keys()) if hasattr(self, "_scrcpy_map") else []
+            self._bridge.update_status(
+                macros=[r for r in _mac_rules if r.get("enabled", True)],
+                devices=devs,
+                mirror_serial=mirrored[0] if mirrored else "")
+            if self._root:
+                self._root.after(5000, _update_bridge_state)
+
+        comp_btn_row = tk.Frame(comp_sec, bg=CARD)
+        comp_btn_row.pack(anchor="w", pady=(8, 0))
+        tk.Button(comp_btn_row, text="▶ Jalankan Server Companion",
+                  bg="#16803C", fg="white",
+                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_start_companion).pack(side="left", padx=(0, 8))
+        tk.Button(comp_btn_row, text="■ Stop",
+                  bg="#1c1c2e", fg=MUT,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_stop_companion).pack(side="left")
+
+        # If bridge was already running from a previous page load
+        if self._bridge and self._bridge.running:
+            comp_url_var.set(self._bridge.url)
+            comp_stat_var.set("Server aktif")
+
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
             from modules.remote_control import AdbManager, ScrcpyManager
@@ -5502,6 +5955,276 @@ class SynthexApp:
         self._adb_poll_id = self._root.after(10000, _poll_adb)
 
         return f
+
+    # ================================================================
+    #  USB SETUP WIZARD
+    # ================================================================
+
+    def _show_usb_wizard(self, msg_var=None, ip_var=None, refresh_devs=None):
+        """Step-by-step Toplevel wizard: USB → tcpip → WiFi → mirror."""
+        import threading as _thr
+        import time as _time
+
+        dlg = tk.Toplevel(self._root)
+        dlg.title("Synthex USB Setup Wizard")
+        dlg.configure(bg="#0A0A0F")
+        dlg.resizable(False, False)
+        dlg.attributes("-topmost", True)
+        dlg.grab_set()
+        dlg.update_idletasks()
+        _w, _h = 480, 520
+        dlg.geometry("{}x{}+{}+{}".format(
+            _w, _h,
+            (dlg.winfo_screenwidth()  - _w) // 2,
+            (dlg.winfo_screenheight() - _h) // 2))
+
+        # Header
+        tk.Frame(dlg, bg="#0EA5E9", height=4).pack(fill="x")
+        hdr = tk.Frame(dlg, bg="#111118", padx=20, pady=14)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="USB Setup Wizard",
+                 bg="#111118", fg="white",
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(hdr,
+                 text="Hubungkan HP pertama kali — panduan otomatis langkah demi langkah",
+                 bg="#111118", fg="#64748b",
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+
+        body = tk.Frame(dlg, bg="#0A0A0F", padx=20, pady=14)
+        body.pack(fill="both", expand=True)
+
+        STEPS = [
+            ("Colok kabel USB",
+             "Pastikan Developer Options dan USB Debugging sudah aktif di HP.\n"
+             "Saat ada popup izin di HP, pilih Allow/Izinkan."),
+            ("Mendeteksi HP",
+             "Menunggu HP terdeteksi oleh ADB..."),
+            ("Aktifkan ADB via WiFi",
+             "Menjalankan 'adb tcpip 5555' — HP akan siap menerima koneksi WiFi."),
+            ("Mendapatkan IP HP",
+             "Mengambil IP WiFi HP secara otomatis..."),
+            ("Cabut USB & Hubungkan WiFi",
+             "Cabut kabel USB sekarang, lalu klik Lanjut untuk connect via WiFi."),
+            ("Menghubungkan via WiFi",
+             "Mencoba adb connect ke IP HP..."),
+        ]
+        _N = len(STEPS)
+
+        step_frames: list[tk.Frame] = []
+        step_dots:   list[tk.Label] = []
+        step_lbls:   list[tk.Label] = []
+        step_descs:  list[tk.Label] = []
+
+        for i, (title, desc) in enumerate(STEPS):
+            row = tk.Frame(body, bg="#0A0A0F", pady=3)
+            row.pack(fill="x")
+            dot = tk.Label(row, text="●",
+                           bg="#0A0A0F", fg="#374151",
+                           font=("Segoe UI", 12))
+            dot.pack(side="left", padx=(0, 8))
+            info = tk.Frame(row, bg="#0A0A0F")
+            info.pack(side="left", fill="x", expand=True)
+            lbl  = tk.Label(info, text="{}. {}".format(i+1, title),
+                            bg="#0A0A0F", fg="#64748b",
+                            font=("Segoe UI", 9, "bold"), anchor="w")
+            lbl.pack(anchor="w")
+            desc_lbl = tk.Label(info, text=desc,
+                                bg="#0A0A0F", fg="#374151",
+                                font=("Segoe UI", 8),
+                                wraplength=370, justify="left", anchor="w")
+            desc_lbl.pack(anchor="w")
+            step_frames.append(row)
+            step_dots.append(dot)
+            step_lbls.append(lbl)
+            step_descs.append(desc_lbl)
+
+        # Status + progress
+        status_var = tk.StringVar(value="Siap — klik Mulai untuk memulai wizard")
+        tk.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(10, 6))
+        st_lbl = tk.Label(body, textvariable=status_var,
+                          bg="#0A0A0F", fg="#e2e8f0",
+                          font=("Segoe UI", 9), wraplength=420, justify="left")
+        st_lbl.pack(anchor="w")
+
+        # Buttons
+        btn_row = tk.Frame(dlg, bg="#0A0A0F", padx=20, pady=12)
+        btn_row.pack(fill="x", side="bottom")
+        next_btn = tk.Button(btn_row, text="▶  Mulai Wizard",
+                             bg="#0EA5E9", fg="white",
+                             font=("Segoe UI", 10, "bold"),
+                             padx=18, pady=8, relief="flat", bd=0, cursor="hand2")
+        next_btn.pack(side="left", padx=(0, 10))
+        tk.Button(btn_row, text="Tutup",
+                  bg="#1c1c2e", fg="#64748b",
+                  font=("Segoe UI", 9), padx=12, pady=8,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=dlg.destroy).pack(side="left")
+
+        _ip_found   = [""]
+        _serial_usb = [""]
+        _step_idx   = [-1]
+
+        def _mark(i, state):
+            # state: "wait" / "running" / "ok" / "err"
+            colors = {"wait": ("#374151", "#374151"), "running": ("#FBBF24", "#D4A400"),
+                      "ok":   ("#10b981", "#E2E8F0"), "err":    ("#F87171", "#F87171")}
+            dot_c, fg_c = colors.get(state, ("#374151", "#374151"))
+            try:
+                step_dots[i].configure(fg=dot_c)
+                step_lbls[i].configure(fg=fg_c)
+            except Exception:
+                pass
+
+        def _set_status(msg, color="#e2e8f0"):
+            if self._root:
+                self._root.after(0, lambda: status_var.set(msg))
+                self._root.after(0, lambda: st_lbl.configure(fg=color))
+
+        def _run_wizard():
+            if not self._adb:
+                _set_status("ADB belum diinisialisasi — buka halaman Remote dulu", "#f87171")
+                return
+
+            # Step 0: Colok USB
+            _mark(0, "running")
+            _set_status("Langkah 1: Colok kabel USB dan izinkan USB debugging di HP...")
+
+            # Step 1: Deteksi HP
+            _mark(1, "running")
+            _set_status("Menunggu HP terdeteksi (maks 30 detik)...")
+            found = False
+            for _ in range(30):
+                devs = self._adb.list_devices()
+                usb  = [d["serial"] for d in devs
+                        if d["state"] == "device" and ":" not in d["serial"]]
+                if usb:
+                    _serial_usb[0] = usb[0]
+                    _mark(0, "ok"); _mark(1, "ok")
+                    _set_status("HP terdeteksi: {}".format(usb[0]), "#10b981")
+                    found = True
+                    break
+                _time.sleep(1)
+            if not found:
+                _mark(0, "err"); _mark(1, "err")
+                _set_status("Tidak ada HP USB terdeteksi. Pastikan USB Debugging aktif "
+                            "dan izinkan popup di HP.", "#f87171")
+                if self._root:
+                    self._root.after(0, lambda: next_btn.configure(
+                        text="▶  Coba Lagi", command=lambda: _thr.Thread(
+                            target=_run_wizard, daemon=True).start(),
+                        state="normal"))
+                return
+
+            # Step 2: adb tcpip
+            _mark(2, "running")
+            _set_status("Menjalankan adb tcpip 5555...")
+            _time.sleep(0.5)
+            ok, msg = self._adb.tcpip(5555)
+            if not ok:
+                _mark(2, "err")
+                _set_status("Gagal: {} — coba cabut-colok USB lagi".format(msg), "#f87171")
+                return
+            _mark(2, "ok")
+            _time.sleep(1.5)
+
+            # Step 3: Dapatkan IP
+            _mark(3, "running")
+            _set_status("Mendapatkan IP WiFi HP...")
+            ip = self._adb.get_device_ip()
+            if not ip:
+                _mark(3, "err")
+                _set_status("IP WiFi tidak terdeteksi — pastikan HP terhubung ke WiFi.", "#f87171")
+                if self._root:
+                    self._root.after(0, lambda: next_btn.configure(
+                        text="Isi IP Manual & Lanjut",
+                        state="normal",
+                        command=lambda: _manual_continue()))
+                return
+            _ip_found[0] = ip
+            _mark(3, "ok")
+            _set_status("IP ditemukan: {}:5555".format(ip), "#10b981")
+
+            # Step 4: Cabut USB — tunggu user klik Lanjut
+            _mark(4, "running")
+            if self._root:
+                self._root.after(0, lambda: next_btn.configure(
+                    text="✔  Cabut USB, lalu klik Lanjut",
+                    state="normal",
+                    command=lambda: _thr.Thread(
+                        target=_step_wifi, daemon=True).start()))
+            _set_status("Cabut kabel USB sekarang, lalu klik tombol di bawah.", "#FBBF24")
+
+        def _manual_continue():
+            import tkinter.simpledialog as _sd
+            ip = _sd.askstring("IP HP", "Masukkan IP WiFi HP kamu (tanpa port):",
+                               parent=dlg)
+            if ip and ip.strip():
+                _ip_found[0] = ip.strip()
+                _mark(3, "ok")
+                _mark(4, "running")
+                next_btn.configure(text="✔  Cabut USB, lalu klik Lanjut",
+                                   state="normal",
+                                   command=lambda: _thr.Thread(
+                                       target=_step_wifi, daemon=True).start())
+                _set_status("IP manual: {} — cabut USB lalu klik Lanjut".format(
+                    _ip_found[0]), "#FBBF24")
+
+        def _step_wifi():
+            _mark(4, "ok")
+            if self._root:
+                self._root.after(0, lambda: next_btn.configure(
+                    state="disabled", text="Sedang menghubungkan..."))
+
+            # Step 5: Connect WiFi
+            _mark(5, "running")
+            ip = _ip_found[0]
+            _set_status("Menghubungkan ke {}:5555...".format(ip))
+            _time.sleep(2.5)
+            ok2, msg2 = False, ""
+            for attempt in range(5):
+                probe = self._adb.probe_port(ip, 5555, timeout=3)
+                if probe == "open":
+                    ok2, msg2 = self._adb.connect(ip, 5555)
+                    if ok2:
+                        break
+                _set_status("Mencoba... ({}/5)".format(attempt+1))
+                _time.sleep(1.5)
+
+            if ok2:
+                _mark(5, "ok")
+                _set_status("Terhubung! HP siap di-mirror via WiFi.", "#10b981")
+                if msg_var and self._root:
+                    self._root.after(0, lambda: msg_var.set(msg2))
+                if ip_var and self._root:
+                    self._root.after(0, lambda: ip_var.set(ip))
+                self.config.set("remote.last_ip", ip)
+                self.config.set("remote.last_port", "5555")
+                self.config.save()
+                if refresh_devs:
+                    refresh_devs()
+                if self._root:
+                    self._root.after(0, lambda: next_btn.configure(
+                        text="✔  Selesai — Tutup", state="normal",
+                        command=dlg.destroy))
+            else:
+                _mark(5, "err")
+                _set_status(
+                    "Gagal terhubung. {}\n"
+                    "Coba: HP & PC di WiFi yang sama? Port 5555 terbuka?".format(msg2),
+                    "#f87171")
+                if self._root:
+                    self._root.after(0, lambda: next_btn.configure(
+                        text="Coba Lagi WiFi", state="normal",
+                        command=lambda: _thr.Thread(
+                            target=_step_wifi, daemon=True).start()))
+
+        def _start():
+            next_btn.configure(state="disabled", text="Sedang berjalan...")
+            for i in range(_N):
+                _mark(i, "wait")
+            _thr.Thread(target=_run_wizard, daemon=True).start()
+
+        next_btn.configure(command=_start)
 
     # ================================================================
     #  CHAT PAGE
