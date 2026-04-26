@@ -6755,58 +6755,91 @@ class SynthexApp:
 
     def _pg_ai_chat(self):
         import threading as _thr
+        import re as _re
+        from datetime import datetime as _dt
 
         f = tk.Frame(self._content, bg=BG)
         self._hdr(f, "AI Chat",
                   "Chat pribadi dengan AI — GPT, Claude, Gemini, Groq")
 
-        provider = self.config.get("ai.provider", "openai")
-        api_key  = self.config.get("ai.api_key", "").strip()
-        model    = self.config.get("ai.model", "").strip()
+        provider   = self.config.get("ai.provider", "openai")
+        api_key    = self.config.get("ai.api_key", "").strip()
         sys_prompt = self.config.get(
             "ai.system_prompt",
             "You are a helpful automation assistant. Answer concisely.")
         max_tokens = self.config.get("ai.max_tokens", 800)
 
-        # conversation history persists across navigations via self._ai_chat_history
+        # history persists across navigations via self._ai_chat_history
         _history  = self._ai_chat_history
         _thinking = [False]
+        _last_user_text = [""]   # for regenerate
 
-        # ── layout ──────────────────────────────────────────────────────────
+        # ── model list per provider ───────────────────────────────────────────
+        _PROV_MODELS = {
+            "openai":    ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"],
+            "anthropic": ["claude-opus-4-7", "claude-sonnet-4-6",
+                          "claude-haiku-4-5-20251001"],
+            "gemini":    ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
+            "groq":      ["llama-3.3-70b-versatile", "llama3-8b-8192",
+                          "mixtral-8x7b-32768"],
+        }
+        _saved_model = self.config.get("ai.model", "").strip()
+        _m_list      = list(_PROV_MODELS.get(provider, []))
+        if _saved_model and _saved_model not in _m_list:
+            _m_list.insert(0, _saved_model)
+        if not _m_list:
+            _m_list = ["default"]
+        _model_var = tk.StringVar(value=_saved_model or _m_list[0])
+
+        def _on_model_change(*_):
+            m = _model_var.get().strip()
+            self.config.set("ai.model", m)
+            self.config.save()
+
+        # ── top bar ──────────────────────────────────────────────────────────
         top_bar = tk.Frame(f, bg=CARD, padx=16, pady=8)
         top_bar.pack(fill="x")
 
-        # Provider badge
         _prov_colors = {
             "openai": "#10A37F", "anthropic": "#C76B3A",
             "groq": "#F55036",   "gemini": "#4285F4",
         }
-        _badge_bg = _prov_colors.get(provider, ACC)
-        tk.Label(top_bar, text=" {} ".format(provider.upper()),
-                 bg=_badge_bg, fg="white",
+        tk.Label(top_bar,
+                 text=" {} ".format(provider.upper()),
+                 bg=_prov_colors.get(provider, ACC), fg="white",
                  font=("Segoe UI", 8, "bold"),
-                 padx=6, pady=2).pack(side="left")
-        _model_lbl = model or "default"
-        tk.Label(top_bar, text="  {}".format(_model_lbl),
-                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(side="left")
+                 padx=6, pady=3).pack(side="left")
+
+        # Model switcher (OptionMenu styled dark)
+        model_om = tk.OptionMenu(top_bar, _model_var, *_m_list,
+                                 command=_on_model_change)
+        model_om.configure(bg=CARD2, fg=FG, relief="flat", bd=0,
+                           activebackground=CARD, activeforeground=FG,
+                           font=("Segoe UI", 8), highlightthickness=0,
+                           indicatoron=True, padx=6, pady=2)
+        model_om["menu"].configure(bg=CARD2, fg=FG, relief="flat",
+                                   activebackground=ACC, activeforeground="white",
+                                   font=("Segoe UI", 8))
+        model_om.pack(side="left", padx=(6, 0))
 
         if not api_key:
             tk.Label(top_bar,
-                     text="  ⚠ API key belum diset — buka Settings → AI Integration",
-                     bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(side="left", padx=(12, 0))
+                     text="  ⚠ API key belum diset — Settings → AI Integration",
+                     bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(
+                side="left", padx=(12, 0))
 
         def _clear_chat():
             self._ai_chat_history.clear()
             _rebuild_messages()
 
-        tk.Button(top_bar, text="🗑 Hapus Chat",
+        tk.Button(top_bar, text="🗑 Hapus",
                   bg=CARD2, fg=MUT, relief="flat", bd=0,
-                  font=("Segoe UI", 8), padx=10, pady=4,
+                  font=("Segoe UI", 8), padx=8, pady=3,
                   cursor="hand2", command=_clear_chat).pack(side="right")
 
-        # ── message area ────────────────────────────────────────────────────
+        # ── message canvas ───────────────────────────────────────────────────
         msg_outer = tk.Frame(f, bg=BG)
-        msg_outer.pack(fill="both", expand=True, padx=0, pady=0)
+        msg_outer.pack(fill="both", expand=True)
 
         msg_sb = ttk.Scrollbar(msg_outer, orient="vertical")
         msg_sb.pack(side="right", fill="y")
@@ -6821,9 +6854,9 @@ class SynthexApp:
                           scrollregion=msg_cv.bbox("all")))
         msg_cv.bind("<Configure>",
                     lambda e: msg_cv.itemconfig(_mwid, width=e.width))
+
         def _on_scroll(e):
             msg_cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
-
         msg_cv.bind("<MouseWheel>", _on_scroll)
         msg_body.bind("<MouseWheel>", _on_scroll)
 
@@ -6836,78 +6869,204 @@ class SynthexApp:
             if self._root:
                 self._root.after(80, lambda: msg_cv.yview_moveto(1.0))
 
-        _typing_frame_ref = [None]  # forward ref — assigned after frame is created
+        # ── animated typing indicator ────────────────────────────────────────
+        _typing_frame_ref = [None]
+        _dot_idx = [0]
 
+        _typing_frame = tk.Frame(msg_body, bg=BG)
+        _typing_frame_ref[0] = _typing_frame
+        _dot_lbl = tk.Label(_typing_frame, text="●",
+                            bg=BG, fg=MUT, font=("Segoe UI", 11))
+        _dot_lbl.pack(side="left", padx=(16, 4))
+        tk.Label(_typing_frame, text="AI sedang mengetik",
+                 bg=BG, fg=MUT, font=("Segoe UI", 8, "italic")).pack(side="left")
+
+        def _animate_typing():
+            if not _thinking[0]:
+                return
+            frames = ["●", "● ●", "● ● ●", "● ●"]
+            _dot_idx[0] = (_dot_idx[0] + 1) % len(frames)
+            try:
+                _dot_lbl.configure(text=frames[_dot_idx[0]])
+            except Exception:
+                return
+            if self._root and _thinking[0]:
+                self._root.after(350, _animate_typing)
+
+        def _show_typing(show: bool):
+            if show:
+                _typing_frame.pack_forget()
+                _typing_frame.pack(fill="x", pady=(0, 4))
+                _dot_idx[0] = 0
+                _animate_typing()
+            else:
+                _typing_frame.pack_forget()
+            _scroll_bottom()
+
+        # ── regen frame ref ──────────────────────────────────────────────────
+        _regen_ref = [None]
+
+        # ── quick prompt chips ───────────────────────────────────────────────
+        _QUICK = [
+            ("🔍  Analisis halaman web",   "@url [tempel URL di sini] analisis isi halaman ini"),
+            ("🐛  Debug kode",             "Tolong debug kode ini:\n\n"),
+            ("📋  Buat rangkuman",         "Buat rangkuman singkat dari:\n\n"),
+            ("✍  Tulis email",             "Tulis email profesional tentang: "),
+            ("📊  Analisis data",          "Analisis data ini dan berikan insight:\n\n"),
+            ("🌐  Terjemahkan",            "Terjemahkan ke Bahasa Indonesia:\n\n"),
+        ]
+        _inp_ref = [None]   # forward ref untuk inp_entry
+
+        def _build_quick_into(parent):
+            tk.Label(parent, text="Halo! Mau ngapain hari ini?",
+                     bg=BG, fg=FG,
+                     font=("Segoe UI", 12, "bold")).pack(pady=(20, 4))
+            tk.Label(parent,
+                     text="Pilih prompt cepat atau ketik sendiri di bawah.",
+                     bg=BG, fg=MUT,
+                     font=("Segoe UI", 8)).pack(pady=(0, 18))
+            for i in range(0, len(_QUICK), 3):
+                row = tk.Frame(parent, bg=BG)
+                row.pack(pady=3)
+                for label, prompt in _QUICK[i:i + 3]:
+                    def _use(p=prompt):
+                        inp = _inp_ref[0]
+                        if not inp:
+                            return
+                        inp.delete("1.0", tk.END)
+                        inp.insert("1.0", p)
+                        inp.focus_set()
+                        inp.mark_set("insert", tk.END)
+                    tk.Button(row, text=label,
+                              bg=CARD2, fg=FG, relief="flat", bd=0,
+                              font=("Segoe UI", 8), padx=10, pady=7,
+                              cursor="hand2", command=_use,
+                              activebackground=ACC,
+                              activeforeground="white").pack(
+                        side="left", padx=5)
+            tk.Label(parent,
+                     text="Tip: ketik @url https://... untuk analisis isi halaman web",
+                     bg=BG, fg=MUT,
+                     font=("Segoe UI", 7, "italic")).pack(pady=(14, 0))
+
+        # ── bubble builder ───────────────────────────────────────────────────
+        def _add_bubble(role: str, text: str, ts: str = "",
+                        is_last_ai: bool = False):
+            is_user   = role == "user"
+            bubble_bg = ACC    if is_user else CARD
+            bubble_fg = "white" if is_user else FG
+            anchor    = "e"    if is_user else "w"
+            padx_l    = (80, 16) if is_user else (16, 80)
+            name      = "Kamu" if is_user else provider.upper()
+            name_fg   = ACC2   if is_user else MUT
+
+            row = tk.Frame(msg_body, bg=BG)
+            row.pack(fill="x", pady=(0, 6))
+
+            # Name row + timestamp + copy button (AI only)
+            hdr = tk.Frame(row, bg=BG)
+            hdr.pack(anchor=anchor, padx=padx_l)
+            tk.Label(hdr, text=name, bg=BG, fg=name_fg,
+                     font=("Segoe UI", 7, "bold")).pack(side="left")
+            if ts:
+                tk.Label(hdr, text="  {}".format(ts),
+                         bg=BG, fg=MUT,
+                         font=("Segoe UI", 7)).pack(side="left")
+            if not is_user:
+                def _copy_fn(t=text):
+                    try:
+                        self._root.clipboard_clear()
+                        self._root.clipboard_append(t)
+                        _cb.configure(text="✓", fg=GRN)
+                        self._root.after(1500, lambda: _cb.configure(
+                            text="📋", fg=MUT))
+                    except Exception:
+                        pass
+                _cb = tk.Button(hdr, text="📋", bg=BG, fg=MUT,
+                                relief="flat", bd=0,
+                                font=("Segoe UI", 8), cursor="hand2",
+                                command=_copy_fn, activebackground=BG)
+                _cb.pack(side="left", padx=(6, 0))
+
+            # Bubble
+            bubble = tk.Frame(row, bg=bubble_bg, padx=12, pady=8)
+            bubble.pack(anchor=anchor, padx=padx_l)
+            _wrap = max(280, msg_cv.winfo_width() - 160)
+            tk.Label(bubble, text=text, bg=bubble_bg, fg=bubble_fg,
+                     font=("Segoe UI", 9),
+                     wraplength=_wrap, justify="left").pack(anchor="w")
+            _bind_scroll_recursive(row)
+
+            # Regenerate button after last AI message
+            if is_last_ai:
+                if _regen_ref[0]:
+                    try: _regen_ref[0].destroy()
+                    except Exception: pass
+                rf = tk.Frame(msg_body, bg=BG)
+                rf.pack(anchor="w", padx=16, pady=(0, 4))
+                _regen_ref[0] = rf
+                tk.Button(rf, text="↺  Ulangi jawaban",
+                          bg=CARD2, fg=MUT, relief="flat", bd=0,
+                          font=("Segoe UI", 8), padx=8, pady=3,
+                          cursor="hand2",
+                          command=lambda: _regenerate()).pack(side="left")
+
+        # ── rebuild ──────────────────────────────────────────────────────────
         def _rebuild_messages():
             for w in msg_body.winfo_children():
                 if w is _typing_frame_ref[0]:
                     continue
                 try: w.destroy()
                 except Exception: pass
+            _regen_ref[0] = None
             if not _history:
-                tk.Label(msg_body,
-                         text="Mulai percakapan — ketik pesan di bawah.",
-                         bg=BG, fg=MUT, font=("Segoe UI", 9, "italic")).pack(
-                    pady=40)
+                qf = tk.Frame(msg_body, bg=BG)
+                qf.pack(fill="x")
+                _build_quick_into(qf)
                 return
-            for msg in _history:
-                _add_bubble(msg["role"], msg["content"])
+            for i, msg in enumerate(_history):
+                is_last_ai = (
+                    msg["role"] == "assistant"
+                    and i == len(_history) - 1
+                    and not _thinking[0])
+                _add_bubble(msg["role"], msg["content"],
+                            ts=msg.get("ts", ""),
+                            is_last_ai=is_last_ai)
             _scroll_bottom()
 
-        def _add_bubble(role: str, text: str):
-            is_user = role == "user"
-            bubble_bg  = ACC if is_user else CARD
-            bubble_fg  = "white" if is_user else FG
-            anchor     = "e" if is_user else "w"
-            padx_l     = (80, 16) if is_user else (16, 80)
-            label_txt  = "Kamu" if is_user else provider.upper()
-            label_fg   = ACC2 if is_user else MUT
-
-            row = tk.Frame(msg_body, bg=BG)
-            row.pack(fill="x", pady=(0, 6))
-
-            tk.Label(row, text=label_txt, bg=BG, fg=label_fg,
-                     font=("Segoe UI", 7, "bold")).pack(
-                anchor=anchor, padx=padx_l)
-
-            bubble = tk.Frame(row, bg=bubble_bg, padx=12, pady=8)
-            bubble.pack(anchor=anchor, padx=padx_l)
-
-            _wrap = max(280, msg_cv.winfo_width() - 160)
-            lbl = tk.Label(bubble, text=text, bg=bubble_bg, fg=bubble_fg,
-                           font=("Segoe UI", 9),
-                           wraplength=_wrap, justify="left")
-            lbl.pack(anchor="w")
-            _bind_scroll_recursive(row)
-
-        # typing indicator — kept as last child, excluded from rebuild destroy
-        _typing_frame = tk.Frame(msg_body, bg=BG)
-        _typing_frame_ref[0] = _typing_frame
-        tk.Label(_typing_frame,
-                 text="AI sedang mengetik...",
-                 bg=BG, fg=MUT,
-                 font=("Segoe UI", 8, "italic")).pack(anchor="w", padx=16)
-
-        def _show_typing(show: bool):
-            if show:
-                _typing_frame.pack(fill="x", pady=(0, 4))
-                _typing_frame.lift()  # always last in msg_body
-            else:
-                _typing_frame.pack_forget()
-            _scroll_bottom()
-
-        # ── input bar ───────────────────────────────────────────────────────
-        inp_frame = tk.Frame(f, bg=CARD, padx=12, pady=10)
+        # ── input bar ────────────────────────────────────────────────────────
+        inp_frame = tk.Frame(f, bg=CARD, padx=12, pady=8)
         inp_frame.pack(fill="x", side="bottom")
 
-        inp_entry = tk.Text(inp_frame, height=3,
+        # Hint + char counter row
+        meta_row = tk.Frame(inp_frame, bg=CARD)
+        meta_row.pack(fill="x", pady=(0, 5))
+        tk.Label(meta_row,
+                 text="Shift+Enter untuk baris baru  •  @url https://... untuk scrape halaman web",
+                 bg=CARD, fg=MUT,
+                 font=("Segoe UI", 7, "italic")).pack(side="left")
+        char_var = tk.StringVar(value="0 karakter")
+        tk.Label(meta_row, textvariable=char_var,
+                 bg=CARD, fg=MUT, font=("Segoe UI", 7)).pack(side="right")
+
+        # Input + buttons row
+        inp_row = tk.Frame(inp_frame, bg=CARD)
+        inp_row.pack(fill="x")
+
+        inp_entry = tk.Text(inp_row, height=3,
                             bg="#16162a", fg=FG, insertbackground=FG,
                             relief="flat", font=("Segoe UI", 10),
                             bd=8, wrap="word")
         inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         inp_entry.focus_set()
+        _inp_ref[0] = inp_entry
 
-        right_col = tk.Frame(inp_frame, bg=CARD)
+        def _on_text_change(e=None):
+            char_var.set("{} karakter".format(
+                len(inp_entry.get("1.0", tk.END).strip())))
+        inp_entry.bind("<KeyRelease>", _on_text_change)
+
+        right_col = tk.Frame(inp_row, bg=CARD)
         right_col.pack(side="left", fill="y")
 
         send_btn = tk.Button(right_col, text="Kirim ➤",
@@ -6917,68 +7076,103 @@ class SynthexApp:
         send_btn.pack(anchor="n")
 
         status_var = tk.StringVar(value="")
-        tk.Label(right_col, textvariable=status_var,
-                 bg=CARD, fg=RED, font=("Segoe UI", 8),
-                 wraplength=140, justify="left").pack(
-            anchor="n", pady=(4, 0))
+        status_lbl = tk.Label(right_col, textvariable=status_var,
+                              bg=CARD, fg=RED,
+                              font=("Segoe UI", 8),
+                              wraplength=140, justify="left")
+        status_lbl.pack(anchor="n", pady=(4, 0))
 
-        def _send(event=None):
-            if _thinking[0]:
-                return
-            text = inp_entry.get("1.0", tk.END).strip()
-            if not text:
+        def _show_status(msg: str, color=None):
+            status_var.set(msg)
+            status_lbl.configure(fg=color or RED)
+            if self._root:
+                self._root.after(5000, lambda: status_var.set(""))
+
+        # ── core send logic (shared by send + regenerate) ─────────────────
+        def _do_send(text: str):
+            if _thinking[0] or not text:
                 return
             if not api_key:
-                status_var.set("API key kosong. Buka Settings → AI Integration.")
+                _show_status("API key kosong — buka Settings → AI Integration")
                 return
+            _last_user_text[0] = text
             status_var.set("")
             inp_entry.delete("1.0", tk.END)
-            _history.append({"role": "user", "content": text})
+            char_var.set("0 karakter")
+            _history.append({"role": "user", "content": text,
+                             "ts": _dt.now().strftime("%H:%M")})
             _rebuild_messages()
             _show_typing(True)
             _thinking[0] = True
             send_btn.configure(state="disabled", bg=MUT)
 
-            def _do():
+            def _bg():
                 try:
                     from modules.ai_client import call_ai
-                    # Build messages list with full history
+                    # @url scraping injection
+                    actual = text
+                    url_m  = _re.search(r'@url\s+(https?://\S+)', text)
+                    if url_m:
+                        url = url_m.group(1)
+                        try:
+                            from modules.web_scraper import scrape_url
+                            scraped = scrape_url(url)
+                            actual  = text.replace(
+                                url_m.group(0),
+                                "[Konten dari {}]\n{}\n".format(url, scraped))
+                        except Exception as se:
+                            actual = text.replace(
+                                url_m.group(0),
+                                "[Gagal membaca {}: {}]".format(url, se))
+
                     resp = call_ai(
-                        prompt=text,
+                        prompt=actual,
                         provider=provider,
                         api_key=api_key,
-                        model=model or None,
+                        model=_model_var.get() or None,
                         max_tokens=max_tokens,
                         system_prompt=sys_prompt,
-                        history=[h for h in _history[:-1]],  # exclude latest user msg
+                        history=[h for h in _history[:-1]],
                     )
+
                     def _ui():
-                        _history.append({"role": "assistant", "content": resp})
+                        _history.append({"role": "assistant", "content": resp,
+                                         "ts": _dt.now().strftime("%H:%M")})
                         _show_typing(False)
                         _rebuild_messages()
                         _thinking[0] = False
                         send_btn.configure(state="normal", bg=ACC)
+                    if self._root: self._root.after(0, _ui)
+
                 except Exception as e:
                     err = str(e)[:120]
                     def _ui_err():
                         _show_typing(False)
-                        status_var.set(err)
+                        _show_status(err)
                         _thinking[0] = False
                         send_btn.configure(state="normal", bg=ACC)
-                        # Remove last user message from history on error
                         if _history and _history[-1]["role"] == "user":
                             _history.pop()
                         _rebuild_messages()
                     if self._root: self._root.after(0, _ui_err)
-                    return
-                if self._root: self._root.after(0, _ui)
 
-            _thr.Thread(target=_do, daemon=True).start()
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _send(event=None):
+            _do_send(inp_entry.get("1.0", tk.END).strip())
+            return "break"
+
+        def _regenerate():
+            if _history and _history[-1]["role"] == "assistant":
+                _history.pop()
+            if _history and _history[-1]["role"] == "user":
+                last = _history.pop()
+                _rebuild_messages()
+                _do_send(last["content"])
 
         def _on_enter(event):
-            # Shift+Enter inserts newline; plain Enter sends
-            if event.state & 0x1:  # Shift held
-                return  # default tk.Text behaviour inserts \n
+            if event.state & 0x1:   # Shift+Enter → newline
+                return
             _send()
             return "break"
 
