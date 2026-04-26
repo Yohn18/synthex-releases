@@ -65,8 +65,9 @@ class MacroEngine:
     """
 
     def __init__(self, adb_manager):
-        self._adb    = adb_manager
-        self._serial = ""
+        self._adb       = adb_manager
+        self._serial    = ""
+        self._serial_fn: callable | None = None  # optional; called at execute time
         self._rules: list[dict] = []
         self._stop   = threading.Event()
         self._thread: threading.Thread | None = None
@@ -148,7 +149,7 @@ class MacroEngine:
 
     def _execute(self, rule: dict):
         action = rule.get("action", "tap")
-        serial = self._serial
+        serial = self._serial_fn() if self._serial_fn else self._serial
         s_args = ["-s", serial] if serial else []
         logger.info("MacroEngine firing: %s serial=%s", action, serial)
 

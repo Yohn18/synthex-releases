@@ -6,6 +6,7 @@ Provides Vysor-like companion panel without requiring an APK.
 
 Can be "installed" as PWA: Chrome → Add to Home Screen → acts like an app.
 """
+import concurrent.futures
 import json
 import os
 import socket
@@ -53,16 +54,20 @@ class SynthexBridge:
     """
 
     def __init__(self, adb_manager=None, port: int = _DEFAULT_PORT):
-        self._adb   = adb_manager
-        self._port  = port
+        self._adb      = adb_manager
+        self._port     = port
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
+        self._executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="BridgeAdb")
         self.state  = _State()
         self.on_command: callable | None = None   # callback(cmd_dict)
 
     @property
     def running(self) -> bool:
-        return self._server is not None
+        return (self._server is not None
+                and self._thread is not None
+                and self._thread.is_alive())
 
     @property
     def url(self) -> str:
@@ -83,9 +88,10 @@ class SynthexBridge:
     def start(self) -> bool:
         if self.running:
             return True
-        state   = self.state
-        adb     = self._adb
-        on_cmd  = self.on_command
+        state    = self.state
+        adb      = self._adb
+        on_cmd   = self.on_command
+        executor = self._executor
 
         class _Handler(BaseHTTPRequestHandler):
             def log_message(self, fmt, *args):
@@ -175,29 +181,35 @@ class SynthexBridge:
                     result = {"ok": False, "msg": ""}
                     if adb and adb.available:
                         s_args = ["-s", serial] if serial else []
-                        if action == "tap":
-                            x, y = cmd.get("x", 540), cmd.get("y", 960)
-                            rc, out, err = adb._run(
-                                *s_args, "shell", "input", "tap", str(x), str(y))
-                            result = {"ok": rc == 0, "msg": out or err}
-                        elif action == "swipe":
-                            x1,y1 = cmd.get("x1",540), cmd.get("y1",300)
-                            x2,y2 = cmd.get("x2",540), cmd.get("y2",1200)
-                            ms     = cmd.get("ms", 350)
-                            rc, out, err = adb._run(
-                                *s_args, "shell", "input", "swipe",
-                                str(x1),str(y1),str(x2),str(y2),str(ms))
-                            result = {"ok": rc == 0, "msg": out or err}
-                        elif action == "key":
-                            kc = cmd.get("keycode", 3)
-                            rc, out, err = adb._run(
-                                *s_args, "shell", "input", "keyevent", str(kc))
-                            result = {"ok": rc == 0, "msg": out or err}
-                        elif action == "text":
-                            txt = cmd.get("text", "").replace(" ", "%s")
-                            rc, out, err = adb._run(
-                                *s_args, "shell", "input", "text", txt)
-                            result = {"ok": rc == 0, "msg": out or err}
+                        def _run_adb(action=action, s_args=s_args, cmd=cmd):
+                            if action == "tap":
+                                x, y = cmd.get("x", 540), cmd.get("y", 960)
+                                rc, out, err = adb._run(
+                                    *s_args, "shell", "input", "tap", str(x), str(y))
+                                return {"ok": rc == 0, "msg": out or err}
+                            elif action == "swipe":
+                                x1,y1 = cmd.get("x1",540), cmd.get("y1",300)
+                                x2,y2 = cmd.get("x2",540), cmd.get("y2",1200)
+                                ms     = cmd.get("ms", 350)
+                                rc, out, err = adb._run(
+                                    *s_args, "shell", "input", "swipe",
+                                    str(x1),str(y1),str(x2),str(y2),str(ms))
+                                return {"ok": rc == 0, "msg": out or err}
+                            elif action == "key":
+                                kc = cmd.get("keycode", 3)
+                                rc, out, err = adb._run(
+                                    *s_args, "shell", "input", "keyevent", str(kc))
+                                return {"ok": rc == 0, "msg": out or err}
+                            elif action == "text":
+                                txt = cmd.get("text", "")
+                                rc, out, err = adb._run(
+                                    *s_args, "shell", "input", "text", txt)
+                                return {"ok": rc == 0, "msg": out or err}
+                            return {"ok": False, "msg": "unknown action"}
+                        try:
+                            result = executor.submit(_run_adb).result(timeout=10)
+                        except Exception as e:
+                            result = {"ok": False, "msg": str(e)}
                     self._send(200, "application/json",
                                json.dumps(result).encode())
                 else:

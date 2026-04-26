@@ -225,7 +225,7 @@ class AdbManager:
         if not os.path.isfile(apk_path):
             return (False, "APK tidak ditemukan: {}".format(apk_path))
         s = ["-s", serial] if serial else []
-        rc, out, err = self._run(*s, "install", "-r", "-d", apk_path,
+        rc, out, err = self._run(*s, "install", "-r", apk_path,
                                  timeout=60)
         msg = out or err
         ok  = rc == 0 and ("success" in msg.lower() or not err)

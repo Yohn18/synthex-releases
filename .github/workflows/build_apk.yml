@@ -32,13 +32,16 @@ jobs:
           key: gradle-${{ hashFiles('android_app/**/*.gradle*', 'android_app/**/gradle-wrapper.properties') }}
           restore-keys: gradle-
 
-      - name: Make gradlew executable
+      - name: Install Gradle CLI
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.6-bin.zip -O /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d /opt/
+          echo "/opt/gradle-8.6/bin" >> $GITHUB_PATH
+
+      - name: Generate Gradle wrapper
         working-directory: android_app
         run: |
-          # Download gradle wrapper if not present
-          if [ ! -f gradlew ]; then
-            gradle wrapper --gradle-version=8.6
-          fi
+          gradle wrapper --gradle-version=8.6
           chmod +x gradlew
 
       - name: Build Release APK

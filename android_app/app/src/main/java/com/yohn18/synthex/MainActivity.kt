@@ -69,7 +69,9 @@ class MainActivity : AppCompatActivity() {
                 override fun onReceivedError(
                     view: WebView?, req: WebResourceRequest?,
                     err: WebResourceError?) {
-                    showConnect("Tidak bisa terhubung ke PC — cek IP & pastikan Synthex PC berjalan")
+                    if (req?.isForMainFrame == true) {
+                        showConnect("Tidak bisa terhubung ke PC — cek IP & pastikan Synthex PC berjalan")
+                    }
                 }
             }
         }

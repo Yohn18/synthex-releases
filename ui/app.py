@@ -4432,11 +4432,12 @@ class SynthexApp:
                                             "service", "call", "SurfaceFlinger",
                                             "1008", "i32", "0")
                                 _thr.Thread(target=_do_bypass, daemon=True).start()
-                            # Auto-install Synthex companion jika belum ada
+                            # Auto-install Synthex companion ke semua perangkat baru
                             if self.config.get("remote.auto_install_companion", True):
-                                _thr.Thread(
-                                    target=lambda s=first_serial: self._auto_install_companion(s, msg_var),
-                                    daemon=True).start()
+                                for _ns in new_devices:
+                                    _thr.Thread(
+                                        target=lambda s=_ns: self._auto_install_companion(s, msg_var),
+                                        daemon=True).start()
                     else:
                         empty_lbl.pack(anchor="w", pady=6)
                         status_var.set("Tidak ada perangkat")
@@ -4538,13 +4539,16 @@ class SynthexApp:
                 def _do():
                     if adb:
                         adb._run("-s", serial, "shell", "input", "keyevent", str(code))
+                        if self._macro_engine:
+                            self._macro_engine.ping()
                 _thr.Thread(target=_do, daemon=True).start()
 
             def _tap_input(text: str):
                 def _do():
                     if adb and text.strip():
-                        safe = text.replace("'", "\\'").replace(" ", "%s")
-                        adb._run("-s", serial, "shell", "input", "text", safe)
+                        adb._run("-s", serial, "shell", "input", "text", text)
+                        if self._macro_engine:
+                            self._macro_engine.ping()
                 _thr.Thread(target=_do, daemon=True).start()
 
             _screen_size = [None]  # cache (w, h)
@@ -4574,6 +4578,8 @@ class SynthexApp:
                         y2 = int(h * fy2)
                         adb._run("-s", serial, "shell", "input", "swipe",
                                  str(x1), str(y1), str(x2), str(y2), "300")
+                        if self._macro_engine:
+                            self._macro_engine.ping()
                 _thr.Thread(target=_do, daemon=True).start()
 
             win = tk.Toplevel(self._root)
@@ -5650,11 +5656,12 @@ class SynthexApp:
 
             self._macro_engine.on_fire = _on_fire
             self._macro_engine.set_rules(active_rules)
-            if not self._macro_engine.running:
-                # Pick first mirrored serial
+            # Always use dynamic serial so engine tracks device changes
+            def _get_mirror_serial():
                 mirrored = list(self._scrcpy_map.keys()) if hasattr(self, "_scrcpy_map") else []
-                serial = mirrored[0] if mirrored else ""
-                self._macro_engine.set_serial(serial)
+                return mirrored[0] if mirrored else ""
+            self._macro_engine._serial_fn = _get_mirror_serial
+            if not self._macro_engine.running:
                 self._macro_engine.start()
             mac_status_var.set("Engine aktif — {} rule".format(len(active_rules)))
 
@@ -5883,6 +5890,8 @@ class SynthexApp:
             comp_url_var.set("Server belum berjalan")
             comp_stat_var.set("Server dihentikan")
 
+        _bridge_poll_id = [None]
+
         def _update_bridge_state():
             if not self._bridge or not self._bridge.running:
                 return
@@ -5898,7 +5907,7 @@ class SynthexApp:
                 devices=devs,
                 mirror_serial=mirrored[0] if mirrored else "")
             if self._root:
-                self._root.after(5000, _update_bridge_state)
+                _bridge_poll_id[0] = self._root.after(5000, _update_bridge_state)
 
         comp_btn_row = tk.Frame(comp_sec, bg=CARD)
         comp_btn_row.pack(anchor="w", pady=(8, 0))
@@ -5977,6 +5986,10 @@ class SynthexApp:
                 try: self._root.after_cancel(self._adb_poll_id)
                 except Exception: pass
                 self._adb_poll_id = None
+            if _bridge_poll_id[0]:
+                try: self._root.after_cancel(_bridge_poll_id[0])
+                except Exception: pass
+                _bridge_poll_id[0] = None
 
         f.bind("<Destroy>", _on_page_destroy)
         self._adb_poll_id = self._root.after(10000, _poll_adb)
