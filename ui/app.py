@@ -718,7 +718,7 @@ class SynthexApp:
              font=("Segoe UI", 30, "bold")).pack(pady=(46, 2))
         _lbl(r, "Automation Platform  by Yohn18", text_color=MUT, font=("Segoe UI", 9)).pack()
         _ck.Frame(r, fg_color=CARD, height=1).pack(fill="x", padx=48, pady=(24, 0))
-        self._pc = tk.Canvas(r, width=364, height=4, fg_color=CARD,
+        self._pc = tk.Canvas(r, width=364, height=4, bg=CARD,
                              highlightthickness=0, bd=0)
         self._pc.pack(padx=48)
         _ck.Frame(r, fg_color=CARD, height=1).pack(fill="x", padx=48, pady=(0, 10))
@@ -802,7 +802,7 @@ class SynthexApp:
         top.pack_propagate(False)
 
         # Canvas overlay for gradient bottom border
-        _hdr_canvas = tk.Canvas(top, height=HDR_H, fg_color=SIDE,
+        _hdr_canvas = tk.Canvas(top, height=HDR_H, bg=SIDE,
                                  highlightthickness=0)
         _hdr_canvas.place(x=0, y=0, relwidth=1.0, height=HDR_H)
 
@@ -976,7 +976,7 @@ class SynthexApp:
         # Scrollable nav area
         _side_sb = _ck.Scrollbar(side, orient="vertical")
         _side_sb.pack(side="right", fill="y")
-        _side_cv = tk.Canvas(side, fg_color=SIDE, highlightthickness=0,
+        _side_cv = tk.Canvas(side, bg=SIDE, highlightthickness=0,
                              yscrollcommand=_side_sb.set, width=SIDE_W - 14)
         _side_cv.pack(side="left", fill="both", expand=True)
         _side_sb.config(command=_side_cv.yview)
@@ -1078,7 +1078,7 @@ class SynthexApp:
                         il.configure(image=ph, fg_color=SIDE)
                     tl.configure(text_color=_NAV_FG, fg_color=SIDE)
                     bar_w = self._nav_bars.get(k)
-                    if bar_w and bar_w.cget("bg") != ACC:
+                    if bar_w and bar_w.cget("fg_color") != ACC:
                         bar_w.pack_forget()
 
             for w in [row_inner, icon_lbl, text_lbl]:
@@ -1384,7 +1384,7 @@ class SynthexApp:
         # ── Scrollable body ──────────────────────────────────────────────────
         sb = _ck.Scrollbar(f, orient="vertical")
         sb.pack(side="right", fill="y")
-        cv = tk.Canvas(f, fg_color=BG, highlightthickness=0, yscrollcommand=sb.set)
+        cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
         cv.pack(side="left", fill="both", expand=True)
         sb.config(command=cv.yview)
         body = _ck.Frame(cv, fg_color=BG)
@@ -1423,7 +1423,7 @@ class SynthexApp:
         hero = _ck.Frame(hero_wrap, fg_color="#0d0520", padx=28, pady=22)
         hero.pack(fill="x")
         # Animated bottom accent line
-        hero_line = tk.Canvas(hero_wrap, height=2, fg_color=BG, highlightthickness=0)
+        hero_line = tk.Canvas(hero_wrap, height=2, bg=BG, highlightthickness=0)
         hero_line.pack(fill="x")
 
         def _draw_hero_line(event=None):
@@ -1475,11 +1475,11 @@ class SynthexApp:
             (108, 74, 255),
             (200, 200, 232),
         ]
-        for _ck, _cc in zip(_chip_icon_keys, _chip_icon_colors):
-            _ckey = "{}_{}".format(_ck, _cc)
+        for _icon_k, _cc in zip(_chip_icon_keys, _chip_icon_colors):
+            _ckey = "{}_{}".format(_icon_k, _cc)
             if _ckey not in self._home_chip_photos:
-                _raw = _gen_icons(26, _cc, keys=[_ck])
-                self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_ck])
+                _raw = _gen_icons(26, _cc, keys=[_icon_k])
+                self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_icon_k])
 
         chips_row = _ck.Frame(body, fg_color=BG)
         chips_row.pack(fill="x", padx=20, pady=(10, 0))
@@ -1654,7 +1654,7 @@ class SynthexApp:
             cell = _ck.Frame(parent, fg_color=_CARD_HEX, cursor="hand2")
 
             # Top gradient bar
-            grad_cv = tk.Canvas(cell, height=4, highlightthickness=0, bd=0, fg_color=_CARD_HEX)
+            grad_cv = tk.Canvas(cell, height=4, highlightthickness=0, bd=0, bg=_CARD_HEX)
             grad_cv.pack(fill="x")
 
             def _draw_grad(e=None, cv=grad_cv,
@@ -1698,7 +1698,7 @@ class SynthexApp:
 
             # Full-width button (Canvas)
             btn_cv = tk.Canvas(inner, height=36, highlightthickness=0,
-                               bd=0, fg_color=_CARD_HEX, cursor="hand2")
+                               bd=0, bg=_CARD_HEX, cursor="hand2")
             btn_cv.pack(fill="x")
 
             def _draw_btn(e=None, cv=btn_cv, ac=accent):
@@ -1715,22 +1715,22 @@ class SynthexApp:
             def _hover_on(e=None):
                 cell.configure(fg_color=hover_bg)
                 inner.configure(fg_color=hover_bg)
-                grad_cv.configure(fg_color=hover_bg)
+                grad_cv.configure(bg=hover_bg)
                 badge.configure(fg_color=badge_hov)
                 badge_icon.configure(fg_color=badge_hov)
                 title_lbl.configure(fg_color=hover_bg)
                 desc_lbl.configure(fg_color=hover_bg)
-                btn_cv.configure(fg_color=hover_bg)
+                btn_cv.configure(bg=hover_bg)
 
             def _hover_off(e=None):
                 cell.configure(fg_color=_CARD_HEX)
                 inner.configure(fg_color=_CARD_HEX)
-                grad_cv.configure(fg_color=_CARD_HEX)
+                grad_cv.configure(bg=_CARD_HEX)
                 badge.configure(fg_color=badge_bg)
                 badge_icon.configure(fg_color=badge_bg)
                 title_lbl.configure(fg_color=_CARD_HEX)
                 desc_lbl.configure(fg_color=_CARD_HEX)
-                btn_cv.configure(fg_color=_CARD_HEX)
+                btn_cv.configure(bg=_CARD_HEX)
 
             for w in [cell, grad_cv, inner, badge, badge_icon,
                       title_lbl, desc_lbl, btn_cv]:
@@ -2244,7 +2244,7 @@ class SynthexApp:
             anchor="w", padx=12, pady=(10, 4))
 
         # Scrollable step list
-        list_canvas = tk.Canvas(left_outer, fg_color=SIDE,
+        list_canvas = tk.Canvas(left_outer, bg=SIDE,
                                 highlightthickness=0)
         list_sb = _ck.Scrollbar(left_outer, orient="vertical",
                                 command=list_canvas.yview)
@@ -2533,7 +2533,7 @@ class SynthexApp:
         fields_outer.pack(fill="both", expand=True, padx=20, pady=(4, 0))
 
         # Scroll for fields
-        fc = tk.Canvas(fields_outer, fg_color=BG, highlightthickness=0)
+        fc = tk.Canvas(fields_outer, bg=BG, highlightthickness=0)
         fsb = _ck.Scrollbar(fields_outer, orient="vertical",
                             command=fc.yview)
         fsb.pack(side="right", fill="y")
@@ -3141,7 +3141,7 @@ class SynthexApp:
         self._hdr(f, "Google Sheets",
                   "Connect sheets, preview data, and write values.")
 
-        scroll_canvas = tk.Canvas(f, fg_color=BG, highlightthickness=0)
+        scroll_canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
         scrollbar = _ck.Scrollbar(f, orient="vertical",
                                   command=scroll_canvas.yview)
         scroll_canvas.configure(yscrollcommand=scrollbar.set)
@@ -4458,7 +4458,7 @@ class SynthexApp:
         # ── scrollable body ──────────────────────────────────────────────────
         sb = _ck.Scrollbar(f, orient="vertical")
         sb.pack(side="right", fill="y")
-        cv = tk.Canvas(f, fg_color=BG, highlightthickness=0, yscrollcommand=sb.set)
+        cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
         cv.pack(side="left", fill="both", expand=True)
         sb.config(command=cv.yview)
         body = _ck.Frame(cv, fg_color=BG)
@@ -6974,7 +6974,7 @@ class SynthexApp:
 
         msg_sb = _ck.Scrollbar(msg_outer, orient="vertical")
         msg_sb.pack(side="right", fill="y")
-        msg_cv = tk.Canvas(msg_outer, fg_color=BG, highlightthickness=0,
+        msg_cv = tk.Canvas(msg_outer, bg=BG, highlightthickness=0,
                            yscrollcommand=msg_sb.set)
         msg_cv.pack(side="left", fill="both", expand=True)
         msg_sb.config(command=msg_cv.yview)
@@ -7344,7 +7344,7 @@ class SynthexApp:
 
         _ck.Frame(left, fg_color=CARD2, height=1).pack(fill="x")
 
-        list_canvas = tk.Canvas(left, fg_color=CARD, highlightthickness=0)
+        list_canvas = tk.Canvas(left, bg=CARD, highlightthickness=0)
         list_sb = _ck.Scrollbar(left, command=list_canvas.yview)
         list_sb.pack(side="right", fill="y")
         list_canvas.pack(fill="both", expand=True)
@@ -7600,7 +7600,7 @@ class SynthexApp:
             _wrap.pack(fill="both", expand=True)
             _esb = _ck.Scrollbar(_wrap, orient="vertical")
             _esb.pack(side="right", fill="y")
-            _ecv = tk.Canvas(_wrap, fg_color="#0D0D14", highlightthickness=0,
+            _ecv = tk.Canvas(_wrap, bg="#0D0D14", highlightthickness=0,
                              yscrollcommand=_esb.set)
             _ecv.pack(side="left", fill="both", expand=True)
             _esb.config(command=_ecv.yview)
@@ -7970,7 +7970,7 @@ class SynthexApp:
         # Scrollable container for all settings cards
         _ssb = _ck.Scrollbar(f, orient="vertical")
         _ssb.pack(side="right", fill="y")
-        _scv = tk.Canvas(f, fg_color=BG, highlightthickness=0, yscrollcommand=_ssb.set)
+        _scv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_ssb.set)
         _scv.pack(side="left", fill="both", expand=True)
         _ssb.config(command=_scv.yview)
         _sbody = _ck.Frame(_scv, fg_color=BG)
@@ -8341,7 +8341,7 @@ class SynthexApp:
         # Messages area (scrollable canvas)
         msg_sb = _ck.Scrollbar(main, orient="vertical")
         msg_sb.pack(side="right", fill="y")
-        msg_cv = tk.Canvas(main, fg_color=BG, highlightthickness=0,
+        msg_cv = tk.Canvas(main, bg=BG, highlightthickness=0,
                            yscrollcommand=msg_sb.set)
         msg_cv.pack(side="left", fill="both", expand=True)
         msg_sb.config(command=msg_cv.yview)
@@ -8517,7 +8517,7 @@ class SynthexApp:
         # ── Scrollable body ──────────────────────────────────────────────────
         _msb = _ck.Scrollbar(f, orient="vertical")
         _msb.pack(side="right", fill="y")
-        _mcv = tk.Canvas(f, fg_color=BG, highlightthickness=0, yscrollcommand=_msb.set)
+        _mcv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_msb.set)
         _mcv.pack(side="left", fill="both", expand=True)
         _msb.config(command=_mcv.yview)
         body = _ck.Frame(_mcv, fg_color=BG)
@@ -9336,7 +9336,7 @@ class SynthexApp:
         _ck.Frame(dm_right, fg_color="#1c1c2e", height=1).pack(fill="x")
         conv_sb = _ck.Scrollbar(dm_right, orient="vertical")
         conv_sb.pack(side="right", fill="y")
-        conv_cv = tk.Canvas(dm_right, fg_color=CARD2, highlightthickness=0,
+        conv_cv = tk.Canvas(dm_right, bg=CARD2, highlightthickness=0,
                             height=220, yscrollcommand=conv_sb.set)
         conv_cv.pack(side="top", fill="both", expand=True)
         conv_sb.config(command=conv_cv.yview)
@@ -11468,7 +11468,7 @@ class SynthexApp:
         pct_var = tk.StringVar(value="0%")
         _ck.Label(win, textvariable=pct_var, text_color=GRN, fg_color=CARD,
                  font=("Consolas", 9, "bold")).pack(padx=12)
-        pb = tk.Canvas(win, width=196, height=10, fg_color=BG, highlightthickness=0)
+        pb = tk.Canvas(win, width=196, height=10, bg=BG, highlightthickness=0)
         pb.pack(padx=12, pady=(2, 8))
         win._pct_var = pct_var
 
@@ -12703,7 +12703,7 @@ class SynthexApp:
             # progress bar canvas
             dur_ms  = duration if duration > 0 else (6000 if kind == "error" else 4000)
             bar_h   = 3
-            pb = tk.Canvas(inner, fg_color=card_col, height=bar_h,
+            pb = tk.Canvas(inner, bg=card_col, height=bar_h,
                            highlightthickness=0, bd=0)
             pb.pack(fill="x")
             pb_bar = pb.create_rectangle(0, 0, TOAST_W, bar_h, fill=stripe_col, width=0)
@@ -13752,7 +13752,7 @@ class SynthexApp:
             return f
 
         # Scrollable canvas
-        canvas = tk.Canvas(f, fg_color=BG, highlightthickness=0)
+        canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
         sb = _ck.Scrollbar(f, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
