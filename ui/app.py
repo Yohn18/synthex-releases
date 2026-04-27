@@ -4,6 +4,8 @@ import json, logging, os, re, sys, threading, time, tkinter as tk  # noqa: E401
 from collections import deque
 from datetime import datetime
 from tkinter import ttk, scrolledtext
+import customtkinter as ctk
+import ui.ctk_compat as _ck
 import pystray
 from PIL import Image, ImageDraw, ImageFilter, ImageTk
 from core.config import Config
@@ -163,19 +165,22 @@ class UserData:
 # -- Widget helpers --
 
 def _lbl(parent, text, fg=FG, bg=BG, font=("Segoe UI", 11), **kw):
-    return tk.Label(parent, text=text, fg=fg, bg=bg, font=font, **kw)
+    return _ck.Label(parent, text=text, fg=fg, bg=bg, font=font, **kw)
 
 def _deep_bg(widget, color):
     """Recursively set background color on a widget and all children."""
     try:
-        widget.configure(bg=color)
+        if isinstance(widget, ctk.CTkBaseClass):
+            widget.configure(fg_color=color)
+        else:
+            widget.configure(bg=color)
     except Exception:
         pass
     for child in widget.winfo_children():
         _deep_bg(child, color)
 
 def _card(parent, title=""):
-    f = tk.Frame(parent, bg=CARD, padx=20, pady=16)
+    f = _ck.Frame(parent, bg=CARD, padx=20, pady=16)
     if title:
         _lbl(f, title, fg=ACC, bg=CARD,
              font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
@@ -667,16 +672,16 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        tk.Frame(dlg, bg=YEL, height=4).place(x=0, y=0, width=W)
-        tk.Label(dlg, text="Sesi Diakhiri", bg="#0A0A0F", fg=YEL,
+        _ck.Frame(dlg, bg=YEL, height=4).place(x=0, y=0, width=W)
+        _ck.Label(dlg, text="Sesi Diakhiri", bg="#0A0A0F", fg=YEL,
                  font=("Segoe UI", 15, "bold")).pack(pady=(28, 0))
-        tk.Label(dlg,
+        _ck.Label(dlg,
                  text="Akun ini login dari perangkat lain.\nKamu telah otomatis logout.",
                  bg="#0A0A0F", fg=FG, font=("Segoe UI", 10),
                  justify="center").pack(pady=(10, 0))
-        tk.Label(dlg, text="Jika bukan kamu, segera ganti password.",
+        _ck.Label(dlg, text="Jika bukan kamu, segera ganti password.",
                  bg="#0A0A0F", fg=MUT, font=("Segoe UI", 8)).pack(pady=(6, 0))
-        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=28, pady=(16, 0))
+        _ck.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=28, pady=(16, 0))
         def _do_close():
             for _attr in ("_dm_poll_id", "_chat_poll_id", "_broadcast_poll_id",
                           "_adb_poll_id", "_spy_poll_id", "_rem_poll_id"):
@@ -687,7 +692,7 @@ class SynthexApp:
                     setattr(self, _attr, None)
             try: self._root.destroy()
             except Exception: pass
-        tk.Button(dlg, text="  OK, Tutup  ", bg=YEL, fg="#0A0A0F",
+        _ck.Button(dlg, text="  OK, Tutup  ", bg=YEL, fg="#0A0A0F",
                   relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
                   command=_do_close).pack(pady=14)
@@ -703,14 +708,14 @@ class SynthexApp:
     # -- Splash / loading --
 
     def _splash(self):
-        r = self._root = tk.Tk()
+        r = self._root = ctk.CTk()
         _icon_path = _resolve_icon()
         if _icon_path:
             r.iconbitmap(_icon_path)
         r.title("SYNTHEX")
         r.geometry("460x280")
         r.resizable(False, False)
-        r.configure(bg=BG)
+        r.configure(fg_color=BG)
         r.protocol("WM_DELETE_WINDOW", self._quit)  # splash: quit OK
         sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
         r.geometry("460x280+{}+{}".format((sw-460)//2, (sh-280)//2))
@@ -718,13 +723,13 @@ class SynthexApp:
              font=("Segoe UI", 30, "bold")).pack(pady=(46, 2))
         _lbl(r, "Automation Platform  by Yohn18",
              fg=MUT, font=("Segoe UI", 9)).pack()
-        tk.Frame(r, bg=CARD, height=1).pack(fill="x", padx=48, pady=(24, 0))
+        _ck.Frame(r, bg=CARD, height=1).pack(fill="x", padx=48, pady=(24, 0))
         self._pc = tk.Canvas(r, width=364, height=4, bg=CARD,
                              highlightthickness=0, bd=0)
         self._pc.pack(padx=48)
-        tk.Frame(r, bg=CARD, height=1).pack(fill="x", padx=48, pady=(0, 10))
+        _ck.Frame(r, bg=CARD, height=1).pack(fill="x", padx=48, pady=(0, 10))
         self._pv = tk.StringVar(value="Preparing...")
-        tk.Label(r, textvariable=self._pv, fg=MUT, bg=BG,
+        _ck.Label(r, textvariable=self._pv, fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack()
         r.after(200, self._init_mods)
 
@@ -770,7 +775,7 @@ class SynthexApp:
         r.geometry("1180x720")
         r.minsize(920, 600)
         r.resizable(True, True)
-        r.configure(bg=BG)
+        r.configure(fg_color=BG)
         r.protocol("WM_DELETE_WINDOW", self._quit)
         _apply_styles(r)
         # Re-apply window icon (gets lost when window is reconfigured after splash)
@@ -798,7 +803,7 @@ class SynthexApp:
 
         # ── HEADER ────────────────────────────────────────────────────────────
         HDR_H = 54
-        top = tk.Frame(r, bg=SIDE, height=HDR_H)
+        top = _ck.Frame(r, bg=SIDE, height=HDR_H)
         top.pack(fill="x")
         top.pack_propagate(False)
 
@@ -827,7 +832,7 @@ class SynthexApp:
         top.after(100, _draw_hdr_border)
 
         # Animated left accent stripe
-        _acc_bar = tk.Frame(top, bg=ACC, width=4)
+        _acc_bar = _ck.Frame(top, bg=ACC, width=4)
         _acc_bar.pack(side="left", fill="y")
 
         def _pulse_acc(step=0):
@@ -840,20 +845,20 @@ class SynthexApp:
         top.after(500, _pulse_acc)
 
         # Logo
-        tk.Label(top, text="⚡", bg=SIDE, fg=ACC,
+        _ck.Label(top, text="⚡", bg=SIDE, fg=ACC,
                  font=("Segoe UI", 16)).pack(side="left", padx=(12, 4), pady=14)
-        tk.Label(top, text="SYNTHEX", bg=SIDE, fg=ACC,
+        _ck.Label(top, text="SYNTHEX", bg=SIDE, fg=ACC,
                  font=("Segoe UI", 16, "bold")).pack(side="left")
-        tk.Label(top, text="by Yohn18", bg=SIDE, fg=MUT,
+        _ck.Label(top, text="by Yohn18", bg=SIDE, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left", padx=(8, 0), pady=(20, 0))
 
         # Page name indicator (updates on nav)
-        self._page_lbl = tk.Label(top, text="", bg=SIDE, fg="#64748b",
+        self._page_lbl = _ck.Label(top, text="", bg=SIDE, fg="#64748b",
                                    font=("Segoe UI", 8))
         self._page_lbl.pack(side="left", padx=(18, 0), pady=(18, 0))
 
         # Right side
-        _exit_btn = tk.Button(top, text=" ⏻  Exit ", bg="#1E0A0A", fg=RED,
+        _exit_btn = _ck.Button(top, text=" ⏻  Exit ", bg="#1E0A0A", fg=RED,
                                activebackground=RED, activeforeground="white",
                                font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                                padx=12, pady=5, cursor="hand2",
@@ -862,7 +867,7 @@ class SynthexApp:
         _exit_btn.bind("<Enter>", lambda e: _exit_btn.configure(bg=RED, fg="white"))
         _exit_btn.bind("<Leave>", lambda e: _exit_btn.configure(bg="#1E0A0A", fg=RED))
 
-        _help_btn = tk.Button(top, text=" ? ", bg=CARD, fg=ACC,
+        _help_btn = _ck.Button(top, text=" ? ", bg=CARD, fg=ACC,
                                activebackground=ACC, activeforeground=BG,
                                font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                                padx=8, pady=5, cursor="hand2",
@@ -872,7 +877,7 @@ class SynthexApp:
         _help_btn.bind("<Leave>", lambda e: _help_btn.configure(bg=CARD, fg=ACC))
 
         # Search hint button → command palette
-        _srch_btn = tk.Button(top, text="  🔍  Cari fitur...  Ctrl+K ",
+        _srch_btn = _ck.Button(top, text="  🔍  Cari fitur...  Ctrl+K ",
                                bg=CARD2, fg=MUT, relief="flat", bd=0,
                                font=("Segoe UI", 8), padx=10, pady=5,
                                cursor="hand2", anchor="w",
@@ -882,16 +887,16 @@ class SynthexApp:
         _srch_btn.bind("<Leave>", lambda e: _srch_btn.configure(fg=MUT))
 
         if self._email:
-            tk.Label(top, text="● " + self._email, bg=SIDE, fg=GRN,
+            _ck.Label(top, text="● " + self._email, bg=SIDE, fg=GRN,
                      font=("Segoe UI", 8)).pack(side="right", padx=10)
 
         # ── ANNOUNCEMENT BAR (hidden by default, shown when active) ──────────
-        self._ann_bar = tk.Frame(r, bg="#B45309", padx=12, pady=5)
-        self._ann_lbl = tk.Label(self._ann_bar, text="", bg="#B45309",
+        self._ann_bar = _ck.Frame(r, bg="#B45309", padx=12, pady=5)
+        self._ann_lbl = _ck.Label(self._ann_bar, text="", bg="#B45309",
                                  fg="white", font=("Segoe UI", 9, "bold"),
                                  wraplength=900, justify="left")
         self._ann_lbl.pack(side="left", fill="x", expand=True)
-        tk.Button(self._ann_bar, text="✕", bg="#B45309", fg="white",
+        _ck.Button(self._ann_bar, text="✕", bg="#B45309", fg="white",
                   relief="flat", bd=0, font=("Segoe UI", 9), cursor="hand2",
                   command=lambda: self._ann_bar.pack_forget()).pack(side="right")
 
@@ -926,7 +931,7 @@ class SynthexApp:
         r.bind_all("<Control-k>", lambda e: self._show_command_palette())
 
         # ── BODY ──────────────────────────────────────────────────────────────
-        body = tk.Frame(r, bg=BG)
+        body = _ck.Frame(r, bg=BG)
         body.pack(fill="both", expand=True)
 
         # ── Generate PIL nav icons ─────────────────────────────────────────────
@@ -950,40 +955,40 @@ class SynthexApp:
 
         # ── SIDEBAR ───────────────────────────────────────────────────────────
         SIDE_W = 220
-        side = tk.Frame(body, bg=SIDE, width=SIDE_W)
+        side = _ck.Frame(body, bg=SIDE, width=SIDE_W)
         side.pack(side="left", fill="y")
         side.pack_propagate(False)
 
         # Sidebar right glow border (2px gradient look)
-        tk.Frame(body, bg="#1c1c2e", width=1).pack(side="left", fill="y")
-        tk.Frame(body, bg="#111118", width=1).pack(side="left", fill="y")
+        _ck.Frame(body, bg="#1c1c2e", width=1).pack(side="left", fill="y")
+        _ck.Frame(body, bg="#111118", width=1).pack(side="left", fill="y")
 
         # Sidebar top: mini branding
-        _sb_top = tk.Frame(side, bg="#0a0a0f", height=40)
+        _sb_top = _ck.Frame(side, bg="#0a0a0f", height=40)
         _sb_top.pack(fill="x")
         _sb_top.pack_propagate(False)
-        tk.Frame(_sb_top, bg=ACC, width=3).pack(side="left", fill="y")
-        tk.Label(_sb_top, text="⚡ Menu", bg="#0a0a0f", fg="#64748b",
+        _ck.Frame(_sb_top, bg=ACC, width=3).pack(side="left", fill="y")
+        _ck.Label(_sb_top, text="⚡ Menu", bg="#0a0a0f", fg="#64748b",
                  font=("Segoe UI", 8, "bold")).pack(side="left", padx=10)
-        tk.Frame(side, bg="#1c1c2e", height=1).pack(fill="x")
+        _ck.Frame(side, bg="#1c1c2e", height=1).pack(fill="x")
 
         # Bottom status bar
         self._sv = tk.StringVar(value="")
-        _sb_bottom = tk.Frame(side, bg=SIDE)
+        _sb_bottom = _ck.Frame(side, bg=SIDE)
         _sb_bottom.pack(side="bottom", fill="x")
-        tk.Frame(_sb_bottom, bg="#1c1c2e", height=1).pack(fill="x")
-        tk.Label(_sb_bottom, textvariable=self._sv, bg=SIDE, fg=MUT,
+        _ck.Frame(_sb_bottom, bg="#1c1c2e", height=1).pack(fill="x")
+        _ck.Label(_sb_bottom, textvariable=self._sv, bg=SIDE, fg=MUT,
                  font=("Segoe UI", 8), wraplength=SIDE_W - 20,
                  justify="left").pack(anchor="w", padx=14, pady=(6, 8))
 
         # Scrollable nav area
-        _side_sb = ttk.Scrollbar(side, orient="vertical")
+        _side_sb = _ck.Scrollbar(side, orient="vertical")
         _side_sb.pack(side="right", fill="y")
         _side_cv = tk.Canvas(side, bg=SIDE, highlightthickness=0,
                              yscrollcommand=_side_sb.set, width=SIDE_W - 14)
         _side_cv.pack(side="left", fill="both", expand=True)
         _side_sb.config(command=_side_cv.yview)
-        _side_inner = tk.Frame(_side_cv, bg=SIDE)
+        _side_inner = _ck.Frame(_side_cv, bg=SIDE)
         _side_win = _side_cv.create_window((0, 0), window=_side_inner, anchor="nw")
         _side_inner.bind("<Configure>", lambda e: _side_cv.configure(
             scrollregion=_side_cv.bbox("all")))
@@ -1004,35 +1009,35 @@ class SynthexApp:
 
             if key == "":
                 # Category separator
-                sep_f = tk.Frame(_side_inner, bg=SIDE)
+                sep_f = _ck.Frame(_side_inner, bg=SIDE)
                 sep_f.pack(fill="x", padx=12, pady=(12, 2))
-                tk.Frame(sep_f, bg="#1c1c2e", height=1).pack(fill="x", pady=(0, 6))
+                _ck.Frame(sep_f, bg="#1c1c2e", height=1).pack(fill="x", pady=(0, 6))
                 _sep_clr = ACC if label == "MASTER" else MUT
-                tk.Label(sep_f, text=label.lower(), bg=SIDE, fg=_sep_clr,
+                _ck.Label(sep_f, text=label.lower(), bg=SIDE, fg=_sep_clr,
                          font=("Segoe UI", 8, "bold"), anchor="w").pack(anchor="w")
                 continue
 
             # Nav row
-            row = tk.Frame(_side_inner, bg=SIDE)
+            row = _ck.Frame(_side_inner, bg=SIDE)
             row.pack(fill="x")
             row.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
             # Active bar (left edge glow)
-            bar = tk.Frame(row, bg=ACC, width=3)
+            bar = _ck.Frame(row, bg=ACC, width=3)
             bar.pack(side="left", fill="y")
             bar.pack_forget()
             self._nav_bars[key] = bar
 
             # Row inner container (for hover bg)
-            row_inner = tk.Frame(row, bg=SIDE)
+            row_inner = _ck.Frame(row, bg=SIDE)
             row_inner.pack(fill="x", side="left", expand=True)
             row_inner.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
             # Icon label (PIL image)
             dim_photo = self._nav_photo_dim.get(key)
-            icon_lbl = tk.Label(row_inner, image=dim_photo, bg=SIDE,
+            icon_lbl = _ck.Label(row_inner, image=dim_photo, bg=SIDE,
                                 padx=10, pady=9, cursor="hand2")
             icon_lbl.pack(side="left")
             icon_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
@@ -1041,7 +1046,7 @@ class SynthexApp:
 
             # Text label — brighter default color so it's always readable
             _NAV_FG = "#94a3b8"   # readable but not fully active
-            text_lbl = tk.Label(row_inner, text=label, bg=SIDE, fg=_NAV_FG,
+            text_lbl = _ck.Label(row_inner, text=label, bg=SIDE, fg=_NAV_FG,
                                 font=("Segoe UI", 10), anchor="w", cursor="hand2",
                                 padx=0, pady=10)
             text_lbl.pack(side="left", fill="x", expand=True)
@@ -1089,11 +1094,11 @@ class SynthexApp:
                 w.bind("<Leave>", _nav_leave)
 
         # ── CONTENT ───────────────────────────────────────────────────────────
-        self._content = tk.Frame(body, bg=BG)
+        self._content = _ck.Frame(body, bg=BG)
         self._content.pack(side="left", fill="both", expand=True)
 
         # ── CLOCK (right side of header) ──────────────────────────────────────
-        self._cl = tk.Label(top, text="", fg=MUT, bg=SIDE, font=("Segoe UI", 8))
+        self._cl = _ck.Label(top, text="", fg=MUT, bg=SIDE, font=("Segoe UI", 8))
         self._cl.pack(side="right", padx=6)
         self._tick()
 
@@ -1217,15 +1222,15 @@ class SynthexApp:
 
         if key not in self._pages:
             # Show skeleton placeholder while page builds
-            _skel = tk.Frame(self._content, bg=BG)
+            _skel = _ck.Frame(self._content, bg=BG)
             _skel.pack(fill="both", expand=True)
-            _skel_lbl = tk.Label(_skel, text="", bg=BG, fg=MUT,
+            _skel_lbl = _ck.Label(_skel, text="", bg=BG, fg=MUT,
                                   font=("Segoe UI", 9))
             _skel_lbl.pack(pady=60)
             _shimmer_colors = [CARD, CARD2, CARD]
             _skel_bars = []
             for _bw, _by in [(340, 80), (260, 104), (200, 128)]:
-                _b = tk.Frame(_skel, bg=CARD, height=10, width=_bw)
+                _b = _ck.Frame(_skel, bg=CARD, height=10, width=_bw)
                 _b.place(x=20, y=_by)
                 _skel_bars.append(_b)
 
@@ -1276,7 +1281,7 @@ class SynthexApp:
     def _page_sweep(self):
         """Accent sweep line across content area top on page change."""
         try:
-            sweep = tk.Frame(self._content, bg=ACC, height=2)
+            sweep = _ck.Frame(self._content, bg=ACC, height=2)
             sweep.place(x=0, y=0, width=0)
 
             def _grow(step=0, total=14):
@@ -1368,31 +1373,31 @@ class SynthexApp:
             pass
 
     def _hdr(self, f, title, sub=""):
-        hdr_f = tk.Frame(f, bg=BG)
+        hdr_f = _ck.Frame(f, bg=BG)
         hdr_f.pack(fill="x", padx=24, pady=(20, 0))
-        tk.Frame(hdr_f, bg=ACC, width=3, height=22).pack(side="left", padx=(0, 12))
-        hdr_inner = tk.Frame(hdr_f, bg=BG)
+        _ck.Frame(hdr_f, bg=ACC, width=3, height=22).pack(side="left", padx=(0, 12))
+        hdr_inner = _ck.Frame(hdr_f, bg=BG)
         hdr_inner.pack(side="left")
         _lbl(hdr_inner, title, font=("Segoe UI", 15, "bold")).pack(anchor="w")
         if sub:
             _lbl(hdr_inner, sub, fg=MUT, font=("Segoe UI", 10)).pack(
                 anchor="w", pady=(2, 0))
-        tk.Frame(f, bg="#1c1c2e", height=1).pack(fill="x", padx=24, pady=(10, 12))
+        _ck.Frame(f, bg="#1c1c2e", height=1).pack(fill="x", padx=24, pady=(10, 12))
 
     # ================================================================
     #  HOME PAGE
     # ================================================================
 
     def _pg_home(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
 
         # ── Scrollable body ──────────────────────────────────────────────────
-        sb = ttk.Scrollbar(f, orient="vertical")
+        sb = _ck.Scrollbar(f, orient="vertical")
         sb.pack(side="right", fill="y")
         cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
         cv.pack(side="left", fill="both", expand=True)
         sb.config(command=cv.yview)
-        body = tk.Frame(cv, bg=BG)
+        body = _ck.Frame(cv, bg=BG)
         _wid = cv.create_window((0, 0), window=body, anchor="nw")
         body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
         cv.bind("<Configure>", lambda e: cv.itemconfig(_wid, width=e.width))
@@ -1423,9 +1428,9 @@ class SynthexApp:
         today = datetime.now().strftime("%A, %d %B %Y")
 
         # ── Hero banner ──────────────────────────────────────────────────────
-        hero_wrap = tk.Frame(body, bg=BG)
+        hero_wrap = _ck.Frame(body, bg=BG)
         hero_wrap.pack(fill="x", padx=20, pady=(16, 0))
-        hero = tk.Frame(hero_wrap, bg="#0d0520", padx=28, pady=22)
+        hero = _ck.Frame(hero_wrap, bg="#0d0520", padx=28, pady=22)
         hero.pack(fill="x")
         # Animated bottom accent line
         hero_line = tk.Canvas(hero_wrap, height=2, bg=BG, highlightthickness=0)
@@ -1448,17 +1453,17 @@ class SynthexApp:
         hero_line.bind("<Configure>", _draw_hero_line)
         hero_wrap.after(80, _draw_hero_line)
 
-        tk.Frame(hero, bg=ACC, width=4).pack(side="left", fill="y", padx=(0, 18))
-        hero_text = tk.Frame(hero, bg="#0d0520")
+        _ck.Frame(hero, bg=ACC, width=4).pack(side="left", fill="y", padx=(0, 18))
+        hero_text = _ck.Frame(hero, bg="#0d0520")
         hero_text.pack(side="left", fill="both", expand=True)
-        tk.Label(hero_text,
+        _ck.Label(hero_text,
                  text="{}, {}!".format(_greeting(), name),
                  bg="#0d0520", fg="#e2e8f0",
                  font=("Segoe UI", 22, "bold")).pack(anchor="w")
-        tk.Label(hero_text, text=today, bg="#0d0520", fg=MUT,
+        _ck.Label(hero_text, text=today, bg="#0d0520", fg=MUT,
                  font=("Segoe UI", 11)).pack(anchor="w", pady=(3, 0))
         ver = self.config.get("app.version", "")
-        ver_lbl = tk.Label(hero, text="v{}".format(ver), bg="#0d0520", fg="#3a3a5a",
+        ver_lbl = _ck.Label(hero, text="v{}".format(ver), bg="#0d0520", fg="#3a3a5a",
                            font=("Segoe UI", 9))
         ver_lbl.pack(side="right", anchor="ne")
 
@@ -1487,7 +1492,7 @@ class SynthexApp:
                 _raw = _gen_icons(26, _cc, keys=[_ck])
                 self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_ck])
 
-        chips_row = tk.Frame(body, bg=BG)
+        chips_row = _ck.Frame(body, bg=BG)
         chips_row.pack(fill="x", padx=20, pady=(10, 0))
         for (lbl, val, clr), icon_key, icon_color in zip(
             [
@@ -1500,20 +1505,20 @@ class SynthexApp:
             _chip_icon_keys,
             _chip_icon_colors,
         ):
-            chip = tk.Frame(chips_row, bg=CARD, padx=18, pady=14)
+            chip = _ck.Frame(chips_row, bg=CARD, padx=18, pady=14)
             chip.pack(side="left", fill="both", expand=True, padx=(0, 8))
             # Top accent line
-            tk.Frame(chip, bg=clr, height=3).pack(fill="x", pady=(0, 10))
+            _ck.Frame(chip, bg=clr, height=3).pack(fill="x", pady=(0, 10))
             # Icon + label row
-            icon_row = tk.Frame(chip, bg=CARD)
+            icon_row = _ck.Frame(chip, bg=CARD)
             icon_row.pack(anchor="w", pady=(0, 4))
             _ckey = "{}_{}".format(icon_key, icon_color)
             _ph = self._home_chip_photos.get(_ckey)
             if _ph:
-                tk.Label(icon_row, image=_ph, bg=CARD).pack(side="left", padx=(0, 8))
-            tk.Label(icon_row, text=lbl, bg=CARD, fg=MUT,
+                _ck.Label(icon_row, image=_ph, bg=CARD).pack(side="left", padx=(0, 8))
+            _ck.Label(icon_row, text=lbl, bg=CARD, fg=MUT,
                      font=("Segoe UI", 9, "bold")).pack(side="left", anchor="w")
-            tk.Label(chip, text=val, bg=CARD, fg=clr,
+            _ck.Label(chip, text=val, bg=CARD, fg=clr,
                      font=("Segoe UI", 14, "bold")).pack(anchor="w")
             # Hover glow
             def _chip_enter(e, c=chip):
@@ -1542,30 +1547,30 @@ class SynthexApp:
                 _raw = _gen_icons(14, _rgb, keys=[_ik])
                 self._home_qa_photos[_ik] = ImageTk.PhotoImage(_raw[_ik])
 
-        qa_wrap = tk.Frame(body, bg=BG)
+        qa_wrap = _ck.Frame(body, bg=BG)
         qa_wrap.pack(fill="x", padx=20, pady=(10, 0))
-        tk.Label(qa_wrap, text="aksi cepat", bg=BG, fg=MUT,
+        _ck.Label(qa_wrap, text="aksi cepat", bg=BG, fg=MUT,
                  font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 8))
-        qa = tk.Frame(qa_wrap, bg=BG)
+        qa = _ck.Frame(qa_wrap, bg=BG)
         qa.pack(fill="x")
 
         for icon_key, qa_lbl, qa_cmd, qa_clr, qa_rgb in _qa_defs:
             _ph = self._home_qa_photos.get(icon_key)
             # Use a Frame as button (icon + text side by side)
-            qf = tk.Frame(qa, bg=qa_clr, cursor="hand2")
+            qf = _ck.Frame(qa, bg=qa_clr, cursor="hand2")
             qf.pack(side="left", padx=(0, 8))
             qf.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
-            inner = tk.Frame(qf, bg=qa_clr, padx=8, pady=5)
+            inner = _ck.Frame(qf, bg=qa_clr, padx=8, pady=5)
             inner.pack()
             inner.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
             if _ph:
-                il = tk.Label(inner, image=_ph, bg=qa_clr)
+                il = _ck.Label(inner, image=_ph, bg=qa_clr)
                 il.pack(side="left", padx=(0, 5))
                 il.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
-            tl = tk.Label(inner, text=qa_lbl, bg=qa_clr, fg=BG,
+            tl = _ck.Label(inner, text=qa_lbl, bg=qa_clr, fg=BG,
                           font=("Segoe UI", 8, "bold"))
             tl.pack(side="left")
             tl.bind("<Button-1>", lambda e, c=qa_cmd: c())
@@ -1588,10 +1593,10 @@ class SynthexApp:
         # ── My Tasks ─────────────────────────────────────────────────────────
         my_tasks = list(enumerate(self._ud.tasks[:5]))
         if my_tasks:
-            tk.Label(body, text="my tasks", bg=BG, fg=MUT,
+            _ck.Label(body, text="my tasks", bg=BG, fg=MUT,
                      font=("Segoe UI", 9, "bold")).pack(
                 anchor="w", padx=22, pady=(16, 6))
-            mt_card = tk.Frame(body, bg=CARD)
+            mt_card = _ck.Frame(body, bg=CARD)
             mt_card.pack(fill="x", padx=20, pady=(0, 4))
             for task_idx, t in my_tasks:
                 enabled = t.get("enabled", True)
@@ -1606,23 +1611,23 @@ class SynthexApp:
                     "running": YEL,
                 }.get(str(status).lower(), MUT)
 
-                row = tk.Frame(mt_card, bg=CARD, padx=14, pady=7, cursor="hand2")
+                row = _ck.Frame(mt_card, bg=CARD, padx=14, pady=7, cursor="hand2")
                 row.pack(fill="x")
-                tk.Frame(mt_card, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
+                _ck.Frame(mt_card, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
                 row.bind("<Enter>", lambda e, rw=row: _deep_bg(rw, CARD2))
                 row.bind("<Leave>", lambda e, rw=row: _deep_bg(rw, CARD))
 
                 # Status dot
-                tk.Label(row, text="●", bg=CARD,
+                _ck.Label(row, text="●", bg=CARD,
                          fg=GRN if enabled else "#64748b",
                          font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
-                tk.Label(row, text=t.get("name", "Tanpa Nama")[:32], bg=CARD, fg=FG,
+                _ck.Label(row, text=t.get("name", "Tanpa Nama")[:32], bg=CARD, fg=FG,
                          font=("Segoe UI", 9, "bold")).pack(side="left")
-                tk.Label(row, text=sc_label, bg=CARD, fg=MUT,
+                _ck.Label(row, text=sc_label, bg=CARD, fg=MUT,
                          font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
-                tk.Label(row, text=str(status).upper(), bg=CARD, fg=status_clr,
+                _ck.Label(row, text=str(status).upper(), bg=CARD, fg=status_clr,
                          font=("Segoe UI", 8, "bold")).pack(side="right", padx=(0, 8))
-                tk.Button(row, text="▶ Run", bg=ACC, fg="white",
+                _ck.Button(row, text="▶ Run", bg=ACC, fg="white",
                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                           padx=8, pady=2, cursor="hand2",
                           command=lambda idx=task_idx: (
@@ -1630,7 +1635,7 @@ class SynthexApp:
                               self._root.after(200, lambda i=idx: self._run_task_by_idx(i))
                           )).pack(side="right")
             if len(self._ud.tasks) > len(my_tasks):
-                tk.Label(mt_card,
+                _ck.Label(mt_card,
                          text="+ {} task lainnya — buka Schedule".format(
                              len(self._ud.tasks) - len(my_tasks)),
                          bg=CARD, fg=MUT, font=("Segoe UI", 8),
@@ -1646,10 +1651,10 @@ class SynthexApp:
         _CARD_HEX = CARD
 
         def _section_hdr(parent, title):
-            row = tk.Frame(parent, bg=BG)
+            row = _ck.Frame(parent, bg=BG)
             row.pack(fill="x", padx=20, pady=(24, 12))
-            tk.Frame(row, bg=ACC, width=3, height=20).pack(side="left", padx=(0, 12))
-            tk.Label(row, text=title, bg=BG, fg=FG,
+            _ck.Frame(row, bg=ACC, width=3, height=20).pack(side="left", padx=(0, 12))
+            _ck.Label(row, text=title, bg=BG, fg=FG,
                      font=("Segoe UI", 12, "bold")).pack(side="left")
 
         def _feat_card(parent, key, icon, title, desc, accent):
@@ -1659,7 +1664,7 @@ class SynthexApp:
             ar,ag,ab = int(accent[1:3],16), int(accent[3:5],16), int(accent[5:7],16)
             cr,cg,cb = int(_CARD_HEX[1:3],16), int(_CARD_HEX[3:5],16), int(_CARD_HEX[5:7],16)
 
-            cell = tk.Frame(parent, bg=_CARD_HEX, cursor="hand2")
+            cell = _ck.Frame(parent, bg=_CARD_HEX, cursor="hand2")
 
             # Top gradient bar
             grad_cv = tk.Canvas(cell, height=4, highlightthickness=0, bd=0,
@@ -1684,23 +1689,23 @@ class SynthexApp:
             grad_cv.bind("<Configure>", _draw_grad)
             cell.after(60, _draw_grad)
 
-            inner = tk.Frame(cell, bg=_CARD_HEX, padx=18, pady=16)
+            inner = _ck.Frame(cell, bg=_CARD_HEX, padx=18, pady=16)
             inner.pack(fill="both", expand=True)
 
             # Icon badge
-            badge = tk.Frame(inner, bg=badge_bg, padx=12, pady=10)
+            badge = _ck.Frame(inner, bg=badge_bg, padx=12, pady=10)
             badge.pack(anchor="w", pady=(0, 12))
-            badge_icon = tk.Label(badge, text=icon, bg=badge_bg,
+            badge_icon = _ck.Label(badge, text=icon, bg=badge_bg,
                                   font=("Segoe UI", 22))
             badge_icon.pack()
 
             # Title
-            title_lbl = tk.Label(inner, text=title, bg=_CARD_HEX, fg="#e2e8f0",
+            title_lbl = _ck.Label(inner, text=title, bg=_CARD_HEX, fg="#e2e8f0",
                                   font=("Segoe UI", 12, "bold"))
             title_lbl.pack(anchor="w", pady=(0, 5))
 
             # Description
-            desc_lbl = tk.Label(inner, text=desc, bg=_CARD_HEX, fg=MUT,
+            desc_lbl = _ck.Label(inner, text=desc, bg=_CARD_HEX, fg=MUT,
                                  font=("Segoe UI", 10), wraplength=180,
                                  justify="left")
             desc_lbl.pack(anchor="w", pady=(0, 14))
@@ -1779,7 +1784,7 @@ class SynthexApp:
         GCOLS = 3
         for group_title, features in GROUPS:
             _section_hdr(body, group_title)
-            grid = tk.Frame(body, bg=BG)
+            grid = _ck.Frame(body, bg=BG)
             grid.pack(fill="x", padx=20)
             for ci in range(GCOLS):
                 grid.columnconfigure(ci, weight=1)
@@ -1790,28 +1795,28 @@ class SynthexApp:
 
         # ── Recent Activity ──────────────────────────────────────────────────
         _section_hdr(body, "🕐 AKTIVITAS TERAKHIR")
-        ac = tk.Frame(body, bg=CARD)
+        ac = _ck.Frame(body, bg=CARD)
         ac.pack(fill="x", padx=20, pady=(0, 24))
         acts = list(self._ud.activity)[:6]
         if acts:
             for act in acts:
                 ok = act.get("ok")
-                arow = tk.Frame(ac, bg=CARD, padx=14, pady=6)
+                arow = _ck.Frame(ac, bg=CARD, padx=14, pady=6)
                 arow.pack(fill="x")
-                tk.Frame(ac, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
-                tk.Label(arow, text="●", fg=GRN if ok else RED,
+                _ck.Frame(ac, bg="#1c1c2e", height=1).pack(fill="x", padx=14)
+                _ck.Label(arow, text="●", fg=GRN if ok else RED,
                          bg=CARD, font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
-                tk.Label(arow, text=act.get("time", ""), fg=MUT, bg=CARD,
+                _ck.Label(arow, text=act.get("time", ""), fg=MUT, bg=CARD,
                          font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
-                tk.Label(arow, text=act.get("task", "")[:36], bg=CARD, fg=FG,
+                _ck.Label(arow, text=act.get("task", "")[:36], bg=CARD, fg=FG,
                          font=("Segoe UI", 9)).pack(side="left", padx=8)
-                tk.Label(arow, text="✓ OK" if ok else "✗ FAIL",
+                _ck.Label(arow, text="✓ OK" if ok else "✗ FAIL",
                          fg=GRN if ok else RED,
                          bg=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
                 arow.bind("<Enter>", lambda e, rw=arow: _deep_bg(rw, "#16162a"))
                 arow.bind("<Leave>", lambda e, rw=arow: _deep_bg(rw, CARD))
         else:
-            tk.Label(ac, text="Belum ada aktivitas.", fg=MUT, bg=CARD,
+            _ck.Label(ac, text="Belum ada aktivitas.", fg=MUT, bg=CARD,
                      font=("Segoe UI", 9), padx=14, pady=12).pack(anchor="w")
 
         return f
@@ -1821,17 +1826,17 @@ class SynthexApp:
     # ================================================================
 
     def _pg_web(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Web Browser", "Navigate to websites in Chrome.")
         c = _card(f, "Open URL")
         c.pack(fill="x", padx=20)
-        row = tk.Frame(c, bg=CARD)
+        row = _ck.Frame(c, bg=CARD)
         row.pack(fill="x")
         self._url = tk.StringVar()
-        ttk.Entry(row, textvariable=self._url,
+        t_ck.Entry(row, textvariable=self._url,
                   font=("Segoe UI", 10)).pack(
             side="left", fill="x", expand=True, padx=(0, 8))
-        ttk.Button(row, text="Open", style="Accent.TButton",
+        t_ck.Button(row, text="Open", style="Accent.TButton",
                    command=self._open_url).pack(side="left")
         sc = _card(f, "Saved Sites")
         sc.pack(fill="both", expand=True, padx=20, pady=(12, 20))
@@ -1847,22 +1852,22 @@ class SynthexApp:
     # ================================================================
 
     def _pg_spy(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Spy Mode", "Inspect Chrome elements in real-time.")
 
-        main = tk.Frame(f, bg=BG)
+        main = _ck.Frame(f, bg=BG)
         main.pack(fill="both", expand=True, padx=20, pady=(0, 20))
-        left = tk.Frame(main, bg=BG)
+        left = _ck.Frame(main, bg=BG)
         left.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
         ctrl = _card(left, "Spy Controls")
         ctrl.pack(fill="x", pady=(0, 8))
-        self._spy_btn = tk.Button(
+        self._spy_btn = _ck.Button(
             ctrl, text="ENABLE SPY", bg=ACC, fg=BG,
             font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
             padx=16, pady=8, cursor="hand2", command=self._toggle_spy)
         self._spy_btn.pack(side="left", padx=(0, 8))
-        ttk.Button(ctrl, text="Open Floating Spy",
+        t_ck.Button(ctrl, text="Open Floating Spy",
                    command=self._open_floating_spy).pack(side="left",
                                                           padx=(0, 8))
         self._spy_status_lbl = _lbl(
@@ -1893,16 +1898,16 @@ class SynthexApp:
             ("Value",        "value"),
             ("Position",     "position"),
         ]:
-            row = tk.Frame(info, bg=CARD)
+            row = _ck.Frame(info, bg=CARD)
             row.pack(fill="x", pady=2)
             _lbl(row, "{}:".format(label), fg=MUT, bg=CARD,
                  font=("Segoe UI", 9), width=14, anchor="w").pack(side="left")
             var = tk.StringVar(value="-")
-            tk.Label(row, textvariable=var, fg=FG, bg=CARD,
+            _ck.Label(row, textvariable=var, fg=FG, bg=CARD,
                      font=("Segoe UI", 9), anchor="w").pack(
                 side="left", fill="x", expand=True)
             self._spy_fields[key] = var
-        ttk.Button(info, text="Save Element", style="Accent.TButton",
+        t_ck.Button(info, text="Save Element", style="Accent.TButton",
                    command=self._save_spy_element).pack(
             anchor="w", pady=(10, 0))
 
@@ -1913,18 +1918,18 @@ class SynthexApp:
             ("type",     "Type",      65),
             ("selector", "Selector", 195),
         ])
-        btn_row = tk.Frame(saved, bg=CARD)
+        btn_row = _ck.Frame(saved, bg=CARD)
         btn_row.pack(fill="x", pady=(6, 0))
-        ttk.Button(btn_row, text="Fetch Value",
+        t_ck.Button(btn_row, text="Fetch Value",
                    command=self._fetch_spy_element_value).pack(
             side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Copy Selector",
+        t_ck.Button(btn_row, text="Copy Selector",
                    command=self._copy_spy_selector).pack(
             side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Scrape ke Sheet",
+        t_ck.Button(btn_row, text="Scrape ke Sheet",
                    command=self._scrape_spy_to_sheet).pack(
             side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Delete", style="Danger.TButton",
+        t_ck.Button(btn_row, text="Delete", style="Danger.TButton",
                    command=self._delete_spy_element).pack(side="right")
         self._refresh_spy_elements_tree()
         return f
@@ -1934,28 +1939,28 @@ class SynthexApp:
     # ================================================================
 
     def _pg_record(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Action Recording",
                   "Rekam & putar ulang aksi secara otomatis.")
 
         # How-to strip
-        how = tk.Frame(f, bg="#0D1A0D", padx=14, pady=8)
+        how = _ck.Frame(f, bg="#0D1A0D", padx=14, pady=8)
         how.pack(fill="x", padx=20, pady=(0, 10))
-        tk.Label(how, text="Cara pakai:",
+        _ck.Label(how, text="Cara pakai:",
                  bg="#0D1A0D", fg=GRN, font=("Segoe UI", 8, "bold")).pack(
             side="left", padx=(0, 6))
-        tk.Label(how,
+        _ck.Label(how,
                  text="Simple Record = rekam gerakan mouse & ketikan  |  "
                       "Smart Record = buat langkah otomasi manual (URL, klik, ketik, dll)",
                  bg="#0D1A0D", fg=FG, font=("Segoe UI", 8)).pack(
             side="left", fill="x", expand=True)
 
         # Two mode cards
-        cards = tk.Frame(f, bg=BG)
+        cards = _ck.Frame(f, bg=BG)
         cards.pack(fill="x", padx=20, pady=(0, 12))
 
         # Simple Record card
-        sc = tk.Frame(cards, bg=CARD, padx=16, pady=14)
+        sc = _ck.Frame(cards, bg=CARD, padx=16, pady=14)
         sc.pack(side="left", fill="both", expand=True, padx=(0, 8))
         _lbl(sc, "SIMPLE RECORD", bg=CARD, fg=ACC,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
@@ -1965,13 +1970,13 @@ class SynthexApp:
              "Shortcut: Ctrl+3",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        tk.Button(sc, text="Buka Recorder",
+        _ck.Button(sc, text="Buka Recorder",
                   bg=ACC, fg=BG, font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_simple_rec).pack(fill="x")
 
         # Smart Record card
-        ac = tk.Frame(cards, bg=CARD, padx=16, pady=14)
+        ac = _ck.Frame(cards, bg=CARD, padx=16, pady=14)
         ac.pack(side="left", fill="both", expand=True)
         _lbl(ac, "SMART RECORD", bg=CARD, fg=GRN,
              font=("Segoe UI", 11, "bold")).pack(anchor="w")
@@ -1981,29 +1986,29 @@ class SynthexApp:
              "Hasil bisa dijalankan\nberkali-kali.",
              bg=CARD, fg=MUT,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        tk.Button(ac, text="Buat Langkah Baru",
+        _ck.Button(ac, text="Buat Langkah Baru",
                   bg=GRN, fg=BG, font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_smart_rec).pack(fill="x")
 
         # ── Daftar Rekaman Tersimpan ──────────────────────────────────────────
-        lc = tk.Frame(f, bg=CARD, padx=0, pady=0)
+        lc = _ck.Frame(f, bg=CARD, padx=0, pady=0)
         lc.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         # Card header row (title + counter badge)
-        lc_hdr = tk.Frame(lc, bg=CARD, padx=14, pady=10)
+        lc_hdr = _ck.Frame(lc, bg=CARD, padx=14, pady=10)
         lc_hdr.pack(fill="x")
-        tk.Label(lc_hdr, text="Daftar Rekaman Tersimpan",
+        _ck.Label(lc_hdr, text="Daftar Rekaman Tersimpan",
                  bg=CARD, fg=FG,
                  font=("Segoe UI", 10, "bold")).pack(side="left")
-        self._rec_count_lbl = tk.Label(lc_hdr, text="",
+        self._rec_count_lbl = _ck.Label(lc_hdr, text="",
                  bg=ACC, fg="white",
                  font=("Segoe UI", 8, "bold"),
                  padx=7, pady=1)
         self._rec_count_lbl.pack(side="left", padx=(8, 0))
 
         # Treeview inside a padded inner frame
-        tree_frame = tk.Frame(lc, bg=CARD, padx=14, pady=0)
+        tree_frame = _ck.Frame(lc, bg=CARD, padx=14, pady=0)
         tree_frame.pack(fill="both", expand=True)
 
         self._recordings_tree = _tree(tree_frame, [
@@ -2044,27 +2049,27 @@ class SynthexApp:
         self._recordings_tree.bind("<Button-3>", _show_ctx)
 
         # Action button row
-        act_row = tk.Frame(lc, bg="#14141E", padx=14, pady=8)
+        act_row = _ck.Frame(lc, bg="#14141E", padx=14, pady=8)
         act_row.pack(fill="x")
 
         _BTN = dict(font=("Segoe UI", 9), relief="flat", bd=0,
                     padx=14, pady=6, cursor="hand2")
-        tk.Button(act_row, text="  Play", bg=GRN, fg="white",
+        _ck.Button(act_row, text="  Play", bg=GRN, fg="white",
                   command=self._play_selected_recording, **_BTN).pack(
             side="left", padx=(0, 4))
-        tk.Button(act_row, text="  Edit", bg=ACC, fg="white",
+        _ck.Button(act_row, text="  Edit", bg=ACC, fg="white",
                   command=self._edit_selected_recording, **_BTN).pack(
             side="left", padx=(0, 4))
-        tk.Button(act_row, text="  Hapus", bg=RED, fg="white",
+        _ck.Button(act_row, text="  Hapus", bg=RED, fg="white",
                   command=self._delete_selected_recording, **_BTN).pack(
             side="left", padx=(0, 4))
         # divider
-        tk.Frame(act_row, bg=MUT, width=1, height=22).pack(
+        _ck.Frame(act_row, bg=MUT, width=1, height=22).pack(
             side="left", padx=(6, 10))
-        tk.Button(act_row, text="Naik", bg=CARD2, fg=FG,
+        _ck.Button(act_row, text="Naik", bg=CARD2, fg=FG,
                   command=self._move_rec_up, **_BTN).pack(
             side="left", padx=(0, 4))
-        tk.Button(act_row, text="Turun", bg=CARD2, fg=FG,
+        _ck.Button(act_row, text="Turun", bg=CARD2, fg=FG,
                   command=self._move_rec_down, **_BTN).pack(side="left")
 
         self._rec_folder_var = tk.StringVar(value="General")
@@ -2077,10 +2082,10 @@ class SynthexApp:
 
     def _pg_schedule(self):
         """Schedule page: toggles between list view and builder view."""
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
 
         # -- List view --
-        self._mb_list_view = tk.Frame(f, bg=BG)
+        self._mb_list_view = _ck.Frame(f, bg=BG)
         self._mb_list_view.pack(fill="both", expand=True)
 
         self._hdr(self._mb_list_view, "Smart Macros",
@@ -2088,21 +2093,21 @@ class SynthexApp:
 
         top_bar = _card(self._mb_list_view)
         top_bar.pack(fill="x", padx=20, pady=(0, 8))
-        tk.Button(top_bar, text="+ Create New Macro",
+        _ck.Button(top_bar, text="+ Create New Macro",
                   bg=ACC, fg=BG, font=("Segoe UI", 11, "bold"),
                   relief="flat", bd=0, padx=18, pady=9, cursor="hand2",
                   command=lambda: self._mb_open(parent=f)).pack(side="left")
-        ttk.Button(top_bar, text="Run Now",
+        t_ck.Button(top_bar, text="Run Now",
                    command=self._run_selected_task).pack(
             side="left", padx=(8, 0))
-        ttk.Button(top_bar, text="Edit",
+        t_ck.Button(top_bar, text="Edit",
                    command=lambda: self._mb_open(
                        parent=f, edit_idx=self._selected_task_idx()
                    )).pack(side="left", padx=(4, 0))
-        ttk.Button(top_bar, text="Toggle ON/OFF",
+        t_ck.Button(top_bar, text="Toggle ON/OFF",
                    command=self._toggle_task_enabled).pack(
             side="left", padx=(4, 0))
-        ttk.Button(top_bar, text="Delete", style="Danger.TButton",
+        t_ck.Button(top_bar, text="Delete", style="Danger.TButton",
                    command=self._delete_selected_task).pack(
             side="left", padx=(4, 0))
 
@@ -2171,7 +2176,7 @@ class SynthexApp:
         self._start_countdown_refresh()
 
         # -- Builder view (hidden initially) --
-        self._mb_build_view = tk.Frame(f, bg=BG)
+        self._mb_build_view = _ck.Frame(f, bg=BG)
         # Built on demand when _mb_open() is called
 
         return f
@@ -2206,20 +2211,20 @@ class SynthexApp:
         f = self._mb_build_view
 
         # -- Top bar --
-        top = tk.Frame(f, bg=SIDE, height=52)
+        top = _ck.Frame(f, bg=SIDE, height=52)
         top.pack(fill="x")
         top.pack_propagate(False)
-        tk.Button(top, text="< Back", bg=SIDE, fg=MUT,
+        _ck.Button(top, text="< Back", bg=SIDE, fg=MUT,
                   font=("Segoe UI", 10), relief="flat", bd=0,
                   padx=12, pady=8, cursor="hand2",
                   command=self._mb_back).pack(side="left", padx=4, pady=8)
-        tk.Frame(top, bg=MUT, width=1).pack(side="left", fill="y",
+        _ck.Frame(top, bg=MUT, width=1).pack(side="left", fill="y",
                                               padx=4, pady=8)
         _lbl(top, "Macro Name:", fg=MUT, bg=SIDE,
              font=("Segoe UI", 9)).pack(side="left", padx=(8, 4), pady=14)
         self._mb_name_var = tk.StringVar(
             value=existing.get("name","") if existing else "")
-        name_entry = tk.Entry(top, textvariable=self._mb_name_var,
+        name_entry = _ck.Entry(top, textvariable=self._mb_name_var,
                               bg=CARD, fg=FG, insertbackground=FG,
                               font=("Segoe UI", 11), relief="flat",
                               bd=0, width=28)
@@ -2232,33 +2237,33 @@ class SynthexApp:
             value=existing.get("schedule_value","") if existing else "")
         self._mb_sched_time = tk.StringVar(
             value=existing.get("schedule_time","09:00") if existing else "09:00")
-        sched_cb = ttk.Combobox(
+        sched_cb = _ck.Combobox(
             top, textvariable=self._mb_sched_type,
             values=["manual", "interval", "daily", "hourly"],
             state="readonly", width=9)
         sched_cb.pack(side="left", padx=(0, 4), pady=14)
-        ttk.Entry(top, textvariable=self._mb_sched_val,
+        t_ck.Entry(top, textvariable=self._mb_sched_val,
                   width=5).pack(side="left", padx=(0, 2), pady=14)
         _lbl(top, "min / time:", fg=MUT, bg=SIDE,
              font=("Segoe UI", 8)).pack(side="left")
-        ttk.Entry(top, textvariable=self._mb_sched_time,
+        t_ck.Entry(top, textvariable=self._mb_sched_time,
                   width=7).pack(side="left", padx=(2, 8), pady=14)
 
-        tk.Button(top, text="Save Macro", bg=GRN, fg=BG,
+        _ck.Button(top, text="Save Macro", bg=GRN, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=self._mb_save).pack(side="right", padx=12, pady=8)
-        tk.Button(top, text="Test Run", bg=YEL, fg=BG,
+        _ck.Button(top, text="Test Run", bg=YEL, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=self._mb_dry_run).pack(side="right", padx=(0, 2), pady=8)
 
         # -- Body: left panel + right panel --
-        body = tk.Frame(f, bg=BG)
+        body = _ck.Frame(f, bg=BG)
         body.pack(fill="both", expand=True)
 
         # Left panel - step list (270px)
-        left_outer = tk.Frame(body, bg=SIDE, width=270)
+        left_outer = _ck.Frame(body, bg=SIDE, width=270)
         left_outer.pack(side="left", fill="y")
         left_outer.pack_propagate(False)
 
@@ -2269,13 +2274,13 @@ class SynthexApp:
         # Scrollable step list
         list_canvas = tk.Canvas(left_outer, bg=SIDE,
                                 highlightthickness=0)
-        list_sb = ttk.Scrollbar(left_outer, orient="vertical",
+        list_sb = _ck.Scrollbar(left_outer, orient="vertical",
                                 command=list_canvas.yview)
         list_sb.pack(side="right", fill="y")
         list_canvas.pack(side="left", fill="both", expand=True)
         list_canvas.configure(yscrollcommand=list_sb.set)
 
-        self._mb_list_inner = tk.Frame(list_canvas, bg=SIDE)
+        self._mb_list_inner = _ck.Frame(list_canvas, bg=SIDE)
         list_canvas.create_window((0, 0), window=self._mb_list_inner,
                                   anchor="nw", tags="inner")
 
@@ -2289,19 +2294,19 @@ class SynthexApp:
                 scrollregion=list_canvas.bbox("all")))
 
         # Add Step button at bottom
-        add_btn_frame = tk.Frame(left_outer, bg=SIDE, pady=6)
+        add_btn_frame = _ck.Frame(left_outer, bg=SIDE, pady=6)
         add_btn_frame.pack(fill="x", side="bottom")
-        tk.Button(add_btn_frame, text="+ Add Step",
+        _ck.Button(add_btn_frame, text="+ Add Step",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=6, cursor="hand2",
                   command=lambda: self._mb_add_step()).pack(fill="x",
                                                              padx=10)
 
         # Right panel - step editor
-        right_outer = tk.Frame(body, bg=BG)
+        right_outer = _ck.Frame(body, bg=BG)
         right_outer.pack(side="left", fill="both", expand=True)
 
-        self._mb_editor_frame = tk.Frame(right_outer, bg=BG)
+        self._mb_editor_frame = _ck.Frame(right_outer, bg=BG)
         self._mb_editor_frame.pack(fill="both", expand=True)
 
         # Render steps or templates
@@ -2327,17 +2332,17 @@ class SynthexApp:
             bg_row = ACC if is_sel else SIDE
             fg_row = BG if is_sel else FG
 
-            row = tk.Frame(self._mb_list_inner, bg=bg_row,
+            row = _ck.Frame(self._mb_list_inner, bg=bg_row,
                            cursor="hand2")
             row.pack(fill="x", padx=4, pady=1)
 
-            tk.Label(row, text="{:2}.".format(i + 1), bg=bg_row, fg=fg_row,
+            _ck.Label(row, text="{:2}.".format(i + 1), bg=bg_row, fg=fg_row,
                      font=("Consolas", 9), width=3, anchor="e").pack(
                 side="left", padx=(4, 2))
-            tk.Label(row, text=icon, bg=bg_row,
+            _ck.Label(row, text=icon, bg=bg_row,
                      fg=YEL if is_sel else YEL,
                      font=("Consolas", 9), width=4).pack(side="left")
-            tk.Label(row, text=desc, bg=bg_row, fg=fg_row,
+            _ck.Label(row, text=desc, bg=bg_row, fg=fg_row,
                      font=("Segoe UI", 9), anchor="w").pack(
                 side="left", fill="x", expand=True, padx=(0, 4))
 
@@ -2346,7 +2351,7 @@ class SynthexApp:
                 def _do():
                     self._mb_test_single_step(idx)
                 return _do
-            tk.Button(row, text="Test", bg=YEL, fg=BG,
+            _ck.Button(row, text="Test", bg=YEL, fg=BG,
                       font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
                       padx=4, cursor="hand2",
                       command=_make_test()).pack(side="right", padx=1, pady=3)
@@ -2356,7 +2361,7 @@ class SynthexApp:
                 def _do():
                     self._mb_delete_step(idx)
                 return _do
-            tk.Button(row, text="x", bg=bg_row, fg=RED if not is_sel else BG,
+            _ck.Button(row, text="x", bg=bg_row, fg=RED if not is_sel else BG,
                       font=("Segoe UI", 8), relief="flat", bd=0,
                       padx=4, cursor="hand2",
                       command=_make_del()).pack(side="right", padx=2, pady=3)
@@ -2380,12 +2385,12 @@ class SynthexApp:
                         self._mb_refresh_list()
                         self._mb_select_step(idx + 1, rebuild=False)
                 return _do
-            tk.Button(row, text="^", bg=bg_row,
+            _ck.Button(row, text="^", bg=bg_row,
                       fg=MUT if not is_sel else BG,
                       font=("Segoe UI", 7), relief="flat", bd=0, padx=3,
                       cursor="hand2",
                       command=_make_up()).pack(side="right", pady=3)
-            tk.Button(row, text="v", bg=bg_row,
+            _ck.Button(row, text="v", bg=bg_row,
                       fg=MUT if not is_sel else BG,
                       font=("Segoe UI", 7), relief="flat", bd=0, padx=3,
                       cursor="hand2",
@@ -2448,9 +2453,9 @@ class SynthexApp:
             anchor="w", padx=24, pady=(20, 12))
 
         templates = _load_templates()
-        row1 = tk.Frame(self._mb_editor_frame, bg=BG)
+        row1 = _ck.Frame(self._mb_editor_frame, bg=BG)
         row1.pack(fill="x", padx=20, pady=(0, 8))
-        row2 = tk.Frame(self._mb_editor_frame, bg=BG)
+        row2 = _ck.Frame(self._mb_editor_frame, bg=BG)
         row2.pack(fill="x", padx=20)
 
         tmpl_icons = ["->", "[?]", "[~]", "<-T"]
@@ -2469,13 +2474,13 @@ class SynthexApp:
                 if self._mb_steps:
                     self._mb_select_step(0)
 
-            tc = tk.Frame(parent_row, bg=CARD, padx=16, pady=14,
+            tc = _ck.Frame(parent_row, bg=CARD, padx=16, pady=14,
                           cursor="hand2")
             tc.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
-            hrow = tk.Frame(tc, bg=CARD)
+            hrow = _ck.Frame(tc, bg=CARD)
             hrow.pack(fill="x", pady=(0, 6))
-            tk.Label(hrow, text=ic, bg=CARD, fg=clr,
+            _ck.Label(hrow, text=ic, bg=CARD, fg=clr,
                      font=("Consolas", 14, "bold")).pack(side="left",
                                                           padx=(0, 10))
             _lbl(hrow, tmpl["name"], fg=clr, bg=CARD,
@@ -2495,19 +2500,19 @@ class SynthexApp:
                 _lbl(tc, "  ... +{} more steps".format(len(steps)-4),
                      fg=MUT, bg=CARD, font=("Segoe UI", 8)).pack(anchor="w")
 
-            tk.Button(tc, text="Use This Template",
+            _ck.Button(tc, text="Use This Template",
                       bg=clr, fg=BG,
                       font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                       padx=10, pady=5, cursor="hand2",
                       command=_use_tmpl).pack(anchor="w", pady=(10, 0))
 
         # OR start blank
-        blank = tk.Frame(self._mb_editor_frame, bg=CARD, padx=16,
+        blank = _ck.Frame(self._mb_editor_frame, bg=CARD, padx=16,
                          pady=14, cursor="hand2")
         blank.pack(fill="x", padx=20, pady=(12, 0))
-        brow = tk.Frame(blank, bg=CARD)
+        brow = _ck.Frame(blank, bg=CARD)
         brow.pack(fill="x", pady=(0, 6))
-        tk.Label(brow, text="[+]", bg=CARD, fg=FG,
+        _ck.Label(brow, text="[+]", bg=CARD, fg=FG,
                  font=("Consolas", 14, "bold")).pack(side="left",
                                                       padx=(0, 10))
         _lbl(brow, "Start from scratch", fg=FG, bg=CARD,
@@ -2515,7 +2520,7 @@ class SynthexApp:
         _lbl(blank, "Build your own macro step by step with any combination "
              "of actions.", fg=MUT, bg=CARD, font=("Segoe UI", 8),
              wraplength=400, justify="left").pack(anchor="w", pady=(0, 8))
-        tk.Button(blank, text="+ Add First Step",
+        _ck.Button(blank, text="+ Add First Step",
                   bg=FG, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=10, pady=5, cursor="hand2",
                   command=self._mb_add_step).pack(anchor="w")
@@ -2528,7 +2533,7 @@ class SynthexApp:
         self._mb_type_var   = tk.StringVar(value=step_type)
 
         # -- Step type selector --
-        type_frame = tk.Frame(self._mb_editor_frame, bg=BG)
+        type_frame = _ck.Frame(self._mb_editor_frame, bg=BG)
         type_frame.pack(fill="x", padx=20, pady=(16, 8))
         _lbl(type_frame, "Step Type:", fg=MUT, bg=BG,
              font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
@@ -2555,23 +2560,23 @@ class SynthexApp:
         curr_disp = key_to_disp.get(step_type, display_names[0])
         disp_var  = tk.StringVar(value=curr_disp)
 
-        type_cb = ttk.Combobox(type_frame, textvariable=disp_var,
+        type_cb = _ck.Combobox(type_frame, textvariable=disp_var,
                                values=display_names, state="readonly",
                                width=28, font=("Segoe UI", 10))
         type_cb.pack(anchor="w")
 
         # -- Fields area --
-        fields_outer = tk.Frame(self._mb_editor_frame, bg=BG)
+        fields_outer = _ck.Frame(self._mb_editor_frame, bg=BG)
         fields_outer.pack(fill="both", expand=True, padx=20, pady=(4, 0))
 
         # Scroll for fields
         fc = tk.Canvas(fields_outer, bg=BG, highlightthickness=0)
-        fsb = ttk.Scrollbar(fields_outer, orient="vertical",
+        fsb = _ck.Scrollbar(fields_outer, orient="vertical",
                             command=fc.yview)
         fsb.pack(side="right", fill="y")
         fc.pack(side="left", fill="both", expand=True)
         fc.configure(yscrollcommand=fsb.set)
-        fields_inner = tk.Frame(fc, bg=BG)
+        fields_inner = _ck.Frame(fc, bg=BG)
         fc.create_window((0, 0), window=fields_inner, anchor="nw",
                          tags="fi")
 
@@ -2603,20 +2608,20 @@ class SynthexApp:
         """Build dynamic fields for a given step type."""
         def _field(label, key, default="", helper="",
                    multiline=False, height=3):
-            f = tk.Frame(parent, bg=BG)
+            f = _ck.Frame(parent, bg=BG)
             f.pack(fill="x", pady=(0, 10))
             _lbl(f, label, fg=FG, bg=BG,
                  font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 2))
             val = tk.StringVar(value=existing.get(key, default))
             if multiline:
-                txt = tk.Text(f, bg=CARD, fg=FG, insertbackground=FG,
+                txt = _ck.Text(f, bg=CARD, fg=FG, insertbackground=FG,
                               font=("Segoe UI", 10), relief="flat",
                               height=height, wrap="word")
                 txt.insert("1.0", existing.get(key, default))
                 txt.pack(fill="x")
                 self._mb_field_vars[key] = txt
             else:
-                entry = tk.Entry(f, textvariable=val, bg=CARD, fg=FG,
+                entry = _ck.Entry(f, textvariable=val, bg=CARD, fg=FG,
                                  insertbackground=FG, font=("Segoe UI", 10),
                                  relief="flat")
                 entry.pack(fill="x", ipady=6)
@@ -2628,7 +2633,7 @@ class SynthexApp:
 
         def _spy_button(selector_key):
             """Add a 'USE SPY TO PICK' button that fills selector_key."""
-            row = tk.Frame(parent, bg=BG)
+            row = _ck.Frame(parent, bg=BG)
             row.pack(fill="x", pady=(0, 10))
 
             def _do_spy_pick():
@@ -2643,7 +2648,7 @@ class SynthexApp:
                 self._sv.set(
                     "Spy open. Hover over element, click USE IN MACRO.")
 
-            tk.Button(row, text="USE SPY TO PICK",
+            _ck.Button(row, text="USE SPY TO PICK",
                       bg=PRP, fg=BG, font=("Segoe UI", 9, "bold"),
                       relief="flat", bd=0, padx=12, pady=6,
                       cursor="hand2", command=_do_spy_pick).pack(
@@ -2656,7 +2661,7 @@ class SynthexApp:
         if step_type == "go_to_url":
             _field("Website URL", "url", "https://",
                    helper="Tip: Copy the exact URL from your browser address bar")
-            row = tk.Frame(parent, bg=BG)
+            row = _ck.Frame(parent, bg=BG)
             row.pack(fill="x", pady=(0, 10))
             def _open_test():
                 import webbrowser as _wb
@@ -2667,7 +2672,7 @@ class SynthexApp:
                         if not u.startswith(("http://", "https://")):
                             u = "https://" + u
                         _wb.open(u)
-            tk.Button(row, text="Open in Browser",
+            _ck.Button(row, text="Open in Browser",
                       bg=CARD, fg=FG, font=("Segoe UI", 9),
                       relief="flat", bd=0, padx=10, pady=5,
                       cursor="hand2", command=_open_test).pack(side="left")
@@ -2739,7 +2744,7 @@ class SynthexApp:
                    helper='Use {variable_name} or literal text')
             _field("Equals what?", "value2", "",
                    helper="Leave empty to check if variable is blank")
-            f_cond = tk.Frame(parent, bg=BG)
+            f_cond = _ck.Frame(parent, bg=BG)
             f_cond.pack(fill="x", pady=(0, 10))
             _lbl(f_cond, "If FALSE, then:", fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
@@ -2749,7 +2754,7 @@ class SynthexApp:
             for val, label in [("stop", "Stop macro"),
                                 ("skip", "Skip next step"),
                                 ("continue", "Continue anyway")]:
-                tk.Radiobutton(f_cond, text=label, variable=act_var,
+                _ck.Radiobutton(f_cond, text=label, variable=act_var,
                                value=val, bg=BG, fg=FG,
                                selectcolor=CARD, activebackground=BG,
                                activeforeground=ACC,
@@ -2760,7 +2765,7 @@ class SynthexApp:
                    helper='Use {variable_name} to check a captured value')
             _field("Contains what?", "keyword", "",
                    helper='Example: Habis, Out of Stock, Error')
-            f_true = tk.Frame(parent, bg=BG)
+            f_true = _ck.Frame(parent, bg=BG)
             f_true.pack(fill="x", pady=(0, 6))
             _lbl(f_true, "If TRUE, then:", fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
@@ -2770,7 +2775,7 @@ class SynthexApp:
             for val, lbl in [("notify", "Send notification"),
                               ("skip",   "Skip next step"),
                               ("stop",   "Stop macro")]:
-                tk.Radiobutton(f_true, text=lbl, variable=act_true,
+                _ck.Radiobutton(f_true, text=lbl, variable=act_true,
                                value=val, bg=BG, fg=FG, selectcolor=CARD,
                                activebackground=BG, activeforeground=ACC,
                                font=("Segoe UI", 9)).pack(anchor="w")
@@ -2780,7 +2785,7 @@ class SynthexApp:
         elif step_type == "notify":
             _field("Message", "message", "",
                    helper="Supports {variables}. Example: Price updated: {price}")
-            f_type = tk.Frame(parent, bg=BG)
+            f_type = _ck.Frame(parent, bg=BG)
             f_type.pack(fill="x", pady=(0, 10))
             _lbl(f_type, "Notification type:", fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
@@ -2789,7 +2794,7 @@ class SynthexApp:
             for val, lbl in [("popup", "Popup message"),
                               ("sound", "Sound only"),
                               ("both",  "Popup + Sound")]:
-                tk.Radiobutton(f_type, text=lbl, variable=ntype,
+                _ck.Radiobutton(f_type, text=lbl, variable=ntype,
                                value=val, bg=BG, fg=FG, selectcolor=CARD,
                                activebackground=BG, activeforeground=ACC,
                                font=("Segoe UI", 9)).pack(anchor="w")
@@ -2799,14 +2804,14 @@ class SynthexApp:
             _ai_cfg_prov = self.config.get("ai.provider", "openai")
             _ai_cfg_model = self.config.get("ai.model", "") or "default"
             _ai_has_key = bool(self.config.get("ai.api_key", "").strip())
-            info_fr = tk.Frame(parent, bg="#0A1A0A" if _ai_has_key else "#1A0A0A",
+            info_fr = _ck.Frame(parent, bg="#0A1A0A" if _ai_has_key else "#1A0A0A",
                                padx=10, pady=6)
             info_fr.pack(fill="x", pady=(0, 10))
             status_txt = ("✓ AI dikonfigurasi: {} ({})".format(
                 _ai_cfg_prov.upper(), _ai_cfg_model)
                 if _ai_has_key else
                 "⚠ API key belum diset. Buka Settings → AI Integration dulu.")
-            tk.Label(info_fr, text=status_txt,
+            _ck.Label(info_fr, text=status_txt,
                      bg=info_fr["bg"],
                      fg=GRN if _ai_has_key else YEL,
                      font=("Segoe UI", 8)).pack(anchor="w")
@@ -2818,11 +2823,11 @@ class SynthexApp:
                           "Contoh: Ringkas teks ini: {page_text}")
 
             # System prompt override (optional)
-            f_sys = tk.Frame(parent, bg=BG)
+            f_sys = _ck.Frame(parent, bg=BG)
             f_sys.pack(fill="x", pady=(0, 10))
             _lbl(f_sys, "System Prompt (opsional — override default):",
                  fg=MUT, bg=BG, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
-            sys_txt_w = tk.Text(f_sys, bg=CARD, fg=FG, insertbackground=FG,
+            sys_txt_w = _ck.Text(f_sys, bg=CARD, fg=FG, insertbackground=FG,
                                 font=("Segoe UI", 9), relief="flat",
                                 height=2, wrap="word")
             sys_txt_w.insert("1.0", existing.get("system", ""))
@@ -2830,12 +2835,12 @@ class SynthexApp:
             self._mb_field_vars["system"] = sys_txt_w
 
             # Save-as variable + max tokens row
-            sv_row = tk.Frame(parent, bg=BG)
+            sv_row = _ck.Frame(parent, bg=BG)
             sv_row.pack(fill="x", pady=(0, 10))
             _lbl(sv_row, "Simpan hasil sebagai:", fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
             sv_var = tk.StringVar(value=existing.get("var", "ai_result"))
-            sv_entry = tk.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
+            sv_entry = _ck.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
                                 insertbackground=FG, relief="flat",
                                 font=("Segoe UI", 9), width=16)
             sv_entry.pack(side="left")
@@ -2844,7 +2849,7 @@ class SynthexApp:
                  font=("Segoe UI", 9)).pack(side="left", padx=(12, 4))
             mt_var = tk.StringVar(value=str(existing.get("max_tokens",
                                             self.config.get("ai.max_tokens", 800))))
-            tk.Entry(sv_row, textvariable=mt_var, bg=CARD, fg=FG,
+            _ck.Entry(sv_row, textvariable=mt_var, bg=CARD, fg=FG,
                      insertbackground=FG, relief="flat",
                      font=("Segoe UI", 9), width=6).pack(side="left")
             self._mb_field_vars["max_tokens"] = mt_var
@@ -2855,9 +2860,9 @@ class SynthexApp:
                  fg=MUT, bg=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
 
         elif step_type == "scrape_url":
-            info_fr = tk.Frame(parent, bg="#0A100A", padx=10, pady=6)
+            info_fr = _ck.Frame(parent, bg="#0A100A", padx=10, pady=6)
             info_fr.pack(fill="x", pady=(0, 10))
-            tk.Label(info_fr,
+            _ck.Label(info_fr,
                      text="Ambil teks dari halaman web — tidak butuh browser/Playwright.",
                      bg="#0A100A", fg=GRN,
                      font=("Segoe UI", 8)).pack(anchor="w")
@@ -2870,12 +2875,12 @@ class SynthexApp:
                    helper="Jika diisi, hanya ambil baris yang mengandung kata ini. "
                           "Contoh: harga, stok, price")
 
-            sv_row = tk.Frame(parent, bg=BG)
+            sv_row = _ck.Frame(parent, bg=BG)
             sv_row.pack(fill="x", pady=(0, 10))
             _lbl(sv_row, "Simpan sebagai variabel:", fg=MUT, bg=BG,
                  font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
             sv_var = tk.StringVar(value=existing.get("var", "scraped_text"))
-            tk.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
+            _ck.Entry(sv_row, textvariable=sv_var, bg=CARD, fg=FG,
                      insertbackground=FG, relief="flat",
                      font=("Segoe UI", 9), width=18).pack(side="left")
             self._mb_field_vars["var"] = sv_var
@@ -2890,7 +2895,7 @@ class SynthexApp:
 
     def _mb_build_editor_actions(self, parent, step_idx):
         """Add Apply / Insert Below buttons at bottom of editor."""
-        row = tk.Frame(parent, bg=BG)
+        row = _ck.Frame(parent, bg=BG)
         row.pack(fill="x", pady=(16, 0))
 
         def _apply():
@@ -2911,11 +2916,11 @@ class SynthexApp:
             _apply()
             self._mb_add_step(after_idx=step_idx)
 
-        tk.Button(row, text="Apply Changes", bg=GRN, fg=BG,
+        _ck.Button(row, text="Apply Changes", bg=GRN, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=_apply).pack(side="left", padx=(0, 8))
-        tk.Button(row, text="+ Insert Step Below",
+        _ck.Button(row, text="+ Insert Step Below",
                   bg=CARD, fg=FG, font=("Segoe UI", 9),
                   relief="flat", bd=0, padx=10, pady=7, cursor="hand2",
                   command=_insert_below).pack(side="left")
@@ -2981,23 +2986,23 @@ class SynthexApp:
         w.title("Dry Run: {}".format(task["name"]))
 
         # Extra info banner
-        info = tk.Label(w, text="DRY RUN  -  Sheet writes are simulated",
+        info = _ck.Label(w, text="DRY RUN  -  Sheet writes are simulated",
                         bg=YEL, fg=BG, font=("Segoe UI", 9, "bold"),
                         padx=10, pady=4)
         info.pack(fill="x", before=panel["step_lbl"])
 
         # Per-step confirm controls
-        ctrl = tk.Frame(w, bg=BG)
+        ctrl = _ck.Frame(w, bg=BG)
         ctrl.pack(fill="x", padx=16, pady=(0, 4))
         confirm_var = tk.StringVar(value="waiting")
 
-        next_btn = tk.Button(ctrl, text="Execute Step", bg=GRN, fg=BG,
+        next_btn = _ck.Button(ctrl, text="Execute Step", bg=GRN, fg=BG,
                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                              padx=10, pady=4, cursor="hand2",
                              command=lambda: confirm_var.set("yes"),
                              state="disabled")
         next_btn.pack(side="left", padx=(0, 6))
-        skip_btn = tk.Button(ctrl, text="Skip", bg=CARD, fg=FG,
+        skip_btn = _ck.Button(ctrl, text="Skip", bg=CARD, fg=FG,
                              font=("Segoe UI", 9), relief="flat", bd=0,
                              padx=10, pady=4, cursor="hand2",
                              command=lambda: confirm_var.set("skip"),
@@ -3145,19 +3150,19 @@ class SynthexApp:
         w.attributes("-topmost", True)
         w.resizable(False, False)
 
-        tk.Label(w, text="Testing: {}".format(_step_label(step)[:50]),
+        _ck.Label(w, text="Testing: {}".format(_step_label(step)[:50]),
                  bg=BG, fg=FG, font=("Segoe UI", 10, "bold"),
                  padx=16, pady=10, anchor="w").pack(fill="x")
-        status_lbl = tk.Label(w, text="Running...",
+        status_lbl = _ck.Label(w, text="Running...",
                               bg=BG, fg=MUT, font=("Segoe UI", 9),
                               padx=16, anchor="w")
         status_lbl.pack(fill="x")
-        result_lbl = tk.Label(w, text="",
+        result_lbl = _ck.Label(w, text="",
                               bg=CARD, fg=FG, font=("Consolas", 9),
                               padx=12, pady=8, anchor="w", wraplength=370,
                               justify="left")
         result_lbl.pack(fill="x", padx=16, pady=(6, 0))
-        ttk.Button(w, text="Close", command=w.destroy).pack(pady=10)
+        t_ck.Button(w, text="Close", command=w.destroy).pack(pady=10)
 
         def _run():
             from modules.macro.smart_macro import SmartMacro
@@ -3186,17 +3191,17 @@ class SynthexApp:
 
     def _pg_sheet(self):
         from modules.sheets import connector as _sc
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Google Sheets",
                   "Connect sheets, preview data, and write values.")
 
         scroll_canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(f, orient="vertical",
+        scrollbar = _ck.Scrollbar(f, orient="vertical",
                                   command=scroll_canvas.yview)
         scroll_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side="right", fill="y")
         scroll_canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(scroll_canvas, bg=BG)
+        inner = _ck.Frame(scroll_canvas, bg=BG)
         inner_id = scroll_canvas.create_window((0, 0), window=inner, anchor="nw")
 
         def _on_inner_resize(e):
@@ -3250,7 +3255,7 @@ class SynthexApp:
              "The wizard will guide you through every step.",
              fg=MUT, bg=CARD, font=("Segoe UI", 9), justify="left").pack(
             anchor="w", pady=(0, 16))
-        tk.Button(
+        _ck.Button(
             empty_card, text="+ Connect First Sheet",
             bg=ACC, fg=BG, font=("Segoe UI", 11, "bold"),
             relief="flat", bd=0, padx=20, pady=10, cursor="hand2",
@@ -3272,15 +3277,15 @@ class SynthexApp:
         ])
         self._sheets_tree.configure(height=4)
 
-        btn_row = tk.Frame(conn_card, bg=CARD)
+        btn_row = _ck.Frame(conn_card, bg=CARD)
         btn_row.pack(fill="x", pady=(6, 0))
-        ttk.Button(btn_row, text="Preview",
+        t_ck.Button(btn_row, text="Preview",
                    command=self._sheet_btn_preview).pack(side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Test",
+        t_ck.Button(btn_row, text="Test",
                    command=self._sheet_test).pack(side="left", padx=(0, 4))
-        ttk.Button(btn_row, text="Remove", style="Danger.TButton",
+        t_ck.Button(btn_row, text="Remove", style="Danger.TButton",
                    command=self._sheet_remove).pack(side="left")
-        tk.Button(btn_row, text="+ Add Sheet",
+        _ck.Button(btn_row, text="+ Add Sheet",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_launch_wizard).pack(side="right")
@@ -3290,12 +3295,12 @@ class SynthexApp:
         prev_card = _card(parent, "Data Preview")
         prev_card.pack(fill="x", padx=20, pady=(0, 8))
 
-        prev_ctrl = tk.Frame(prev_card, bg=CARD)
+        prev_ctrl = _ck.Frame(prev_card, bg=CARD)
         prev_ctrl.pack(fill="x", pady=(0, 8))
         _lbl(prev_ctrl, "Sheet:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._prev_sheet_var = tk.StringVar()
-        self._prev_sheet_cb  = ttk.Combobox(
+        self._prev_sheet_cb  = _ck.Combobox(
             prev_ctrl, textvariable=self._prev_sheet_var,
             values=[s.get("name","") for s in self._ud.sheets],
             state="readonly", width=18)
@@ -3304,31 +3309,31 @@ class SynthexApp:
         _lbl(prev_ctrl, "Tab:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._prev_ws_var = tk.StringVar()
-        self._prev_ws_cb  = ttk.Combobox(
+        self._prev_ws_cb  = _ck.Combobox(
             prev_ctrl, textvariable=self._prev_ws_var,
             state="readonly", width=14)
         self._prev_ws_cb.pack(side="left", padx=(4, 16))
         self._prev_sheet_cb.bind(
             "<<ComboboxSelected>>", self._on_prev_sheet_change)
 
-        ttk.Button(prev_ctrl, text="Refresh",
+        t_ck.Button(prev_ctrl, text="Refresh",
                    command=self._sheet_preview_refresh).pack(side="left")
 
-        self._sheet_preview_frame = tk.Frame(prev_card, bg=CARD)
+        self._sheet_preview_frame = _ck.Frame(prev_card, bg=CARD)
         self._sheet_preview_frame.pack(fill="x")
         _lbl(self._sheet_preview_frame,
              "Select a connected sheet and click Refresh to preview data.",
              fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(anchor="w")
 
         # Cell reader row
-        cell_row = tk.Frame(prev_card, bg=CARD)
+        cell_row = _ck.Frame(prev_card, bg=CARD)
         cell_row.pack(fill="x", pady=(10, 0))
         _lbl(cell_row, "Read cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._prev_cell_var = tk.StringVar(value="A1")
-        ttk.Entry(cell_row, textvariable=self._prev_cell_var,
+        t_ck.Entry(cell_row, textvariable=self._prev_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
-        ttk.Button(cell_row, text="Read",
+        t_ck.Button(cell_row, text="Read",
                    command=self._sheet_read_cell).pack(side="left")
         self._cell_result_lbl = _lbl(cell_row, "", fg=GRN, bg=CARD,
                                      font=("Segoe UI", 9))
@@ -3341,20 +3346,20 @@ class SynthexApp:
         # Read cell row
         _lbl(qa_card, "Read Cell", fg=ACC, bg=CARD,
              font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
-        rc_row = tk.Frame(qa_card, bg=CARD)
+        rc_row = _ck.Frame(qa_card, bg=CARD)
         rc_row.pack(fill="x", pady=(0, 10))
         _lbl(rc_row, "Sheet:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._rc_sheet_var = tk.StringVar()
-        ttk.Combobox(rc_row, textvariable=self._rc_sheet_var,
+        _ck.Combobox(rc_row, textvariable=self._rc_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
                      state="readonly", width=16).pack(side="left", padx=(4, 10))
         _lbl(rc_row, "Cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._rc_cell_var = tk.StringVar(value="A1")
-        ttk.Entry(rc_row, textvariable=self._rc_cell_var,
+        t_ck.Entry(rc_row, textvariable=self._rc_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
-        ttk.Button(rc_row, text="Read",
+        t_ck.Button(rc_row, text="Read",
                    command=self._sheet_qa_read).pack(side="left")
         self._rc_result_lbl = _lbl(rc_row, "", fg=GRN, bg=CARD,
                                    font=("Segoe UI", 9))
@@ -3363,28 +3368,28 @@ class SynthexApp:
         # Write cell row
         _lbl(qa_card, "Write Cell", fg=ACC, bg=CARD,
              font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
-        wc_row1 = tk.Frame(qa_card, bg=CARD)
+        wc_row1 = _ck.Frame(qa_card, bg=CARD)
         wc_row1.pack(fill="x", pady=(0, 4))
         _lbl(wc_row1, "Sheet:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._wc_sheet_var = tk.StringVar()
-        ttk.Combobox(wc_row1, textvariable=self._wc_sheet_var,
+        _ck.Combobox(wc_row1, textvariable=self._wc_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
                      state="readonly", width=16).pack(side="left", padx=(4, 10))
         _lbl(wc_row1, "Cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._wc_cell_var = tk.StringVar(value="A1")
-        ttk.Entry(wc_row1, textvariable=self._wc_cell_var,
+        t_ck.Entry(wc_row1, textvariable=self._wc_cell_var,
                   width=6).pack(side="left", padx=(4, 0))
-        wc_row2 = tk.Frame(qa_card, bg=CARD)
+        wc_row2 = _ck.Frame(qa_card, bg=CARD)
         wc_row2.pack(fill="x", pady=(0, 10))
         _lbl(wc_row2, "Value:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._wc_val_var = tk.StringVar()
-        ttk.Entry(wc_row2, textvariable=self._wc_val_var,
+        t_ck.Entry(wc_row2, textvariable=self._wc_val_var,
                   font=("Segoe UI", 9)).pack(
             side="left", fill="x", expand=True, padx=(4, 8))
-        tk.Button(wc_row2, text="Write Now",
+        _ck.Button(wc_row2, text="Write Now",
                   bg=GRN, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_qa_write).pack(side="left")
@@ -3392,23 +3397,23 @@ class SynthexApp:
         # Append row
         _lbl(qa_card, "Append Row", fg=ACC, bg=CARD,
              font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
-        ar_row1 = tk.Frame(qa_card, bg=CARD)
+        ar_row1 = _ck.Frame(qa_card, bg=CARD)
         ar_row1.pack(fill="x", pady=(0, 4))
         _lbl(ar_row1, "Sheet:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._ar_sheet_var = tk.StringVar()
-        ttk.Combobox(ar_row1, textvariable=self._ar_sheet_var,
+        _ck.Combobox(ar_row1, textvariable=self._ar_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
                      state="readonly", width=16).pack(side="left", padx=(4, 0))
-        ar_row2 = tk.Frame(qa_card, bg=CARD)
+        ar_row2 = _ck.Frame(qa_card, bg=CARD)
         ar_row2.pack(fill="x", pady=(0, 4))
         _lbl(ar_row2, "Values (comma-separated):", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._ar_vals_var = tk.StringVar()
-        ttk.Entry(ar_row2, textvariable=self._ar_vals_var,
+        t_ck.Entry(ar_row2, textvariable=self._ar_vals_var,
                   font=("Segoe UI", 9)).pack(
             side="left", fill="x", expand=True, padx=(8, 8))
-        tk.Button(ar_row2, text="Append",
+        _ck.Button(ar_row2, text="Append",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_qa_append).pack(side="left")
@@ -3590,14 +3595,14 @@ class SynthexApp:
                  wraplength=560).pack(anchor="w")
             return
         if rows:
-            tbl = tk.Frame(self._sheet_preview_frame, bg=CARD)
+            tbl = _ck.Frame(self._sheet_preview_frame, bg=CARD)
             tbl.pack(fill="x")
             max_cols = min(max(len(r) for r in rows), 10)
             for ri, row in enumerate(rows[:15]):
                 for ci in range(max_cols):
                     val = row[ci] if ci < len(row) else ""
                     bg  = SIDE if ri == 0 else CARD
-                    tk.Label(tbl, text=str(val)[:20], bg=bg,
+                    _ck.Label(tbl, text=str(val)[:20], bg=bg,
                              fg=ACC if ri == 0 else FG,
                              font=("Segoe UI", 8),
                              relief="flat", padx=6, pady=3,
@@ -3689,33 +3694,33 @@ class SynthexApp:
         import threading as _threading
 
         # ── outer page frame ──────────────────────────────────────────────────
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
 
         # ── HEADER ────────────────────────────────────────────────────────────
-        hdr_frame = tk.Frame(f, bg=BG)
+        hdr_frame = _ck.Frame(f, bg=BG)
         hdr_frame.pack(fill="x", padx=24, pady=(18, 6))
-        tk.Label(hdr_frame, text="\U0001f3e6 Cek Rekening", bg=BG, fg=ACC,
+        _ck.Label(hdr_frame, text="\U0001f3e6 Cek Rekening", bg=BG, fg=ACC,
                  font=("Segoe UI", 16, "bold"), anchor="w").pack(anchor="w")
-        tk.Label(hdr_frame, text="Cek informasi pemilik rekening bank",
+        _ck.Label(hdr_frame, text="Cek informasi pemilik rekening bank",
                  bg=BG, fg=MUT, font=("Segoe UI", 9), anchor="w").pack(anchor="w")
 
         # ── BODY: split layout ────────────────────────────────────────────────
-        body = tk.Frame(f, bg=BG)
+        body = _ck.Frame(f, bg=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
         # ── LEFT: input (~420px) ──────────────────────────────────────────────
-        left = tk.Frame(body, bg=CARD, width=420, padx=16, pady=14)
+        left = _ck.Frame(body, bg=CARD, width=420, padx=16, pady=14)
         left.pack(side="left", fill="y", padx=(0, 10))
         left.pack_propagate(False)
 
         # Top accent
-        tk.Frame(left, bg=ACC, height=3).pack(fill="x", pady=(0, 10))
+        _ck.Frame(left, bg=ACC, height=3).pack(fill="x", pady=(0, 10))
 
-        tk.Label(left, text="Nomor Rekening (satu per baris):",
+        _ck.Label(left, text="Nomor Rekening (satu per baris):",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8, "bold"),
                  anchor="w").pack(anchor="w", pady=(0, 4))
 
-        txt = scrolledtext.ScrolledText(
+        txt = _ck.ScrolledText(
             left, bg=BG, fg=FG, insertbackground=FG,
             font=("Consolas", 10), relief="flat", bd=0,
             height=12, wrap="none",
@@ -3724,7 +3729,7 @@ class SynthexApp:
         txt.insert("1.0", "BCA 1234567890\nBNI 0987654321\nMANDIRI 1122334455")
 
         # Button row
-        btn_row = tk.Frame(left, bg=CARD)
+        btn_row = _ck.Frame(left, bg=CARD)
         btn_row.pack(fill="x", pady=(10, 0))
 
         stop_event = _threading.Event()
@@ -3763,26 +3768,26 @@ class SynthexApp:
 
             _threading.Thread(target=_worker, daemon=True).start()
 
-        run_btn = tk.Button(btn_row, text="Cek Semua",
+        run_btn = _ck.Button(btn_row, text="Cek Semua",
                             bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                             relief="flat", bd=0, padx=12, pady=6,
                             cursor="hand2", command=_do_check)
         run_btn.pack(side="left", padx=(0, 6))
 
-        stop_btn = tk.Button(btn_row, text="Stop",
+        stop_btn = _ck.Button(btn_row, text="Stop",
                              bg=CARD, fg=RED, font=("Segoe UI", 9),
                              relief="flat", bd=0, padx=12, pady=6,
                              cursor="hand2", command=_do_stop,
                              state="disabled")
         stop_btn.pack(side="left", padx=(0, 6))
 
-        tk.Button(btn_row, text="Clear",
+        _ck.Button(btn_row, text="Clear",
                   bg=CARD, fg=MUT, font=("Segoe UI", 9),
                   relief="flat", bd=0, padx=12, pady=6,
                   cursor="hand2", command=_do_clear).pack(side="left")
 
         # Import row
-        import_row = tk.Frame(left, bg=CARD)
+        import_row = _ck.Frame(left, bg=CARD)
         import_row.pack(fill="x", pady=(8, 0))
 
         def _import_file():
@@ -3858,34 +3863,34 @@ class SynthexApp:
                 w.writerows(rows)
             import_status.configure(text="Hasil disimpan ke: {}".format(path.split("/")[-1]))
 
-        tk.Button(import_row, text="📂 Import CSV/Excel",
+        _ck.Button(import_row, text="📂 Import CSV/Excel",
                   bg="#1A3A1A", fg=GRN, font=("Segoe UI", 8, "bold"),
                   relief="flat", bd=0, padx=10, pady=4,
                   cursor="hand2", command=_import_file).pack(side="left", padx=(0, 6))
-        tk.Button(import_row, text="💾 Export Hasil",
+        _ck.Button(import_row, text="💾 Export Hasil",
                   bg="#1A1A3A", fg="#4A9EFF", font=("Segoe UI", 8, "bold"),
                   relief="flat", bd=0, padx=10, pady=4,
                   cursor="hand2", command=_export_results).pack(side="left")
 
-        import_status = tk.Label(left, text="", bg=CARD, fg=MUT,
+        import_status = _ck.Label(left, text="", bg=CARD, fg=MUT,
                                  font=("Segoe UI", 7), anchor="w", wraplength=380)
         import_status.pack(anchor="w", pady=(4, 0))
 
         # Hint
-        tk.Label(left, text="Double-klik baris untuk menyalin nama",
+        _ck.Label(left, text="Double-klik baris untuk menyalin nama",
                  bg=CARD, fg=MUT, font=("Segoe UI", 7),
                  anchor="w").pack(anchor="w", pady=(4, 0))
 
         # ── RIGHT: results ────────────────────────────────────────────────────
-        right = tk.Frame(body, bg=BG)
+        right = _ck.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
 
-        res_hdr = tk.Frame(right, bg=BG)
+        res_hdr = _ck.Frame(right, bg=BG)
         res_hdr.pack(fill="x", pady=(0, 6))
-        tk.Label(res_hdr, text="Hasil Pengecekan", bg=BG, fg=FG,
+        _ck.Label(res_hdr, text="Hasil Pengecekan", bg=BG, fg=FG,
                  font=("Segoe UI", 11, "bold"), anchor="w").pack(anchor="w")
 
-        tree_frame = tk.Frame(right, bg=CARD)
+        tree_frame = _ck.Frame(right, bg=CARD)
         tree_frame.pack(fill="both", expand=True)
 
         cols = [
@@ -3900,7 +3905,7 @@ class SynthexApp:
             tree.heading(cid, text=head)
             tree.column(cid, width=w, anchor="w")
 
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
+        vsb = _ck.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
         tree.pack(fill="both", expand=True)
@@ -3963,7 +3968,7 @@ class SynthexApp:
         """Halaman Dashboard Update — ambil tabel web, tulis ke Google Sheet."""
         from modules.price_monitor import PriceMonitor
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Monitor", "Pantau data tabel & perubahan halaman web secara otomatis")
 
         # State
@@ -3982,15 +3987,15 @@ class SynthexApp:
         nb = ttk.Notebook(f, style="Mon.TNotebook")
         nb.pack(fill="both", expand=True, padx=0, pady=(4, 0))
 
-        tab1 = tk.Frame(nb, bg=BG)
-        tab2 = tk.Frame(nb, bg=BG)
+        tab1 = _ck.Frame(nb, bg=BG)
+        tab2 = _ck.Frame(nb, bg=BG)
         nb.add(tab1, text="📊  Tabel Otomatis")
         nb.add(tab2, text="👁  Pantau Perubahan")
         nb_tabs = [tab1, tab2]
 
         # ── Tab 1: Tabel Otomatis ────────────────────────────────────────────
         # ── Outer scroll area ─────────────────────────────────────────────────
-        body = tk.Frame(tab1, bg=BG)
+        body = _ck.Frame(tab1, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         # ── Konfigurasi ───────────────────────────────────────────────────────
@@ -3998,9 +4003,9 @@ class SynthexApp:
         cfg_card.pack(fill="x", pady=(8, 0))
 
         def _row(parent, label, widget_fn):
-            row = tk.Frame(parent, bg=CARD)
+            row = _ck.Frame(parent, bg=CARD)
             row.pack(fill="x", padx=10, pady=3)
-            tk.Label(row, text=label, bg=CARD, fg=MUT,
+            _ck.Label(row, text=label, bg=CARD, fg=MUT,
                      font=("Segoe UI", 9), width=22, anchor="w").pack(
                          side="left", padx=(0, 6))
             w = widget_fn(row)
@@ -4010,52 +4015,52 @@ class SynthexApp:
         # URL
         v_url = tk.StringVar()
         _row(cfg_card, "URL Halaman *",
-             lambda p: tk.Entry(p, textvariable=v_url, bg=CARD2, fg=FG,
+             lambda p: _ck.Entry(p, textvariable=v_url, bg=CARD2, fg=FG,
                                 insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
 
         # Tombol refresh selector
         v_btn = tk.StringVar()
         btn_entry = _row(cfg_card, "Selector Tombol Refresh",
-                         lambda p: tk.Entry(p, textvariable=v_btn, bg=CARD2, fg=FG,
+                         lambda p: _ck.Entry(p, textvariable=v_btn, bg=CARD2, fg=FG,
                                             insertbackground=FG, relief="flat",
                                             font=("Segoe UI", 9)))
-        tk.Label(cfg_card, text="   (kosongkan jika tidak ada tombol refresh)",
+        _ck.Label(cfg_card, text="   (kosongkan jika tidak ada tombol refresh)",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", padx=10)
 
         # Selector tabel
         v_tbl = tk.StringVar(value="table")
         _row(cfg_card, "Selector Tabel *",
-             lambda p: tk.Entry(p, textvariable=v_tbl, bg=CARD2, fg=FG,
+             lambda p: _ck.Entry(p, textvariable=v_tbl, bg=CARD2, fg=FG,
                                 insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
 
         # Mode
         v_mode = tk.StringVar(value="requests")
-        mode_row = tk.Frame(cfg_card, bg=CARD)
+        mode_row = _ck.Frame(cfg_card, bg=CARD)
         mode_row.pack(fill="x", padx=10, pady=3)
-        tk.Label(mode_row, text="Mode Browser", bg=CARD, fg=MUT,
+        _ck.Label(mode_row, text="Mode Browser", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
         for txt, val in [("Requests (halaman statis)", "requests"),
                          ("Headless Chrome (JS/dinamis)", "headless")]:
-            tk.Radiobutton(mode_row, text=txt, variable=v_mode, value=val,
+            _ck.Radiobutton(mode_row, text=txt, variable=v_mode, value=val,
                            bg=CARD, fg=FG, selectcolor=CARD2,
                            activebackground=CARD, activeforeground=FG,
                            font=("Segoe UI", 9)).pack(side="left", padx=(0, 12))
 
-        tk.Label(cfg_card,
+        _ck.Label(cfg_card,
                  text="   Headless = browser tersembunyi, tidak muncul di layar. "
                       "Tab browser kamu bisa diminimize.",
                  bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(anchor="w", padx=10, pady=(0, 4))
 
         # Interval
         v_interval = tk.StringVar(value="5")
-        intv_row = tk.Frame(cfg_card, bg=CARD)
+        intv_row = _ck.Frame(cfg_card, bg=CARD)
         intv_row.pack(fill="x", padx=10, pady=3)
-        tk.Label(intv_row, text="Interval (menit) *", bg=CARD, fg=MUT,
+        _ck.Label(intv_row, text="Interval (menit) *", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
         tk.Spinbox(intv_row, from_=1, to=1440, textvariable=v_interval,
                    width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
                    relief="flat", font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(intv_row, text="menit", bg=CARD, fg=MUT,
+        _ck.Label(intv_row, text="menit", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left", padx=4)
 
         # ── Google Sheet ──────────────────────────────────────────────────────
@@ -4064,21 +4069,21 @@ class SynthexApp:
 
         v_sheet_id = tk.StringVar()
         _row(sheet_card, "Sheet ID / URL *",
-             lambda p: tk.Entry(p, textvariable=v_sheet_id, bg=CARD2, fg=FG,
+             lambda p: _ck.Entry(p, textvariable=v_sheet_id, bg=CARD2, fg=FG,
                                 insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
 
         v_ws = tk.StringVar(value="Sheet1")
         _row(sheet_card, "Nama Worksheet",
-             lambda p: tk.Entry(p, textvariable=v_ws, bg=CARD2, fg=FG,
+             lambda p: _ck.Entry(p, textvariable=v_ws, bg=CARD2, fg=FG,
                                 insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
 
         v_cell = tk.StringVar(value="A1")
         _row(sheet_card, "Mulai dari sel",
-             lambda p: tk.Entry(p, textvariable=v_cell, bg=CARD2, fg=FG,
+             lambda p: _ck.Entry(p, textvariable=v_cell, bg=CARD2, fg=FG,
                                 insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
 
         v_clear = tk.BooleanVar(value=True)
-        tk.Checkbutton(sheet_card, text="Hapus isi sheet sebelum update",
+        _ck.Checkbutton(sheet_card, text="Hapus isi sheet sebelum update",
                        variable=v_clear, bg=CARD, fg=FG,
                        selectcolor=CARD2, activebackground=CARD,
                        activeforeground=FG, font=("Segoe UI", 9)).pack(
@@ -4089,30 +4094,30 @@ class SynthexApp:
         ctrl_card.pack(fill="both", expand=True, pady=(10, 0))
 
         # Stats row
-        stats_row = tk.Frame(ctrl_card, bg=CARD)
+        stats_row = _ck.Frame(ctrl_card, bg=CARD)
         stats_row.pack(fill="x", padx=10, pady=(6, 4))
 
         v_status_lbl  = tk.StringVar(value="Belum berjalan")
         v_last_update = tk.StringVar(value="-")
         v_cycle_count = tk.StringVar(value="0")
 
-        tk.Label(stats_row, text="Status:", bg=CARD, fg=MUT,
+        _ck.Label(stats_row, text="Status:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(stats_row, textvariable=v_status_lbl, bg=CARD, fg=YEL,
+        _ck.Label(stats_row, textvariable=v_status_lbl, bg=CARD, fg=YEL,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
-        tk.Label(stats_row, text="Siklus:", bg=CARD, fg=MUT,
+        _ck.Label(stats_row, text="Siklus:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(stats_row, textvariable=v_cycle_count, bg=CARD, fg=FG,
+        _ck.Label(stats_row, textvariable=v_cycle_count, bg=CARD, fg=FG,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
-        tk.Label(stats_row, text="Update terakhir:", bg=CARD, fg=MUT,
+        _ck.Label(stats_row, text="Update terakhir:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(stats_row, textvariable=v_last_update, bg=CARD, fg=GRN,
+        _ck.Label(stats_row, textvariable=v_last_update, bg=CARD, fg=GRN,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
 
         # Log box
-        log_frame = tk.Frame(ctrl_card, bg=CARD2, relief="flat")
+        log_frame = _ck.Frame(ctrl_card, bg=CARD2, relief="flat")
         log_frame.pack(fill="both", expand=True, padx=10, pady=(0, 6))
-        log_txt = tk.Text(log_frame, height=7, bg=CARD2, fg=FG,
+        log_txt = _ck.Text(log_frame, height=7, bg=CARD2, fg=FG,
                           font=("Consolas", 8), relief="flat",
                           state="disabled", wrap="word")
         log_scroll = tk.Scrollbar(log_frame, command=log_txt.yview,
@@ -4125,7 +4130,7 @@ class SynthexApp:
         prev_card = _card(body, "Preview Data Terakhir")
         prev_card.pack(fill="both", expand=True, pady=(10, 0))
 
-        prev_txt = tk.Text(prev_card, height=6, bg=CARD2, fg=GRN,
+        prev_txt = _ck.Text(prev_card, height=6, bg=CARD2, fg=GRN,
                            font=("Consolas", 8), relief="flat",
                            state="disabled", wrap="none")
         prev_scroll_y = tk.Scrollbar(prev_card, command=prev_txt.yview,
@@ -4195,7 +4200,7 @@ class SynthexApp:
 
         # ── Buttons ───────────────────────────────────────────────────────────
 
-        btn_row = tk.Frame(ctrl_card, bg=CARD)
+        btn_row = _ck.Frame(ctrl_card, bg=CARD)
         btn_row.pack(fill="x", padx=10, pady=(0, 8))
 
         def _build_monitor():
@@ -4228,14 +4233,14 @@ class SynthexApp:
             )
             return pm
 
-        btn_start = tk.Button(btn_row, text="MULAI MONITOR", bg=GRN, fg=BG,
+        btn_start = _ck.Button(btn_row, text="MULAI MONITOR", bg=GRN, fg=BG,
                               font=("Segoe UI", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2")
-        btn_stop  = tk.Button(btn_row, text="STOP", bg=RED, fg="#fff",
+        btn_stop  = _ck.Button(btn_row, text="STOP", bg=RED, fg="#fff",
                               font=("Segoe UI", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2",
                               state="disabled")
-        btn_once  = tk.Button(btn_row, text="JALANKAN SEKALI", bg=ACC2, fg="#fff",
+        btn_once  = _ck.Button(btn_row, text="JALANKAN SEKALI", bg=ACC2, fg="#fff",
                               font=("Segoe UI", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2")
 
@@ -4299,7 +4304,7 @@ class SynthexApp:
 
         # ── Tab 2: Pantau Perubahan ───────────────────────────────────────────
         tab2 = nb_tabs[1]
-        body2 = tk.Frame(tab2, bg=BG)
+        body2 = _ck.Frame(tab2, bg=BG)
         body2.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
         if not hasattr(self, "_wcm"):
@@ -4310,9 +4315,9 @@ class SynthexApp:
         wc_cfg.pack(fill="x", pady=(8, 0))
 
         def _wrow(parent, label, widget_fn):
-            row = tk.Frame(parent, bg=CARD)
+            row = _ck.Frame(parent, bg=CARD)
             row.pack(fill="x", padx=10, pady=3)
-            tk.Label(row, text=label, bg=CARD, fg=MUT,
+            _ck.Label(row, text=label, bg=CARD, fg=MUT,
                      font=("Segoe UI", 9), width=24, anchor="w").pack(
                 side="left", padx=(0, 6))
             w = widget_fn(row)
@@ -4321,16 +4326,16 @@ class SynthexApp:
 
         v_wc_url = tk.StringVar()
         _wrow(wc_cfg, "URL yang dipantau *",
-              lambda p: tk.Entry(p, textvariable=v_wc_url, bg=CARD2, fg=FG,
+              lambda p: _ck.Entry(p, textvariable=v_wc_url, bg=CARD2, fg=FG,
                                  insertbackground=FG, relief="flat",
                                  font=("Segoe UI", 9)))
 
         v_wc_kw = tk.StringVar()
         _wrow(wc_cfg, "Keyword (opsional)",
-              lambda p: tk.Entry(p, textvariable=v_wc_kw, bg=CARD2, fg=FG,
+              lambda p: _ck.Entry(p, textvariable=v_wc_kw, bg=CARD2, fg=FG,
                                  insertbackground=FG, relief="flat",
                                  font=("Segoe UI", 9)))
-        tk.Label(wc_cfg,
+        _ck.Label(wc_cfg,
                  text="   Kosongkan = pantau semua perubahan. "
                       "Isi = pantau keyword ini muncul/hilang. "
                       "Contoh: Stok habis, Out of stock",
@@ -4338,19 +4343,19 @@ class SynthexApp:
             anchor="w", padx=10, pady=(0, 4))
 
         v_wc_intv = tk.StringVar(value="5")
-        intv_row2 = tk.Frame(wc_cfg, bg=CARD)
+        intv_row2 = _ck.Frame(wc_cfg, bg=CARD)
         intv_row2.pack(fill="x", padx=10, pady=3)
-        tk.Label(intv_row2, text="Interval (menit)", bg=CARD, fg=MUT,
+        _ck.Label(intv_row2, text="Interval (menit)", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9), width=24, anchor="w").pack(side="left")
         tk.Spinbox(intv_row2, from_=1, to=1440, textvariable=v_wc_intv,
                    width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
                    relief="flat", font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(intv_row2, text="menit", bg=CARD, fg=MUT,
+        _ck.Label(intv_row2, text="menit", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left", padx=4)
 
         # AI analysis toggle
         v_wc_ai = tk.BooleanVar(value=False)
-        tk.Checkbutton(wc_cfg,
+        _ck.Checkbutton(wc_cfg,
                        text="Analisis perubahan dengan AI (butuh API key di Settings)",
                        variable=v_wc_ai,
                        bg=CARD, fg=FG, selectcolor=CARD2,
@@ -4361,28 +4366,28 @@ class SynthexApp:
         wc_ctrl = _card(body2, "Status & Log")
         wc_ctrl.pack(fill="both", expand=True, pady=(10, 0))
 
-        wc_stats_row = tk.Frame(wc_ctrl, bg=CARD)
+        wc_stats_row = _ck.Frame(wc_ctrl, bg=CARD)
         wc_stats_row.pack(fill="x", padx=10, pady=(6, 4))
         v_wc_status = tk.StringVar(value="Belum berjalan")
         v_wc_changes = tk.StringVar(value="0")
         v_wc_last = tk.StringVar(value="-")
-        tk.Label(wc_stats_row, text="Status:", bg=CARD, fg=MUT,
+        _ck.Label(wc_stats_row, text="Status:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(wc_stats_row, textvariable=v_wc_status, bg=CARD, fg=YEL,
+        _ck.Label(wc_stats_row, textvariable=v_wc_status, bg=CARD, fg=YEL,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
-        tk.Label(wc_stats_row, text="Perubahan:", bg=CARD, fg=MUT,
+        _ck.Label(wc_stats_row, text="Perubahan:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(wc_stats_row, textvariable=v_wc_changes, bg=CARD, fg=RED,
+        _ck.Label(wc_stats_row, textvariable=v_wc_changes, bg=CARD, fg=RED,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
-        tk.Label(wc_stats_row, text="Terakhir berubah:", bg=CARD, fg=MUT,
+        _ck.Label(wc_stats_row, text="Terakhir berubah:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Label(wc_stats_row, textvariable=v_wc_last, bg=CARD, fg=GRN,
+        _ck.Label(wc_stats_row, textvariable=v_wc_last, bg=CARD, fg=GRN,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
 
         # Log
-        wc_log_f = tk.Frame(wc_ctrl, bg=CARD2, relief="flat")
+        wc_log_f = _ck.Frame(wc_ctrl, bg=CARD2, relief="flat")
         wc_log_f.pack(fill="both", expand=True, padx=10, pady=(0, 4))
-        wc_log_txt = tk.Text(wc_log_f, height=6, bg=CARD2, fg=FG,
+        wc_log_txt = _ck.Text(wc_log_f, height=6, bg=CARD2, fg=FG,
                              font=("Consolas", 8), relief="flat",
                              state="disabled", wrap="word")
         wc_log_sb = tk.Scrollbar(wc_log_f, command=wc_log_txt.yview,
@@ -4394,7 +4399,7 @@ class SynthexApp:
         # Change detail area
         wc_change_card = _card(body2, "Detail Perubahan Terakhir")
         wc_change_card.pack(fill="both", expand=True, pady=(10, 0))
-        wc_diff_txt = tk.Text(wc_change_card, height=5, bg=CARD2, fg=YEL,
+        wc_diff_txt = _ck.Text(wc_change_card, height=5, bg=CARD2, fg=YEL,
                               font=("Consolas", 8), relief="flat",
                               state="disabled", wrap="word")
         wc_diff_txt.pack(fill="both", expand=True, padx=6, pady=6)
@@ -4450,16 +4455,16 @@ class SynthexApp:
             )
             return wm
 
-        wc_btn_row = tk.Frame(wc_ctrl, bg=CARD)
+        wc_btn_row = _ck.Frame(wc_ctrl, bg=CARD)
         wc_btn_row.pack(fill="x", padx=10, pady=(0, 8))
 
-        wc_btn_start = tk.Button(wc_btn_row, text="MULAI PANTAU", bg=GRN, fg=BG,
+        wc_btn_start = _ck.Button(wc_btn_row, text="MULAI PANTAU", bg=GRN, fg=BG,
                                  font=("Segoe UI", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2")
-        wc_btn_stop  = tk.Button(wc_btn_row, text="STOP", bg=RED, fg="#fff",
+        wc_btn_stop  = _ck.Button(wc_btn_row, text="STOP", bg=RED, fg="#fff",
                                  font=("Segoe UI", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2", state="disabled")
-        wc_btn_once  = tk.Button(wc_btn_row, text="CEK SEKARANG", bg=ACC2, fg="#fff",
+        wc_btn_once  = _ck.Button(wc_btn_row, text="CEK SEKARANG", bg=ACC2, fg="#fff",
                                  font=("Segoe UI", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2")
 
@@ -4525,19 +4530,19 @@ class SynthexApp:
         import threading as _thr
         import os as _os
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Mirror HP",
                   "Mirror & control multiple Android devices simultaneously")
 
         _FB = dict(relief="flat", bd=0, cursor="hand2")
 
         # ── scrollable body ──────────────────────────────────────────────────
-        sb = ttk.Scrollbar(f, orient="vertical")
+        sb = _ck.Scrollbar(f, orient="vertical")
         sb.pack(side="right", fill="y")
         cv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=sb.set)
         cv.pack(side="left", fill="both", expand=True)
         sb.config(command=cv.yview)
-        body = tk.Frame(cv, bg=BG)
+        body = _ck.Frame(cv, bg=BG)
         _wid = cv.create_window((0, 0), window=body, anchor="nw")
         body.bind("<Configure>",
                   lambda e: cv.configure(scrollregion=cv.bbox("all")))
@@ -4545,21 +4550,21 @@ class SynthexApp:
                 lambda e: cv.itemconfig(_wid, width=e.width))
 
         def _sec(title, accent=ACC, subtitle=""):
-            w = tk.Frame(body, bg=CARD)
+            w = _ck.Frame(body, bg=CARD)
             w.pack(fill="x", padx=20, pady=(0, 12))
-            h = tk.Frame(w, bg=accent, padx=14, pady=9)
+            h = _ck.Frame(w, bg=accent, padx=14, pady=9)
             h.pack(fill="x")
-            tk.Label(h, text=title, bg=accent, fg="white",
+            _ck.Label(h, text=title, bg=accent, fg="white",
                      font=("Segoe UI", 10, "bold")).pack(side="left")
             if subtitle:
-                tk.Label(h, text=subtitle, bg=accent, fg="white",
+                _ck.Label(h, text=subtitle, bg=accent, fg="white",
                          font=("Segoe UI", 8)).pack(
                     side="left", padx=(8, 0))
-            b = tk.Frame(w, bg=CARD, padx=14, pady=12)
+            b = _ck.Frame(w, bg=CARD, padx=14, pady=12)
             b.pack(fill="x")
             return b
 
-        tk.Frame(body, bg=BG, height=8).pack()
+        _ck.Frame(body, bg=BG, height=8).pack()
 
         # ══════════════════════════════════════════════════════════════
         # SECTION 1 — Perangkat Terhubung
@@ -4567,27 +4572,27 @@ class SynthexApp:
         conn = _sec("Perangkat", accent="#1A0840")
 
         # Status row
-        st = tk.Frame(conn, bg=CARD)
+        st = _ck.Frame(conn, bg=CARD)
         st.pack(fill="x", pady=(0, 10))
-        dot = tk.Label(st, text="\u25cf", bg=CARD, fg=MUT,
+        dot = _ck.Label(st, text="\u25cf", bg=CARD, fg=MUT,
                        font=("Segoe UI", 14))
         dot.pack(side="left")
         status_var = tk.StringVar(value="Menginisialisasi...")
-        tk.Label(st, textvariable=status_var, bg=CARD, fg=FG,
+        _ck.Label(st, textvariable=status_var, bg=CARD, fg=FG,
                  font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
-        tk.Button(st, text="  Refresh", bg=CARD2, fg=FG,
+        _ck.Button(st, text="  Refresh", bg=CARD2, fg=FG,
                   font=("Segoe UI", 8), padx=10, pady=4,
                   command=lambda: _thr.Thread(
                       target=_refresh_devs, daemon=True).start(),
                   **_FB).pack(side="right")
 
         msg_var = tk.StringVar(value="")
-        msg_lbl = tk.Label(conn, textvariable=msg_var, bg=CARD, fg="#7B7B9B",
+        msg_lbl = _ck.Label(conn, textvariable=msg_var, bg=CARD, fg="#7B7B9B",
                            font=("Segoe UI", 8), wraplength=560, justify="left")
         msg_lbl.pack(anchor="w", pady=(0, 8))
 
         # ── Device cards container ───────────────────────────────────────────
-        cards_frame = tk.Frame(conn, bg=CARD)
+        cards_frame = _ck.Frame(conn, bg=CARD)
         cards_frame.pack(fill="x", pady=(0, 4))
 
         if not hasattr(self, "_scrcpy_map"):
@@ -4595,7 +4600,7 @@ class SynthexApp:
 
         _card_widgets = {}
 
-        empty_lbl = tk.Label(cards_frame,
+        empty_lbl = _ck.Label(cards_frame,
                              text="Tidak ada perangkat — sambungkan HP via USB atau WiFi",
                              bg=CARD, fg=MUT, font=("Segoe UI", 9, "italic"))
         empty_lbl.pack(anchor="w", pady=6)
@@ -4604,29 +4609,29 @@ class SynthexApp:
             is_wifi = ":" in serial
             accent_clr = "#7C3AED" if is_wifi else "#0EA5E9"
 
-            card = tk.Frame(cards_frame, bg="#16162a", bd=0)
+            card = _ck.Frame(cards_frame, bg="#16162a", bd=0)
             card.pack(fill="x", pady=(0, 6))
 
-            tk.Frame(card, bg=accent_clr, width=4).pack(side="left", fill="y")
+            _ck.Frame(card, bg=accent_clr, width=4).pack(side="left", fill="y")
 
-            inner = tk.Frame(card, bg="#16162a", padx=12, pady=10)
+            inner = _ck.Frame(card, bg="#16162a", padx=12, pady=10)
             inner.pack(side="left", fill="both", expand=True)
 
-            row = tk.Frame(inner, bg="#16162a")
+            row = _ck.Frame(inner, bg="#16162a")
             row.pack(fill="x")
 
             icon = "wifi" if is_wifi else "usb "
-            mir_dot = tk.Label(row, text="\u25cf", bg="#16162a", fg=MUT,
+            mir_dot = _ck.Label(row, text="\u25cf", bg="#16162a", fg=MUT,
                                font=("Segoe UI", 11))
             mir_dot.pack(side="left")
-            tk.Label(row, text="[{}]  {}".format(icon, serial),
+            _ck.Label(row, text="[{}]  {}".format(icon, serial),
                      bg="#16162a", fg=FG,
                      font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
-            mir_lbl = tk.Label(row, text="", bg="#16162a", fg=MUT,
+            mir_lbl = _ck.Label(row, text="", bg="#16162a", fg=MUT,
                                font=("Segoe UI", 8))
             mir_lbl.pack(side="left", padx=(10, 0))
 
-            btn_f = tk.Frame(row, bg="#16162a")
+            btn_f = _ck.Frame(row, bg="#16162a")
             btn_f.pack(side="right")
 
             def _disc():
@@ -4638,7 +4643,7 @@ class SynthexApp:
                     _refresh_devs()
                 _thr.Thread(target=_bg, daemon=True).start()
 
-            stop_b = tk.Button(btn_f, text="\u25a0  Stop",
+            stop_b = _ck.Button(btn_f, text="\u25a0  Stop",
                                bg="#7F1D1D", fg="white",
                                font=("Segoe UI", 8, "bold"),
                                padx=10, pady=5, state="disabled", **_FB,
@@ -4646,7 +4651,7 @@ class SynthexApp:
                                    serial, start_b, stop_b, mir_dot, mir_lbl))
             stop_b.pack(side="right", padx=(4, 0))
 
-            start_b = tk.Button(btn_f, text="\u25b6  Mirror",
+            start_b = _ck.Button(btn_f, text="\u25b6  Mirror",
                                 bg="#14532D", fg="white",
                                 font=("Segoe UI", 8, "bold"),
                                 padx=10, pady=5, **_FB,
@@ -4654,7 +4659,7 @@ class SynthexApp:
                                     serial, start_b, stop_b, mir_dot, mir_lbl))
             start_b.pack(side="right", padx=(4, 0))
 
-            tk.Button(btn_f, text="Putuskan",
+            _ck.Button(btn_f, text="Putuskan",
                       bg=CARD, fg="#7B7B9B",
                       font=("Segoe UI", 8), padx=8, pady=5,
                       **_FB, command=_disc).pack(side="right", padx=(4, 0))
@@ -4867,58 +4872,58 @@ class SynthexApp:
                 _ctrl_wins.pop(serial, None), win.destroy()))
 
             # ── Header ──
-            tk.Frame(win, bg=ACC, height=3).pack(fill="x")
-            hdr = tk.Frame(win, bg="#111120", padx=12, pady=8)
+            _ck.Frame(win, bg=ACC, height=3).pack(fill="x")
+            hdr = _ck.Frame(win, bg="#111120", padx=12, pady=8)
             hdr.pack(fill="x")
-            tk.Label(hdr, text="⚡ Synthex Control", bg="#111120", fg=ACC,
+            _ck.Label(hdr, text="⚡ Synthex Control", bg="#111120", fg=ACC,
                      font=("Segoe UI", 10, "bold")).pack(side="left")
-            tk.Label(hdr, text=serial, bg="#111120", fg=MUT,
+            _ck.Label(hdr, text=serial, bg="#111120", fg=MUT,
                      font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
-            tk.Button(hdr, text="✕", bg="#111120", fg=MUT, relief="flat",
+            _ck.Button(hdr, text="✕", bg="#111120", fg=MUT, relief="flat",
                       bd=0, font=("Segoe UI", 9), cursor="hand2",
                       command=win.destroy).pack(side="right")
 
             def _mbtn(parent, text, cmd, bg="#1c1c2e", fg=FG, w=5):
-                return tk.Button(parent, text=text, command=cmd,
+                return _ck.Button(parent, text=text, command=cmd,
                                  bg=bg, fg=fg, relief="flat", bd=0,
                                  font=("Segoe UI", 12), width=w,
                                  cursor="hand2", activebackground=ACC,
                                  activeforeground="white", pady=10)
 
             # ── Navigation row ──
-            nav = tk.Frame(win, bg="#0D0D14", pady=6)
+            nav = _ck.Frame(win, bg="#0D0D14", pady=6)
             nav.pack(fill="x", padx=10)
-            tk.Label(nav, text="NAVIGASI", bg="#0D0D14", fg="#444466",
+            _ck.Label(nav, text="NAVIGASI", bg="#0D0D14", fg="#444466",
                      font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
-            nr = tk.Frame(nav, bg="#0D0D14")
+            nr = _ck.Frame(nav, bg="#0D0D14")
             nr.pack()
             for txt, code in [("◀  Back", 4), ("⏺  Home", 3), ("⬛  Recent", 187),
                                ("🔔  Notif", 83)]:
                 _mbtn(nr, txt, lambda c=code: _kev(c), w=9).pack(
                     side="left", padx=2)
 
-            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
+            _ck.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── Volume + Brightness row ──
-            vb = tk.Frame(win, bg="#0D0D14", padx=10)
+            vb = _ck.Frame(win, bg="#0D0D14", padx=10)
             vb.pack(fill="x")
-            tk.Label(vb, text="VOLUME  &  BRIGHTNESS", bg="#0D0D14", fg="#444466",
+            _ck.Label(vb, text="VOLUME  &  BRIGHTNESS", bg="#0D0D14", fg="#444466",
                      font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
-            vr = tk.Frame(vb, bg="#0D0D14")
+            vr = _ck.Frame(vb, bg="#0D0D14")
             vr.pack()
             for txt, code in [("🔉 Vol−", 25), ("🔊 Vol+", 24),
                                ("🔅 Dim", 220), ("🔆 Bright", 221)]:
                 _mbtn(vr, txt, lambda c=code: _kev(c), w=9).pack(
                     side="left", padx=2)
 
-            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
+            _ck.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── System row ──
-            sys_f = tk.Frame(win, bg="#0D0D14", padx=10)
+            sys_f = _ck.Frame(win, bg="#0D0D14", padx=10)
             sys_f.pack(fill="x")
-            tk.Label(sys_f, text="SISTEM", bg="#0D0D14", fg="#444466",
+            _ck.Label(sys_f, text="SISTEM", bg="#0D0D14", fg="#444466",
                      font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
-            sr = tk.Frame(sys_f, bg="#0D0D14")
+            sr = _ck.Frame(sys_f, bg="#0D0D14")
             sr.pack()
             for txt, cmd in [
                 ("🔒 Lock",     lambda: _kev(26)),
@@ -4928,36 +4933,36 @@ class SynthexApp:
             ]:
                 _mbtn(sr, txt, cmd, w=9).pack(side="left", padx=2)
 
-            tk.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
+            _ck.Frame(win, bg="#1c1c2e", height=1).pack(fill="x", padx=10, pady=4)
 
             # ── Text input ──
-            ti = tk.Frame(win, bg="#0D0D14", padx=10, pady=6)
+            ti = _ck.Frame(win, bg="#0D0D14", padx=10, pady=6)
             ti.pack(fill="x")
-            tk.Label(ti, text="KIRIM TEKS KE HP", bg="#0D0D14", fg="#444466",
+            _ck.Label(ti, text="KIRIM TEKS KE HP", bg="#0D0D14", fg="#444466",
                      font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
-            ti_row = tk.Frame(ti, bg="#0D0D14")
+            ti_row = _ck.Frame(ti, bg="#0D0D14")
             ti_row.pack(fill="x")
             ti_var = tk.StringVar()
-            ti_entry = tk.Entry(ti_row, textvariable=ti_var, bg="#16162a", fg=FG,
+            ti_entry = _ck.Entry(ti_row, textvariable=ti_var, bg="#16162a", fg=FG,
                                 insertbackground=FG, relief="flat",
                                 font=("Segoe UI", 10), bd=6)
             ti_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
-            tk.Button(ti_row, text="Kirim", bg=ACC, fg="white",
+            _ck.Button(ti_row, text="Kirim", bg=ACC, fg="white",
                       relief="flat", bd=0, font=("Segoe UI", 9, "bold"),
                       padx=10, cursor="hand2",
                       command=lambda: (_tap_input(ti_var.get()), ti_var.set("")),
                       ).pack(side="left")
-            tk.Button(ti_row, text="⌫ Del", bg="#2A1A1A", fg=RED,
+            _ck.Button(ti_row, text="⌫ Del", bg="#2A1A1A", fg=RED,
                       relief="flat", bd=0, font=("Segoe UI", 9),
                       padx=8, cursor="hand2",
                       command=lambda: _kev(67),
                       ).pack(side="left", padx=(4, 0))
             ti_entry.bind("<Return>", lambda e: (_tap_input(ti_var.get()), ti_var.set("")))
 
-            tk.Frame(win, bg="#0D0D14", height=8).pack()
+            _ck.Frame(win, bg="#0D0D14", height=8).pack()
 
         # ── Wireless Connect ─────────────────────────────────────────────────
-        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(4, 10))
+        _ck.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(4, 10))
 
         # IP history helpers
         def _get_ip_history() -> list:
@@ -4973,19 +4978,19 @@ class SynthexApp:
             _refresh_history_btns()
 
         # Input row
-        ip_row = tk.Frame(conn, bg=CARD)
+        ip_row = _ck.Frame(conn, bg=CARD)
         ip_row.pack(fill="x", pady=(0, 4))
-        tk.Label(ip_row, text="IP HP:", bg=CARD, fg=MUT,
+        _ck.Label(ip_row, text="IP HP:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
         ip_var = tk.StringVar(value=self.config.get("remote.last_ip", ""))
-        tk.Entry(ip_row, textvariable=ip_var,
+        _ck.Entry(ip_row, textvariable=ip_var,
                  bg="#16162a", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=18, bd=4).pack(side="left", padx=(6, 4))
-        tk.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
+        _ck.Label(ip_row, text="Port:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 9)).pack(side="left")
         port_var = tk.StringVar(value=str(self.config.get("remote.last_port", "5555")))
-        tk.Entry(ip_row, textvariable=port_var,
+        _ck.Entry(ip_row, textvariable=port_var,
                  bg="#16162a", fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 10),
                  width=6, bd=4).pack(side="left", padx=(4, 10))
@@ -5016,14 +5021,14 @@ class SynthexApp:
                 self._root.after(0, lambda: msg_var.set(msg))
             _refresh_devs()
 
-        tk.Button(ip_row, text="⚡ Hubungkan", bg=ACC, fg="white",
+        _ck.Button(ip_row, text="⚡ Hubungkan", bg=ACC, fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_connect_bg, daemon=True).start(),
                   **_FB).pack(side="left")
 
         # IP history quick-connect buttons
-        hist_frame = tk.Frame(conn, bg=CARD)
+        hist_frame = _ck.Frame(conn, bg=CARD)
         hist_frame.pack(fill="x", pady=(0, 4))
 
         def _refresh_history_btns():
@@ -5032,14 +5037,14 @@ class SynthexApp:
             hist = _get_ip_history()
             if not hist:
                 return
-            tk.Label(hist_frame, text="Terakhir:", bg=CARD, fg=MUT,
+            _ck.Label(hist_frame, text="Terakhir:", bg=CARD, fg=MUT,
                      font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
             for saved_ip in hist:
                 def _quick(ip=saved_ip):
                     ip_var.set(ip)
                     _thr.Thread(target=lambda: _connect_bg(ip),
                                 daemon=True).start()
-                tk.Button(hist_frame, text=saved_ip,
+                _ck.Button(hist_frame, text=saved_ip,
                           bg="#1A1A38", fg=BLUE,
                           font=("Segoe UI", 8), padx=8, pady=3,
                           relief="flat", cursor="hand2",
@@ -5048,14 +5053,14 @@ class SynthexApp:
         _refresh_history_btns()
 
         # ── USB Wireless Setup ───────────────────────────────────────────────
-        tk.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(8, 8))
+        _ck.Frame(conn, bg=CARD2, height=1).pack(fill="x", pady=(8, 8))
 
-        setup_hdr = tk.Frame(conn, bg=CARD)
+        setup_hdr = _ck.Frame(conn, bg=CARD)
         setup_hdr.pack(fill="x", pady=(0, 6))
-        tk.Label(setup_hdr, text="Setup Wireless Debugging",
+        _ck.Label(setup_hdr, text="Setup Wireless Debugging",
                  bg=CARD, fg=FG, font=("Segoe UI", 9, "bold")).pack(side="left")
 
-        steps_frame = tk.Frame(conn, bg="#12121E")
+        steps_frame = _ck.Frame(conn, bg="#12121E")
         steps_frame.pack(fill="x", pady=(0, 8))
         steps = [
             ("1", "Colok HP ke PC via USB"),
@@ -5063,23 +5068,23 @@ class SynthexApp:
             ("3", "Cabut USB → klik Mulai Mirror"),
         ]
         for num, txt in steps:
-            row_s = tk.Frame(steps_frame, bg="#12121E", padx=10, pady=4)
+            row_s = _ck.Frame(steps_frame, bg="#12121E", padx=10, pady=4)
             row_s.pack(fill="x")
-            tk.Label(row_s, text=num, bg=ACC, fg="white",
+            _ck.Label(row_s, text=num, bg=ACC, fg="white",
                      font=("Segoe UI", 8, "bold"),
                      width=2, anchor="center").pack(side="left")
-            tk.Label(row_s, text="  " + txt, bg="#12121E", fg=MUT,
+            _ck.Label(row_s, text="  " + txt, bg="#12121E", fg=MUT,
                      font=("Segoe UI", 9)).pack(side="left")
 
-        usb_row = tk.Frame(conn, bg=CARD)
+        usb_row = _ck.Frame(conn, bg=CARD)
         usb_row.pack(fill="x")
-        tk.Button(usb_row, text="⚙ Setup Wireless via USB",
+        _ck.Button(usb_row, text="⚙ Setup Wireless via USB",
                   bg="#3A1060", fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_usb_setup_bg, daemon=True).start(),
                   **_FB).pack(side="left", padx=(0, 10))
-        tk.Label(usb_row,
+        _ck.Label(usb_row,
                  text="HP harus sudah di-authorize USB debugging",
                  bg=CARD, fg="#4A4A6A", font=("Segoe UI", 8)).pack(side="left")
 
@@ -5117,18 +5122,18 @@ class SynthexApp:
             dlg.attributes("-topmost", True)
             dlg.configure(bg="#0D0D14")
             dlg.resizable(False, False)
-            tk.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
-            _b = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
+            _ck.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
+            _b = _ck.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
             _b.pack(fill="both", expand=True)
-            tk.Label(_b, text="WiFi Siap!", bg="#0D0D14", fg="white",
+            _ck.Label(_b, text="WiFi Siap!", bg="#0D0D14", fg="white",
                      font=("Segoe UI", 13, "bold")).pack(anchor="w")
-            tk.Label(_b, text="{}:5555".format(ip),
+            _ck.Label(_b, text="{}:5555".format(ip),
                      bg="#0D0D14", fg="#7C3AED",
                      font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(4, 2))
-            tk.Label(_b, text="Cabut kabel USB, lalu klik Mulai Mirror.",
+            _ck.Label(_b, text="Cabut kabel USB, lalu klik Mulai Mirror.",
                      bg="#0D0D14", fg="#8080A0",
                      font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 16))
-            br = tk.Frame(_b, bg="#0D0D14")
+            br = _ck.Frame(_b, bg="#0D0D14")
             br.pack(anchor="e")
 
             def _do_connect_mirror():
@@ -5176,12 +5181,12 @@ class SynthexApp:
                         serial, w["start_b"], w["stop_b"],
                         w["mir_dot"], w["mir_lbl"])
 
-            tk.Button(br, text="Mulai Mirror",
+            _ck.Button(br, text="Mulai Mirror",
                       bg="#7C3AED", fg="white",
                       font=("Segoe UI", 9, "bold"), padx=18, pady=7,
                       relief="flat", cursor="hand2",
                       command=_do_connect_mirror).pack(side="left", padx=(0, 8))
-            tk.Button(br, text="Tutup",
+            _ck.Button(br, text="Tutup",
                       bg="#1c1c2e", fg="#8080A0",
                       font=("Segoe UI", 9), padx=12, pady=7,
                       relief="flat", cursor="hand2",
@@ -5200,14 +5205,14 @@ class SynthexApp:
                    subtitle="LAN ≠ WiFi — pakai cara ini")
 
         # ── Mode 1: USB Direct ───────────────────────────────────────────────
-        usb_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        usb_card = _ck.Frame(net, bg="#111820", padx=14, pady=10)
         usb_card.pack(fill="x", pady=(0, 8))
-        tk.Frame(usb_card, bg="#0EA5E9", width=3).pack(side="left", fill="y")
-        usb_inner = tk.Frame(usb_card, bg="#111820", padx=12)
+        _ck.Frame(usb_card, bg="#0EA5E9", width=3).pack(side="left", fill="y")
+        usb_inner = _ck.Frame(usb_card, bg="#111820", padx=12)
         usb_inner.pack(side="left", fill="both", expand=True)
-        tk.Label(usb_inner, text="🔌  Mode 1 — USB Direct (Paling Simpel)",
+        _ck.Label(usb_inner, text="🔌  Mode 1 — USB Direct (Paling Simpel)",
                  bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        tk.Label(usb_inner,
+        _ck.Label(usb_inner,
                  text="Hubungkan HP ke PC via kabel USB. ADB & scrcpy otomatis\n"
                       "berjalan lewat USB — tidak perlu WiFi sama sekali.",
                  bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
@@ -5219,18 +5224,18 @@ class SynthexApp:
             "5. Klik Refresh di atas — HP muncul sebagai [usb]",
         ]
         for s in usb_steps:
-            tk.Label(usb_inner, text=s, bg="#111820", fg="#8888AA",
+            _ck.Label(usb_inner, text=s, bg="#111820", fg="#8888AA",
                      font=("Segoe UI", 8)).pack(anchor="w")
 
         # ── Mode 2: USB Tethering ────────────────────────────────────────────
-        teth_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        teth_card = _ck.Frame(net, bg="#111820", padx=14, pady=10)
         teth_card.pack(fill="x", pady=(0, 8))
-        tk.Frame(teth_card, bg="#7C3AED", width=3).pack(side="left", fill="y")
-        teth_inner = tk.Frame(teth_card, bg="#111820", padx=12)
+        _ck.Frame(teth_card, bg="#7C3AED", width=3).pack(side="left", fill="y")
+        teth_inner = _ck.Frame(teth_card, bg="#111820", padx=12)
         teth_inner.pack(side="left", fill="both", expand=True)
-        tk.Label(teth_inner, text="📡  Mode 2 — USB Tethering (Wireless ADB via USB)",
+        _ck.Label(teth_inner, text="📡  Mode 2 — USB Tethering (Wireless ADB via USB)",
                  bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        tk.Label(teth_inner,
+        _ck.Label(teth_inner,
                  text="HP berbagi jaringan ke PC via USB → PC dan HP jadi satu subnet.\n"
                       "Setelah itu bisa pakai ADB wireless di IP yang didapat.",
                  bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
@@ -5241,7 +5246,7 @@ class SynthexApp:
             "4. ADB otomatis jalan lewat USB — atau klik 'Deteksi IP HP'",
         ]
         for s in teth_steps:
-            tk.Label(teth_inner, text=s, bg="#111820", fg="#8888AA",
+            _ck.Label(teth_inner, text=s, bg="#111820", fg="#8888AA",
                      font=("Segoe UI", 8)).pack(anchor="w")
 
         def _detect_usb_ip():
@@ -5269,22 +5274,22 @@ class SynthexApp:
                             "Tidak ada device USB. Colok kabel dulu."))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        teth_btn_row = tk.Frame(teth_inner, bg="#111820")
+        teth_btn_row = _ck.Frame(teth_inner, bg="#111820")
         teth_btn_row.pack(anchor="w", pady=(6, 0))
-        tk.Button(teth_btn_row, text="🔍 Deteksi IP HP via USB",
+        _ck.Button(teth_btn_row, text="🔍 Deteksi IP HP via USB",
                   bg="#7C3AED", fg="white", relief="flat", bd=0,
                   font=("Segoe UI", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_detect_usb_ip).pack(side="left", padx=(0, 8))
 
         # ── Mode 3: Windows Hotspot ──────────────────────────────────────────
-        hs_card = tk.Frame(net, bg="#111820", padx=14, pady=10)
+        hs_card = _ck.Frame(net, bg="#111820", padx=14, pady=10)
         hs_card.pack(fill="x", pady=(0, 4))
-        tk.Frame(hs_card, bg=GRN, width=3).pack(side="left", fill="y")
-        hs_inner = tk.Frame(hs_card, bg="#111820", padx=12)
+        _ck.Frame(hs_card, bg=GRN, width=3).pack(side="left", fill="y")
+        hs_inner = _ck.Frame(hs_card, bg="#111820", padx=12)
         hs_inner.pack(side="left", fill="both", expand=True)
-        tk.Label(hs_inner, text="📶  Mode 3 — Windows Mobile Hotspot (LAN → WiFi)",
+        _ck.Label(hs_inner, text="📶  Mode 3 — Windows Mobile Hotspot (LAN → WiFi)",
                  bg="#111820", fg=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        tk.Label(hs_inner,
+        _ck.Label(hs_inner,
                  text="PC bagikan koneksi LAN sebagai WiFi hotspot → HP connect ke hotspot PC\n"
                       "→ HP & PC satu subnet → ADB wireless normal.",
                  bg="#111820", fg=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
@@ -5300,11 +5305,11 @@ class SynthexApp:
                 except Exception:
                     pass
 
-        tk.Button(hs_inner, text="⚙ Buka Settings Hotspot Windows",
+        _ck.Button(hs_inner, text="⚙ Buka Settings Hotspot Windows",
                   bg=GRN, fg="#000", relief="flat", bd=0,
                   font=("Segoe UI", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_open_hotspot_settings).pack(anchor="w")
-        tk.Label(hs_inner,
+        _ck.Label(hs_inner,
                  text="Setelah HP connect ke hotspot PC, HP dapat IP 192.168.137.x — masukkan ke kolom IP di bawah.",
                  bg="#111820", fg="#555577", font=("Segoe UI", 7)).pack(anchor="w", pady=(4, 0))
 
@@ -5314,13 +5319,13 @@ class SynthexApp:
         mir = _sec("Pengaturan Mirror", accent="#0A2A18")
 
         def _lbl_cb(parent, lbl, var, vals, w=8):
-            tk.Label(parent, text=lbl, bg=CARD, fg=MUT,
+            _ck.Label(parent, text=lbl, bg=CARD, fg=MUT,
                      font=("Segoe UI", 9)).pack(side="left")
-            ttk.Combobox(parent, textvariable=var, values=vals,
+            _ck.Combobox(parent, textvariable=var, values=vals,
                          state="readonly", width=w).pack(
                 side="left", padx=(4, 14))
 
-        row1 = tk.Frame(mir, bg=CARD)
+        row1 = _ck.Frame(mir, bg=CARD)
         row1.pack(fill="x", pady=(0, 10))
         _lbl_cb(row1, "Resolusi:", res_var,
                 ["480", "720", "1024", "1280", "1920"], w=6)
@@ -5331,13 +5336,13 @@ class SynthexApp:
         _lbl_cb(row1, "Orientasi:", ori_var,
                 ["Auto", "Portrait", "Landscape"],      w=9)
 
-        row2 = tk.Frame(mir, bg=CARD)
+        row2 = _ck.Frame(mir, bg=CARD)
         row2.pack(fill="x", pady=(0, 12))
         for _txt, _v in [
             ("Stay Awake", stay_var), ("Show Touches", touch_var),
             ("Always On Top", top_var), ("No Audio", audio_var),
         ]:
-            tk.Checkbutton(row2, text=_txt, variable=_v,
+            _ck.Checkbutton(row2, text=_txt, variable=_v,
                            bg=CARD, fg=FG, selectcolor=CARD2,
                            activebackground=CARD, activeforeground=FG,
                            font=("Segoe UI", 9)).pack(side="left", padx=(0, 14))
@@ -5390,21 +5395,21 @@ class SynthexApp:
                     if getattr(_sy, "frozen", False)
                     else _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
 
-        tools_bar = tk.Frame(mir, bg="#0E0E1C", padx=10, pady=8)
+        tools_bar = _ck.Frame(mir, bg="#0E0E1C", padx=10, pady=8)
         tools_bar.pack(fill="x")
 
         scrcpy_sv = tk.StringVar(value="scrcpy: memeriksa...")
-        scrcpy_lbl = tk.Label(tools_bar, textvariable=scrcpy_sv,
+        scrcpy_lbl = _ck.Label(tools_bar, textvariable=scrcpy_sv,
                               bg="#0E0E1C", fg=MUT, font=("Segoe UI", 8))
         scrcpy_lbl.pack(side="left")
 
         dl_sv = tk.StringVar(value="")
-        tk.Label(tools_bar, textvariable=dl_sv,
+        _ck.Label(tools_bar, textvariable=dl_sv,
                  bg="#0E0E1C", fg=YEL,
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
 
         adb_sv = tk.StringVar(value="  |  ADB: memeriksa...")
-        adb_lbl = tk.Label(tools_bar, textvariable=adb_sv,
+        adb_lbl = _ck.Label(tools_bar, textvariable=adb_sv,
                            bg="#0E0E1C", fg=MUT, font=("Segoe UI", 8))
         adb_lbl.pack(side="left", padx=(6, 0))
 
@@ -5448,22 +5453,22 @@ class SynthexApp:
                     ])
             _dl_zip(ADB_URL, tdir, adb_sv, strip_root=True, on_done=_after)
 
-        dl_btns = tk.Frame(tools_bar, bg="#0E0E1C")
+        dl_btns = _ck.Frame(tools_bar, bg="#0E0E1C")
         dl_btns.pack(side="right")
-        tk.Button(dl_btns, text="Download scrcpy",
+        _ck.Button(dl_btns, text="Download scrcpy",
                   bg="#2A1050", fg="white",
                   font=("Segoe UI", 8), padx=8, pady=4,
                   command=_download_scrcpy, **_FB).pack(side="left", padx=(0, 4))
-        tk.Button(dl_btns, text="Download ADB",
+        _ck.Button(dl_btns, text="Download ADB",
                   bg="#103020", fg="white",
                   font=("Segoe UI", 8), padx=8, pady=4,
                   command=_download_adb, **_FB).pack(side="left")
 
         # ── Screenshot button ────────────────────────────────────────────────
-        ss_row = tk.Frame(mir, bg=CARD)
+        ss_row = _ck.Frame(mir, bg=CARD)
         ss_row.pack(fill="x", pady=(8, 0))
         ss_sv = tk.StringVar(value="")
-        tk.Label(ss_row, textvariable=ss_sv, bg=CARD, fg=MUT,
+        _ck.Label(ss_row, textvariable=ss_sv, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left")
 
         def _take_screenshot():
@@ -5509,7 +5514,7 @@ class SynthexApp:
                         self._root.after(0, lambda: ss_sv.set("Pull gagal: " + err2[:60]))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        tk.Button(ss_row, text="\U0001f4f7  Screenshot HP",
+        _ck.Button(ss_row, text="\U0001f4f7  Screenshot HP",
                   bg="#1A3A5A", fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
@@ -5523,11 +5528,11 @@ class SynthexApp:
                       accent="#5B21B6", subtitle="VPN mesh langsung peer-to-peer")
 
         ts_status_var = tk.StringVar(value="Belum dicek…")
-        ts_status_lbl = tk.Label(ts_sec, textvariable=ts_status_var,
+        ts_status_lbl = _ck.Label(ts_sec, textvariable=ts_status_var,
                                  bg=CARD, fg=MUT, font=("Segoe UI", 8))
         ts_status_lbl.pack(anchor="w", pady=(0, 8))
 
-        ts_peers_frame = tk.Frame(ts_sec, bg=CARD)
+        ts_peers_frame = _ck.Frame(ts_sec, bg=CARD)
         ts_peers_frame.pack(fill="x")
 
         def _tailscale_cmd(*args, timeout=5):
@@ -5554,7 +5559,7 @@ class SynthexApp:
                         ts_status_var.set("❌ " + err)
                         ts_status_lbl.configure(fg=RED)
                         for w in ts_peers_frame.winfo_children(): w.destroy()
-                        tk.Label(ts_peers_frame,
+                        _ck.Label(ts_peers_frame,
                                  text="Download Tailscale di tailscale.com, install di PC & HP.",
                                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
                     if self._root: self._root.after(0, _ui)
@@ -5590,22 +5595,22 @@ class SynthexApp:
                     for w in ts_peers_frame.winfo_children():
                         w.destroy()
                     if not peer_list:
-                        tk.Label(ts_peers_frame,
+                        _ck.Label(ts_peers_frame,
                                  text="Tidak ada peer online. Pastikan Tailscale aktif di HP juga.",
                                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
                         return
                     for p in peer_list:
-                        row = tk.Frame(ts_peers_frame, bg="#16162a", pady=6, padx=10)
+                        row = _ck.Frame(ts_peers_frame, bg="#16162a", pady=6, padx=10)
                         row.pack(fill="x", pady=(0, 4))
                         clr = GRN if p["online"] else MUT
                         dot_t = "🟢" if p["online"] else "⚪"
-                        tk.Label(row, text=dot_t, bg="#16162a",
+                        _ck.Label(row, text=dot_t, bg="#16162a",
                                  font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
-                        info = tk.Frame(row, bg="#16162a")
+                        info = _ck.Frame(row, bg="#16162a")
                         info.pack(side="left", fill="both", expand=True)
-                        tk.Label(info, text=p["name"], bg="#16162a", fg=FG,
+                        _ck.Label(info, text=p["name"], bg="#16162a", fg=FG,
                                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
-                        tk.Label(info, text="{} • {}".format(p["ip"], p["os"]),
+                        _ck.Label(info, text="{} • {}".format(p["ip"], p["os"]),
                                  bg="#16162a", fg=MUT,
                                  font=("Segoe UI", 8)).pack(anchor="w")
                         def _connect_ts(ip=p["ip"], name=p["name"]):
@@ -5634,20 +5639,20 @@ class SynthexApp:
                                         self._root.after(300, lambda: _auto_mirror(serial_ts))
                                 if self._root: self._root.after(0, _ui2)
                             _thr.Thread(target=_do, daemon=True).start()
-                        tk.Button(row, text="⚡ Connect ADB",
+                        _ck.Button(row, text="⚡ Connect ADB",
                                   bg="#5B21B6", fg="white", relief="flat", bd=0,
                                   font=("Segoe UI", 8, "bold"), padx=10, pady=4,
                                   cursor="hand2", command=_connect_ts).pack(side="right")
                 if self._root: self._root.after(0, _ui)
             _thr.Thread(target=_bg, daemon=True).start()
 
-        ts_btn_row = tk.Frame(ts_sec, bg=CARD)
+        ts_btn_row = _ck.Frame(ts_sec, bg=CARD)
         ts_btn_row.pack(anchor="w", pady=(8, 4))
-        tk.Button(ts_btn_row, text="🔍 Cek & Tampilkan Peers Tailscale",
+        _ck.Button(ts_btn_row, text="🔍 Cek & Tampilkan Peers Tailscale",
                   bg="#5B21B6", fg="white", relief="flat", bd=0,
                   font=("Segoe UI", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_refresh_tailscale).pack(side="left", padx=(0, 8))
-        tk.Label(ts_sec,
+        _ck.Label(ts_sec,
                  text="💡 Install Tailscale di PC (tailscale.com) + di HP (Play Store) → login akun sama → klik Cek.",
                  bg=CARD, fg="#555577", font=("Segoe UI", 7)).pack(anchor="w")
 
@@ -5658,14 +5663,14 @@ class SynthexApp:
         tools_sec = _sec("Tools", accent="#1A1A0A")
 
         secure_sv = tk.StringVar(value="")
-        secure_row = tk.Frame(tools_sec, bg=CARD)
+        secure_row = _ck.Frame(tools_sec, bg=CARD)
         secure_row.pack(fill="x", pady=(0, 6))
 
-        tk.Label(secure_row,
+        _ck.Label(secure_row,
                  text="Layar hitam saat buka app bank di mirror?",
                  bg=CARD, fg=MUT, font=("Segoe UI", 9)).pack(side="left")
 
-        tk.Label(tools_sec, textvariable=secure_sv,
+        _ck.Label(tools_sec, textvariable=secure_sv,
                  bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _run_surface_cmd(flag: str, ok_msg: str):
@@ -5704,22 +5709,22 @@ class SynthexApp:
                 secure_sv.set("Auto-bypass aktif — akan bypass otomatis tiap kali HP connect.")
                 _bypass_secure(silent=True)
 
-        btn_row = tk.Frame(tools_sec, bg=CARD)
+        btn_row = _ck.Frame(tools_sec, bg=CARD)
         btn_row.pack(anchor="w")
-        tk.Button(btn_row, text="\U0001f513  Bypass Sekarang",
+        _ck.Button(btn_row, text="\U0001f513  Bypass Sekarang",
                   bg="#3A2A00", fg=YEL,
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_bypass_secure).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Kembalikan Normal",
+        _ck.Button(btn_row, text="Kembalikan Normal",
                   bg=CARD2, fg=MUT,
                   font=("Segoe UI", 9), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_restore_secure).pack(side="left")
 
-        auto_row = tk.Frame(tools_sec, bg=CARD)
+        auto_row = _ck.Frame(tools_sec, bg=CARD)
         auto_row.pack(anchor="w", pady=(8, 0))
-        tk.Checkbutton(auto_row, text="Auto-bypass tiap kali HP connect (selalu aktif)",
+        _ck.Checkbutton(auto_row, text="Auto-bypass tiap kali HP connect (selalu aktif)",
                        variable=auto_bypass_var,
                        command=_toggle_auto_bypass,
                        bg=CARD, fg=FG, selectcolor="#1c1c2e",
@@ -5733,15 +5738,15 @@ class SynthexApp:
                            accent="#0D2240",
                            subtitle="Koneksi USB pertama kali — panduan otomatis")
 
-        tk.Label(usb_wiz_sec,
+        _ck.Label(usb_wiz_sec,
                  text="Wizard ini memandu kamu menghubungkan HP via USB lalu beralih ke WiFi "
                       "secara otomatis — tinggal ikuti langkah yang muncul.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 9),
                  wraplength=560, justify="left").pack(anchor="w", pady=(0, 10))
 
-        wiz_btn_row = tk.Frame(usb_wiz_sec, bg=CARD)
+        wiz_btn_row = _ck.Frame(usb_wiz_sec, bg=CARD)
         wiz_btn_row.pack(anchor="w")
-        tk.Button(wiz_btn_row,
+        _ck.Button(wiz_btn_row,
                   text="  Buka USB Setup Wizard",
                   bg="#0EA5E9", fg="white",
                   font=("Segoe UI", 10, "bold"), padx=18, pady=8,
@@ -5755,7 +5760,7 @@ class SynthexApp:
         def _toggle_auto_install():
             self.config.set("remote.auto_install_companion", auto_install_var.get())
             self.config.save()
-        tk.Checkbutton(usb_wiz_sec,
+        _ck.Checkbutton(usb_wiz_sec,
                        text="Auto-install Synthex App ke HP saat pertama terhubung",
                        variable=auto_install_var,
                        command=_toggle_auto_install,
@@ -5763,13 +5768,13 @@ class SynthexApp:
                        activebackground=CARD, activeforeground=FG,
                        font=("Segoe UI", 9), cursor="hand2").pack(
             anchor="w", pady=(8, 0))
-        tk.Label(usb_wiz_sec,
+        _ck.Label(usb_wiz_sec,
                  text="Letakkan Synthex.apk di folder  synthex/tools/Synthex.apk  "
                       "setelah download dari GitHub Actions.",
                  bg=CARD, fg="#3A3A5A", font=("Segoe UI", 8)).pack(
             anchor="w", pady=(2, 0))
 
-        tk.Label(wiz_btn_row,
+        _ck.Label(wiz_btn_row,
                  text="Sudah terhubung sebelumnya? Gunakan IP History di atas.",
                  bg=CARD, fg="#3A3A5A", font=("Segoe UI", 8)).pack(side="left")
 
@@ -5779,12 +5784,12 @@ class SynthexApp:
         mac_sec = _sec("Macro Remote", accent="#1A0A30",
                        subtitle="Auto-action saat tidak ada gerakan")
 
-        mac_hdr_row = tk.Frame(mac_sec, bg=CARD)
+        mac_hdr_row = _ck.Frame(mac_sec, bg=CARD)
         mac_hdr_row.pack(fill="x", pady=(0, 8))
 
         mac_enable_var = tk.BooleanVar(
             value=self.config.get("remote.macro_enabled", False))
-        tk.Checkbutton(mac_hdr_row,
+        _ck.Checkbutton(mac_hdr_row,
                        text="Aktifkan Macro Engine",
                        variable=mac_enable_var,
                        bg=CARD, fg=FG, selectcolor="#1c1c2e",
@@ -5793,12 +5798,12 @@ class SynthexApp:
             side="left")
 
         mac_status_var = tk.StringVar(value="")
-        tk.Label(mac_hdr_row, textvariable=mac_status_var,
+        _ck.Label(mac_hdr_row, textvariable=mac_status_var,
                  bg=CARD, fg=GRN, font=("Segoe UI", 8)).pack(
             side="right")
 
         # Macro rules list container
-        mac_rules_frame = tk.Frame(mac_sec, bg="#0D0D18")
+        mac_rules_frame = _ck.Frame(mac_sec, bg="#0D0D18")
         mac_rules_frame.pack(fill="x", pady=(0, 8))
 
         # Stored rules from config
@@ -5814,7 +5819,7 @@ class SynthexApp:
                 try: w.destroy()
                 except Exception: pass
             if not _mac_rules:
-                tk.Label(mac_rules_frame, text="  Belum ada rule macro — klik + Tambah Rule di bawah.",
+                _ck.Label(mac_rules_frame, text="  Belum ada rule macro — klik + Tambah Rule di bawah.",
                          bg="#0D0D18", fg=MUT, font=("Segoe UI", 8)).pack(
                     anchor="w", pady=6, padx=10)
                 return
@@ -5835,15 +5840,15 @@ class SynthexApp:
 
         def _make_mac_row(i: int, rule: dict):
             enabled = rule.get("enabled", True)
-            row = tk.Frame(mac_rules_frame, bg="#0D0D18", padx=10, pady=6)
+            row = _ck.Frame(mac_rules_frame, bg="#0D0D18", padx=10, pady=6)
             row.pack(fill="x")
-            tk.Frame(mac_rules_frame, bg="#16162a", height=1).pack(fill="x")
+            _ck.Frame(mac_rules_frame, bg="#16162a", height=1).pack(fill="x")
 
             en_var = tk.BooleanVar(value=enabled)
             def _toggle_en(idx=i, v=en_var):
                 _mac_rules[idx]["enabled"] = v.get()
                 _save_mac_rules()
-            tk.Checkbutton(row, variable=en_var,
+            _ck.Checkbutton(row, variable=en_var,
                            bg="#0D0D18", fg=FG, selectcolor="#1c1c2e",
                            activebackground="#0D0D18",
                            command=_toggle_en).pack(side="left")
@@ -5858,12 +5863,12 @@ class SynthexApp:
                     rule.get("x1",540), rule.get("y1",300),
                     rule.get("x2",540), rule.get("y2",1200))
 
-            tk.Label(row,
+            _ck.Label(row,
                      text="Idle {}  →  {}{}".format(delay_txt, act_txt, coord_txt),
                      bg="#0D0D18", fg=FG, font=("Segoe UI", 9)).pack(
                 side="left", padx=(4, 0))
             if rule.get("label"):
-                tk.Label(row, text="  [{}]".format(rule["label"]),
+                _ck.Label(row, text="  [{}]".format(rule["label"]),
                          bg="#0D0D18", fg=MUT, font=("Segoe UI", 8)).pack(
                     side="left")
 
@@ -5884,11 +5889,11 @@ class SynthexApp:
                 if self._root:
                     self._root.after(2000, lambda: mac_status_var.set(""))
 
-            tk.Button(row, text="▶", bg="#1A1A38", fg=ACC,
+            _ck.Button(row, text="▶", bg="#1A1A38", fg=ACC,
                       font=("Segoe UI", 8, "bold"), padx=6, pady=2,
                       relief="flat", bd=0, cursor="hand2",
                       command=_fire).pack(side="right", padx=(4, 0))
-            tk.Button(row, text="✕", bg="#1A1A38", fg=RED,
+            _ck.Button(row, text="✕", bg="#1A1A38", fg=RED,
                       font=("Segoe UI", 8), padx=6, pady=2,
                       relief="flat", bd=0, cursor="hand2",
                       command=_del).pack(side="right", padx=(4, 0))
@@ -5951,46 +5956,46 @@ class SynthexApp:
                 (dlg.winfo_screenwidth() - 380) // 2,
                 (dlg.winfo_screenheight() - 440) // 2))
 
-            tk.Frame(dlg, bg=ACC, height=4).pack(fill="x")
-            b = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
+            _ck.Frame(dlg, bg=ACC, height=4).pack(fill="x")
+            b = _ck.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
             b.pack(fill="both", expand=True)
 
             def _row(parent, lbl, widget_fn):
-                r = tk.Frame(parent, bg="#0D0D14")
+                r = _ck.Frame(parent, bg="#0D0D14")
                 r.pack(fill="x", pady=(0, 10))
-                tk.Label(r, text=lbl, bg="#0D0D14", fg=MUT,
+                _ck.Label(r, text=lbl, bg="#0D0D14", fg=MUT,
                          font=("Segoe UI", 9), width=18, anchor="w").pack(side="left")
                 return widget_fn(r)
 
-            tk.Label(b, text="Tambah Macro Rule", bg="#0D0D14", fg=FG,
+            _ck.Label(b, text="Tambah Macro Rule", bg="#0D0D14", fg=FG,
                      font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 14))
 
             # Label (opsional)
             lbl_var = tk.StringVar()
             _row(b, "Label (opsional):",
-                 lambda p: tk.Entry(p, textvariable=lbl_var,
+                 lambda p: _ck.Entry(p, textvariable=lbl_var,
                                     bg="#16162a", fg=FG, insertbackground=FG,
                                     relief="flat", width=22, bd=4).pack(side="left"))
 
             # Delay
             delay_var = tk.StringVar(value="180")
             dr = _row(b, "Idle sebelum fire:", lambda p: p)
-            tk.Entry(dr, textvariable=delay_var,
+            _ck.Entry(dr, textvariable=delay_var,
                      bg="#16162a", fg=FG, insertbackground=FG,
                      relief="flat", width=8, bd=4).pack(side="left")
-            tk.Label(dr, text="detik  (180=3 menit, 300=5 menit)",
+            _ck.Label(dr, text="detik  (180=3 menit, 300=5 menit)",
                      bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(side="left", padx=(6,0))
 
             # Action
             act_var = tk.StringVar(value="swipe_down")
             act_options = list(_ACTION_LABELS_LOCAL.keys())
             act_labels  = [_ACTION_LABELS_LOCAL[k] for k in act_options]
-            _row(b, "Aksi:", lambda p: ttk.Combobox(
+            _row(b, "Aksi:", lambda p: _ck.Combobox(
                 p, textvariable=act_var,
                 values=act_labels, state="readonly", width=20).pack(side="left"))
 
             # Coord frame (shown only for tap/swipe_custom)
-            coord_frame = tk.Frame(b, bg="#0D0D14")
+            coord_frame = _ck.Frame(b, bg="#0D0D14")
             coord_frame.pack(fill="x")
             x_var  = tk.StringVar(value="540"); y_var  = tk.StringVar(value="960")
             x1_var = tk.StringVar(value="540"); y1_var = tk.StringVar(value="300")
@@ -5998,16 +6003,16 @@ class SynthexApp:
             ms_var = tk.StringVar(value="350")
 
             def _entry(parent, lbl, var, w=6):
-                tk.Label(parent, text=lbl, bg="#0D0D14", fg=MUT,
+                _ck.Label(parent, text=lbl, bg="#0D0D14", fg=MUT,
                          font=("Segoe UI", 8)).pack(side="left", padx=(0,2))
-                tk.Entry(parent, textvariable=var,
+                _ck.Entry(parent, textvariable=var,
                          bg="#16162a", fg=FG, insertbackground=FG,
                          relief="flat", width=w, bd=3).pack(side="left", padx=(0,8))
 
-            tap_frame = tk.Frame(coord_frame, bg="#0D0D14")
+            tap_frame = _ck.Frame(coord_frame, bg="#0D0D14")
             _entry(tap_frame, "X:", x_var); _entry(tap_frame, "Y:", y_var)
 
-            cust_frame = tk.Frame(coord_frame, bg="#0D0D14")
+            cust_frame = _ck.Frame(coord_frame, bg="#0D0D14")
             _entry(cust_frame, "X1:", x1_var); _entry(cust_frame, "Y1:", y1_var)
             _entry(cust_frame, "X2:", x2_var); _entry(cust_frame, "Y2:", y2_var)
             _entry(cust_frame, "ms:", ms_var, 5)
@@ -6026,7 +6031,7 @@ class SynthexApp:
             _update_coord_vis()
 
             err_var = tk.StringVar(value="")
-            tk.Label(b, textvariable=err_var, bg="#0D0D14", fg=RED,
+            _ck.Label(b, textvariable=err_var, bg="#0D0D14", fg=RED,
                      font=("Segoe UI", 8)).pack(anchor="w")
 
             def _save():
@@ -6065,25 +6070,25 @@ class SynthexApp:
                 _apply_mac_engine()
                 dlg.destroy()
 
-            btn_r = tk.Frame(b, bg="#0D0D14")
+            btn_r = _ck.Frame(b, bg="#0D0D14")
             btn_r.pack(anchor="e", pady=(10, 0))
-            tk.Button(btn_r, text="Simpan", bg=ACC, fg="white",
+            _ck.Button(btn_r, text="Simpan", bg=ACC, fg="white",
                       font=("Segoe UI", 9, "bold"), padx=18, pady=7,
                       relief="flat", bd=0, cursor="hand2",
                       command=_save).pack(side="left", padx=(0, 8))
-            tk.Button(btn_r, text="Batal", bg="#1c1c2e", fg=MUT,
+            _ck.Button(btn_r, text="Batal", bg="#1c1c2e", fg=MUT,
                       font=("Segoe UI", 9), padx=12, pady=7,
                       relief="flat", bd=0, cursor="hand2",
                       command=dlg.destroy).pack(side="left")
 
-        mac_add_row = tk.Frame(mac_sec, bg=CARD)
+        mac_add_row = _ck.Frame(mac_sec, bg=CARD)
         mac_add_row.pack(anchor="w")
-        tk.Button(mac_add_row, text="+ Tambah Rule",
+        _ck.Button(mac_add_row, text="+ Tambah Rule",
                   bg="#1A0840", fg=ACC,
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_open_add_rule).pack(side="left", padx=(0, 10))
-        tk.Button(mac_add_row, text="Stop Engine",
+        _ck.Button(mac_add_row, text="Stop Engine",
                   bg="#1c1c2e", fg=MUT,
                   font=("Segoe UI", 8), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
@@ -6099,7 +6104,7 @@ class SynthexApp:
                         accent="#0A2A0A",
                         subtitle="Kontrol dari HP tanpa APK — buka di Chrome")
 
-        comp_info = tk.Label(comp_sec,
+        comp_info = _ck.Label(comp_sec,
             text="PC akan menjalankan server lokal. Buka URL di bawah dari Chrome HP kamu.\n"
                  "Tambahkan ke Home Screen (menu Chrome → Add to Home Screen) "
                  "supaya terasa seperti app sungguhan.",
@@ -6109,12 +6114,12 @@ class SynthexApp:
         comp_url_var  = tk.StringVar(value="Server belum berjalan")
         comp_stat_var = tk.StringVar(value="")
 
-        comp_url_lbl = tk.Label(comp_sec, textvariable=comp_url_var,
+        comp_url_lbl = _ck.Label(comp_sec, textvariable=comp_url_var,
                                 bg=CARD, fg=ACC, font=("Segoe UI", 11, "bold"),
                                 cursor="hand2")
         comp_url_lbl.pack(anchor="w", pady=(0, 6))
 
-        tk.Label(comp_sec, textvariable=comp_stat_var,
+        _ck.Label(comp_sec, textvariable=comp_stat_var,
                  bg=CARD, fg=GRN, font=("Segoe UI", 8)).pack(anchor="w")
 
         def _comp_copy_url():
@@ -6180,14 +6185,14 @@ class SynthexApp:
             if self._root:
                 _bridge_poll_id[0] = self._root.after(5000, _update_bridge_state)
 
-        comp_btn_row = tk.Frame(comp_sec, bg=CARD)
+        comp_btn_row = _ck.Frame(comp_sec, bg=CARD)
         comp_btn_row.pack(anchor="w", pady=(8, 0))
-        tk.Button(comp_btn_row, text="▶ Jalankan Server Companion",
+        _ck.Button(comp_btn_row, text="▶ Jalankan Server Companion",
                   bg="#16803C", fg="white",
                   font=("Segoe UI", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_start_companion).pack(side="left", padx=(0, 8))
-        tk.Button(comp_btn_row, text="■ Stop",
+        _ck.Button(comp_btn_row, text="■ Stop",
                   bg="#1c1c2e", fg=MUT,
                   font=("Segoe UI", 9), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
@@ -6324,25 +6329,25 @@ class SynthexApp:
             (dlg.winfo_screenwidth()  - 460) // 2,
             (dlg.winfo_screenheight() - 280) // 2))
 
-        tk.Frame(dlg, bg="#6C4AFF", height=4).pack(fill="x")
-        body = tk.Frame(dlg, bg="#0A0A0F", padx=28, pady=22)
+        _ck.Frame(dlg, bg="#6C4AFF", height=4).pack(fill="x")
+        body = _ck.Frame(dlg, bg="#0A0A0F", padx=28, pady=22)
         body.pack(fill="both", expand=True)
 
-        tk.Label(body, text="HP Baru Terdeteksi!",
+        _ck.Label(body, text="HP Baru Terdeteksi!",
                  bg="#0A0A0F", fg="white",
                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        tk.Label(body,
+        _ck.Label(body,
                  text="HP kamu belum punya Synthex App.\n"
                       "Install sekarang supaya bisa dikontrol dari app ini.",
                  bg="#0A0A0F", fg="#8080A0",
                  font=("Segoe UI", 9),
                  wraplength=400, justify="left").pack(anchor="w", pady=(6, 0))
 
-        tk.Label(body, text="Serial: {}".format(serial),
+        _ck.Label(body, text="Serial: {}".format(serial),
                  bg="#0A0A0F", fg="#6C4AFF",
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 0))
 
-        info = tk.Label(body,
+        info = _ck.Label(body,
                  text="Download Synthex.apk dari GitHub Actions lalu letakkan di:\n"
                       "synthex/tools/Synthex.apk\n\n"
                       "Setelah file ada, colok HP lagi → install otomatis.",
@@ -6351,19 +6356,19 @@ class SynthexApp:
                  wraplength=400, justify="left")
         info.pack(anchor="w", pady=(6, 0))
 
-        br = tk.Frame(body, bg="#0A0A0F")
+        br = _ck.Frame(body, bg="#0A0A0F")
         br.pack(anchor="e", pady=(16, 0))
 
         def _open_actions():
             _wb.open("https://github.com/Yohn18/synthex-releases/actions")
             dlg.destroy()
 
-        tk.Button(br, text="Buka GitHub Actions",
+        _ck.Button(br, text="Buka GitHub Actions",
                   bg="#6C4AFF", fg="white",
                   font=("Segoe UI", 9, "bold"), padx=16, pady=7,
                   relief="flat", bd=0, cursor="hand2",
                   command=_open_actions).pack(side="left", padx=(0, 8))
-        tk.Button(br, text="Nanti",
+        _ck.Button(br, text="Nanti",
                   bg="#1c1c2e", fg="#555577",
                   font=("Segoe UI", 9), padx=12, pady=7,
                   relief="flat", bd=0, cursor="hand2",
@@ -6392,18 +6397,18 @@ class SynthexApp:
             (dlg.winfo_screenheight() - _h) // 2))
 
         # Header
-        tk.Frame(dlg, bg="#0EA5E9", height=4).pack(fill="x")
-        hdr = tk.Frame(dlg, bg="#111118", padx=20, pady=14)
+        _ck.Frame(dlg, bg="#0EA5E9", height=4).pack(fill="x")
+        hdr = _ck.Frame(dlg, bg="#111118", padx=20, pady=14)
         hdr.pack(fill="x")
-        tk.Label(hdr, text="USB Setup Wizard",
+        _ck.Label(hdr, text="USB Setup Wizard",
                  bg="#111118", fg="white",
                  font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        tk.Label(hdr,
+        _ck.Label(hdr,
                  text="Hubungkan HP pertama kali — panduan otomatis langkah demi langkah",
                  bg="#111118", fg="#64748b",
                  font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
 
-        body = tk.Frame(dlg, bg="#0A0A0F", padx=20, pady=14)
+        body = _ck.Frame(dlg, bg="#0A0A0F", padx=20, pady=14)
         body.pack(fill="both", expand=True)
 
         STEPS = [
@@ -6429,19 +6434,19 @@ class SynthexApp:
         step_descs:  list[tk.Label] = []
 
         for i, (title, desc) in enumerate(STEPS):
-            row = tk.Frame(body, bg="#0A0A0F", pady=3)
+            row = _ck.Frame(body, bg="#0A0A0F", pady=3)
             row.pack(fill="x")
-            dot = tk.Label(row, text="●",
+            dot = _ck.Label(row, text="●",
                            bg="#0A0A0F", fg="#374151",
                            font=("Segoe UI", 12))
             dot.pack(side="left", padx=(0, 8))
-            info = tk.Frame(row, bg="#0A0A0F")
+            info = _ck.Frame(row, bg="#0A0A0F")
             info.pack(side="left", fill="x", expand=True)
-            lbl  = tk.Label(info, text="{}. {}".format(i+1, title),
+            lbl  = _ck.Label(info, text="{}. {}".format(i+1, title),
                             bg="#0A0A0F", fg="#64748b",
                             font=("Segoe UI", 9, "bold"), anchor="w")
             lbl.pack(anchor="w")
-            desc_lbl = tk.Label(info, text=desc,
+            desc_lbl = _ck.Label(info, text=desc,
                                 bg="#0A0A0F", fg="#374151",
                                 font=("Segoe UI", 8),
                                 wraplength=370, justify="left", anchor="w")
@@ -6453,21 +6458,21 @@ class SynthexApp:
 
         # Status + progress
         status_var = tk.StringVar(value="Siap — klik Mulai untuk memulai wizard")
-        tk.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(10, 6))
-        st_lbl = tk.Label(body, textvariable=status_var,
+        _ck.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(10, 6))
+        st_lbl = _ck.Label(body, textvariable=status_var,
                           bg="#0A0A0F", fg="#e2e8f0",
                           font=("Segoe UI", 9), wraplength=420, justify="left")
         st_lbl.pack(anchor="w")
 
         # Buttons
-        btn_row = tk.Frame(dlg, bg="#0A0A0F", padx=20, pady=12)
+        btn_row = _ck.Frame(dlg, bg="#0A0A0F", padx=20, pady=12)
         btn_row.pack(fill="x", side="bottom")
-        next_btn = tk.Button(btn_row, text="▶  Mulai Wizard",
+        next_btn = _ck.Button(btn_row, text="▶  Mulai Wizard",
                              bg="#0EA5E9", fg="white",
                              font=("Segoe UI", 10, "bold"),
                              padx=18, pady=8, relief="flat", bd=0, cursor="hand2")
         next_btn.pack(side="left", padx=(0, 10))
-        tk.Button(btn_row, text="Tutup",
+        _ck.Button(btn_row, text="Tutup",
                   bg="#1c1c2e", fg="#64748b",
                   font=("Segoe UI", 9), padx=12, pady=8,
                   relief="flat", bd=0, cursor="hand2",
@@ -6647,45 +6652,45 @@ class SynthexApp:
         import threading as _thr
         from datetime import datetime as _dt
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Chat", "Ngobrol dengan pengguna Synthex yang sedang online")
 
         # ── Layout: sidebar kiri (online users) + area chat kanan ───────────
-        body = tk.Frame(f, bg=BG)
+        body = _ck.Frame(f, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(8, 16))
 
         # ── Left: online users ───────────────────────────────────────────────
-        left = tk.Frame(body, bg=CARD, width=190)
+        left = _ck.Frame(body, bg=CARD, width=190)
         left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
 
-        tk.Frame(left, bg="#7C3AED", height=4).pack(fill="x")
-        tk.Label(left, text="Online Sekarang", bg=CARD, fg=FG,
+        _ck.Frame(left, bg="#7C3AED", height=4).pack(fill="x")
+        _ck.Label(left, text="Online Sekarang", bg=CARD, fg=FG,
                  font=("Segoe UI", 9, "bold"),
                  padx=12, pady=8).pack(anchor="w")
-        tk.Frame(left, bg=CARD2, height=1).pack(fill="x")
+        _ck.Frame(left, bg=CARD2, height=1).pack(fill="x")
 
-        users_frame = tk.Frame(left, bg=CARD)
+        users_frame = _ck.Frame(left, bg=CARD)
         users_frame.pack(fill="both", expand=True, pady=4)
 
         online_count_var = tk.StringVar(value="")
-        tk.Label(left, textvariable=online_count_var, bg=CARD, fg=MUT,
+        _ck.Label(left, textvariable=online_count_var, bg=CARD, fg=MUT,
                  font=("Segoe UI", 7), padx=12, pady=4).pack(anchor="w")
 
         # ── Right: messages + input ──────────────────────────────────────────
-        right = tk.Frame(body, bg=CARD)
+        right = _ck.Frame(body, bg=CARD)
         right.pack(side="left", fill="both", expand=True)
 
-        tk.Frame(right, bg="#1A0840", height=4).pack(fill="x")
+        _ck.Frame(right, bg="#1A0840", height=4).pack(fill="x")
 
         # Messages area (Text widget, read-only)
-        msg_area = tk.Text(right, bg="#0F0F1C", fg=FG,
+        msg_area = _ck.Text(right, bg="#0F0F1C", fg=FG,
                            font=("Segoe UI", 9),
                            relief="flat", bd=0,
                            wrap="word", state="disabled",
                            padx=12, pady=8,
                            selectbackground=ACC)
-        msg_sb = ttk.Scrollbar(right, command=msg_area.yview)
+        msg_sb = _ck.Scrollbar(right, command=msg_area.yview)
         msg_area.configure(yscrollcommand=msg_sb.set)
         msg_sb.pack(side="right", fill="y")
         msg_area.pack(fill="both", expand=True)
@@ -6701,15 +6706,15 @@ class SynthexApp:
                                background="#2A1A00")
 
         # Input row
-        inp_row = tk.Frame(right, bg="#16162a", padx=10, pady=8)
+        inp_row = _ck.Frame(right, bg="#16162a", padx=10, pady=8)
         inp_row.pack(fill="x")
         inp_var = tk.StringVar()
-        inp_entry = tk.Entry(inp_row, textvariable=inp_var,
+        inp_entry = _ck.Entry(inp_row, textvariable=inp_var,
                              bg="#0F0F1C", fg=FG, insertbackground=FG,
                              relief="flat", font=("Segoe UI", 10),
                              bd=6)
         inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        send_btn = tk.Button(inp_row, text="Kirim",
+        send_btn = _ck.Button(inp_row, text="Kirim",
                              bg="#7C3AED", fg="white",
                              font=("Segoe UI", 9, "bold"),
                              padx=16, pady=5,
@@ -6717,7 +6722,7 @@ class SynthexApp:
         send_btn.pack(side="left")
 
         status_var = tk.StringVar(value="")
-        tk.Label(right, textvariable=status_var, bg=CARD, fg=MUT,
+        _ck.Label(right, textvariable=status_var, bg=CARD, fg=MUT,
                  font=("Segoe UI", 7), pady=2).pack(anchor="e", padx=8)
 
         # ── Helpers ─────────────────────────────────────────────────────────
@@ -6762,7 +6767,7 @@ class SynthexApp:
                     inp_entry.icursor(len(new_val))
                     _close_mention_popup()
                     inp_entry.focus_set()
-                btn = tk.Button(popup, text="@{}".format(name),
+                btn = _ck.Button(popup, text="@{}".format(name),
                                 bg="#1c1c2e", fg="#FFD700",
                                 font=("Segoe UI", 9), relief="flat", bd=0,
                                 padx=10, pady=3, cursor="hand2",
@@ -6816,18 +6821,18 @@ class SynthexApp:
                 dot_clr = "#7C3AED" if is_me else GRN
                 name = em.split("@")[0]
                 label = "{} (kamu)".format(name) if is_me else name
-                row = tk.Frame(users_frame, bg=CARD)
+                row = _ck.Frame(users_frame, bg=CARD)
                 row.pack(fill="x", padx=8, pady=2)
-                tk.Label(row, text="\u25cf", bg=CARD, fg=dot_clr,
+                _ck.Label(row, text="\u25cf", bg=CARD, fg=dot_clr,
                          font=("Segoe UI", 10)).pack(side="left")
-                tk.Label(row, text=label, bg=CARD, fg=FG,
+                _ck.Label(row, text=label, bg=CARD, fg=FG,
                          font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
             if not me_found and _my_email:
-                row = tk.Frame(users_frame, bg=CARD)
+                row = _ck.Frame(users_frame, bg=CARD)
                 row.pack(fill="x", padx=8, pady=2)
-                tk.Label(row, text="\u25cf", bg=CARD, fg="#7C3AED",
+                _ck.Label(row, text="\u25cf", bg=CARD, fg="#7C3AED",
                          font=("Segoe UI", 10)).pack(side="left")
-                tk.Label(row, text="{} (kamu)".format(_my_email.split("@")[0]),
+                _ck.Label(row, text="{} (kamu)".format(_my_email.split("@")[0]),
                          bg=CARD, fg=FG,
                          font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
             online_count_var.set("{} online".format(
@@ -7029,7 +7034,7 @@ class SynthexApp:
         import re as _re
         from datetime import datetime as _dt
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "AI Chat",
                   "Chat pribadi dengan AI — GPT, Claude, Gemini, Groq")
 
@@ -7068,14 +7073,14 @@ class SynthexApp:
             self.config.save()
 
         # ── top bar ──────────────────────────────────────────────────────────
-        top_bar = tk.Frame(f, bg=CARD, padx=16, pady=8)
+        top_bar = _ck.Frame(f, bg=CARD, padx=16, pady=8)
         top_bar.pack(fill="x")
 
         _prov_colors = {
             "openai": "#10A37F", "anthropic": "#C76B3A",
             "groq": "#F55036",   "gemini": "#4285F4",
         }
-        tk.Label(top_bar,
+        _ck.Label(top_bar,
                  text=" {} ".format(provider.upper()),
                  bg=_prov_colors.get(provider, ACC), fg="white",
                  font=("Segoe UI", 8, "bold"),
@@ -7094,7 +7099,7 @@ class SynthexApp:
         model_om.pack(side="left", padx=(6, 0))
 
         if not api_key:
-            tk.Label(top_bar,
+            _ck.Label(top_bar,
                      text="  ⚠ API key belum diset — Settings → AI Integration",
                      bg=CARD, fg=YEL, font=("Segoe UI", 8)).pack(
                 side="left", padx=(12, 0))
@@ -7119,28 +7124,28 @@ class SynthexApp:
             except Exception:
                 pass
 
-        _copy_all_btn = tk.Button(top_bar, text="📋 Salin Semua",
+        _copy_all_btn = _ck.Button(top_bar, text="📋 Salin Semua",
                   bg=CARD2, fg=MUT, relief="flat", bd=0,
                   font=("Segoe UI", 8), padx=8, pady=3,
                   cursor="hand2", command=_copy_all_chat)
         _copy_all_btn.pack(side="right", padx=(0, 6))
 
-        tk.Button(top_bar, text="🗑 Hapus",
+        _ck.Button(top_bar, text="🗑 Hapus",
                   bg=CARD2, fg=MUT, relief="flat", bd=0,
                   font=("Segoe UI", 8), padx=8, pady=3,
                   cursor="hand2", command=_clear_chat).pack(side="right")
 
         # ── message canvas ───────────────────────────────────────────────────
-        msg_outer = tk.Frame(f, bg=BG)
+        msg_outer = _ck.Frame(f, bg=BG)
         msg_outer.pack(fill="both", expand=True)
 
-        msg_sb = ttk.Scrollbar(msg_outer, orient="vertical")
+        msg_sb = _ck.Scrollbar(msg_outer, orient="vertical")
         msg_sb.pack(side="right", fill="y")
         msg_cv = tk.Canvas(msg_outer, bg=BG, highlightthickness=0,
                            yscrollcommand=msg_sb.set)
         msg_cv.pack(side="left", fill="both", expand=True)
         msg_sb.config(command=msg_cv.yview)
-        msg_body = tk.Frame(msg_cv, bg=BG)
+        msg_body = _ck.Frame(msg_cv, bg=BG)
         _mwid = msg_cv.create_window((0, 0), window=msg_body, anchor="nw")
         msg_body.bind("<Configure>",
                       lambda e: msg_cv.configure(
@@ -7166,12 +7171,12 @@ class SynthexApp:
         _typing_frame_ref = [None]
         _dot_idx = [0]
 
-        _typing_frame = tk.Frame(msg_body, bg=BG)
+        _typing_frame = _ck.Frame(msg_body, bg=BG)
         _typing_frame_ref[0] = _typing_frame
-        _dot_lbl = tk.Label(_typing_frame, text="●",
+        _dot_lbl = _ck.Label(_typing_frame, text="●",
                             bg=BG, fg=MUT, font=("Segoe UI", 11))
         _dot_lbl.pack(side="left", padx=(16, 4))
-        tk.Label(_typing_frame, text="AI sedang mengetik",
+        _ck.Label(_typing_frame, text="AI sedang mengetik",
                  bg=BG, fg=MUT, font=("Segoe UI", 8, "italic")).pack(side="left")
 
         def _animate_typing():
@@ -7211,15 +7216,15 @@ class SynthexApp:
         _inp_ref = [None]   # forward ref untuk inp_entry
 
         def _build_quick_into(parent):
-            tk.Label(parent, text="Halo! Mau ngapain hari ini?",
+            _ck.Label(parent, text="Halo! Mau ngapain hari ini?",
                      bg=BG, fg=FG,
                      font=("Segoe UI", 12, "bold")).pack(pady=(20, 4))
-            tk.Label(parent,
+            _ck.Label(parent,
                      text="Pilih prompt cepat atau ketik sendiri di bawah.",
                      bg=BG, fg=MUT,
                      font=("Segoe UI", 8)).pack(pady=(0, 18))
             for i in range(0, len(_QUICK), 3):
-                row = tk.Frame(parent, bg=BG)
+                row = _ck.Frame(parent, bg=BG)
                 row.pack(pady=3)
                 for label, prompt in _QUICK[i:i + 3]:
                     def _use(p=prompt):
@@ -7230,14 +7235,14 @@ class SynthexApp:
                         inp.insert("1.0", p)
                         inp.focus_set()
                         inp.mark_set("insert", tk.END)
-                    tk.Button(row, text=label,
+                    _ck.Button(row, text=label,
                               bg=CARD2, fg=FG, relief="flat", bd=0,
                               font=("Segoe UI", 8), padx=10, pady=7,
                               cursor="hand2", command=_use,
                               activebackground=ACC,
                               activeforeground="white").pack(
                         side="left", padx=5)
-            tk.Label(parent,
+            _ck.Label(parent,
                      text="Tip: ketik @url https://... untuk analisis isi halaman web",
                      bg=BG, fg=MUT,
                      font=("Segoe UI", 7, "italic")).pack(pady=(14, 0))
@@ -7253,16 +7258,16 @@ class SynthexApp:
             name      = "Kamu" if is_user else provider.upper()
             name_fg   = ACC2   if is_user else MUT
 
-            row = tk.Frame(msg_body, bg=BG)
+            row = _ck.Frame(msg_body, bg=BG)
             row.pack(fill="x", pady=(0, 6))
 
             # Name row + timestamp + copy button (AI only)
-            hdr = tk.Frame(row, bg=BG)
+            hdr = _ck.Frame(row, bg=BG)
             hdr.pack(anchor=anchor, padx=padx_l)
-            tk.Label(hdr, text=name, bg=BG, fg=name_fg,
+            _ck.Label(hdr, text=name, bg=BG, fg=name_fg,
                      font=("Segoe UI", 7, "bold")).pack(side="left")
             if ts:
-                tk.Label(hdr, text="  {}".format(ts),
+                _ck.Label(hdr, text="  {}".format(ts),
                          bg=BG, fg=MUT,
                          font=("Segoe UI", 7)).pack(side="left")
             if not is_user:
@@ -7275,17 +7280,17 @@ class SynthexApp:
                             text="📋", fg=MUT))
                     except Exception:
                         pass
-                _cb = tk.Button(hdr, text="📋", bg=BG, fg=MUT,
+                _cb = _ck.Button(hdr, text="📋", bg=BG, fg=MUT,
                                 relief="flat", bd=0,
                                 font=("Segoe UI", 8), cursor="hand2",
                                 command=_copy_fn, activebackground=BG)
                 _cb.pack(side="left", padx=(6, 0))
 
             # Bubble
-            bubble = tk.Frame(row, bg=bubble_bg, padx=12, pady=8)
+            bubble = _ck.Frame(row, bg=bubble_bg, padx=12, pady=8)
             bubble.pack(anchor=anchor, padx=padx_l)
             _wrap = max(280, msg_cv.winfo_width() - 160)
-            tk.Label(bubble, text=text, bg=bubble_bg, fg=bubble_fg,
+            _ck.Label(bubble, text=text, bg=bubble_bg, fg=bubble_fg,
                      font=("Segoe UI", 9),
                      wraplength=_wrap, justify="left").pack(anchor="w")
             _bind_scroll_recursive(row)
@@ -7295,10 +7300,10 @@ class SynthexApp:
                 if _regen_ref[0]:
                     try: _regen_ref[0].destroy()
                     except Exception: pass
-                rf = tk.Frame(msg_body, bg=BG)
+                rf = _ck.Frame(msg_body, bg=BG)
                 rf.pack(anchor="w", padx=16, pady=(0, 4))
                 _regen_ref[0] = rf
-                tk.Button(rf, text="↺  Ulangi jawaban",
+                _ck.Button(rf, text="↺  Ulangi jawaban",
                           bg=CARD2, fg=MUT, relief="flat", bd=0,
                           font=("Segoe UI", 8), padx=8, pady=3,
                           cursor="hand2",
@@ -7313,7 +7318,7 @@ class SynthexApp:
                 except Exception: pass
             _regen_ref[0] = None
             if not _history:
-                qf = tk.Frame(msg_body, bg=BG)
+                qf = _ck.Frame(msg_body, bg=BG)
                 qf.pack(fill="x")
                 _build_quick_into(qf)
                 return
@@ -7328,25 +7333,25 @@ class SynthexApp:
             _scroll_bottom()
 
         # ── input bar ────────────────────────────────────────────────────────
-        inp_frame = tk.Frame(f, bg=CARD, padx=12, pady=8)
+        inp_frame = _ck.Frame(f, bg=CARD, padx=12, pady=8)
         inp_frame.pack(fill="x", side="bottom")
 
         # Hint + char counter row
-        meta_row = tk.Frame(inp_frame, bg=CARD)
+        meta_row = _ck.Frame(inp_frame, bg=CARD)
         meta_row.pack(fill="x", pady=(0, 5))
-        tk.Label(meta_row,
+        _ck.Label(meta_row,
                  text="Enter / Ctrl+Enter kirim  •  Shift+Enter baris baru  •  @url https://... scrape web",
                  bg=CARD, fg=MUT,
                  font=("Segoe UI", 7, "italic")).pack(side="left")
         char_var = tk.StringVar(value="0 karakter")
-        tk.Label(meta_row, textvariable=char_var,
+        _ck.Label(meta_row, textvariable=char_var,
                  bg=CARD, fg=MUT, font=("Segoe UI", 7)).pack(side="right")
 
         # Input + buttons row
-        inp_row = tk.Frame(inp_frame, bg=CARD)
+        inp_row = _ck.Frame(inp_frame, bg=CARD)
         inp_row.pack(fill="x")
 
-        inp_entry = tk.Text(inp_row, height=3,
+        inp_entry = _ck.Text(inp_row, height=3,
                             bg="#16162a", fg=FG, insertbackground=FG,
                             relief="flat", font=("Segoe UI", 10),
                             bd=8, wrap="word")
@@ -7359,17 +7364,17 @@ class SynthexApp:
                 len(inp_entry.get("1.0", tk.END).strip())))
         inp_entry.bind("<KeyRelease>", _on_text_change)
 
-        right_col = tk.Frame(inp_row, bg=CARD)
+        right_col = _ck.Frame(inp_row, bg=CARD)
         right_col.pack(side="left", fill="y")
 
-        send_btn = tk.Button(right_col, text="Kirim ➤",
+        send_btn = _ck.Button(right_col, text="Kirim ➤",
                              bg=ACC, fg="white", relief="flat", bd=0,
                              font=("Segoe UI", 9, "bold"),
                              padx=14, pady=6, cursor="hand2")
         send_btn.pack(anchor="n")
 
         status_var = tk.StringVar(value="")
-        status_lbl = tk.Label(right_col, textvariable=status_var,
+        status_lbl = _ck.Label(right_col, textvariable=status_var,
                               bg=CARD, fg=RED,
                               font=("Segoe UI", 8),
                               wraplength=140, justify="left")
@@ -7494,38 +7499,38 @@ class SynthexApp:
         _is_admin = (self._email == ADMIN)
         BLUE_ACC = "#0EA5E9"
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Blog", "Artikel, foto & video dari komunitas Synthex")
 
-        body = tk.Frame(f, bg=BG)
+        body = _ck.Frame(f, bg=BG)
         body.pack(fill="both", expand=True, padx=20, pady=(8, 16))
 
         # ── Left: post list ──────────────────────────────────────────────────
-        left = tk.Frame(body, bg=CARD, width=260)
+        left = _ck.Frame(body, bg=CARD, width=260)
         left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
 
-        tk.Frame(left, bg=BLUE_ACC, height=4).pack(fill="x")
+        _ck.Frame(left, bg=BLUE_ACC, height=4).pack(fill="x")
 
-        top_bar = tk.Frame(left, bg=CARD, padx=12, pady=8)
+        top_bar = _ck.Frame(left, bg=CARD, padx=12, pady=8)
         top_bar.pack(fill="x")
-        tk.Label(top_bar, text="Semua Post", bg=CARD, fg=FG,
+        _ck.Label(top_bar, text="Semua Post", bg=CARD, fg=FG,
                  font=("Segoe UI", 10, "bold")).pack(side="left")
         if _is_admin:
-            tk.Button(top_bar, text="+ Tulis",
+            _ck.Button(top_bar, text="+ Tulis",
                       bg=BLUE_ACC, fg="white",
                       font=("Segoe UI", 8, "bold"), padx=8, pady=3,
                       relief="flat", bd=0, cursor="hand2",
                       command=lambda: _open_editor()).pack(side="right")
 
-        tk.Frame(left, bg=CARD2, height=1).pack(fill="x")
+        _ck.Frame(left, bg=CARD2, height=1).pack(fill="x")
 
         list_canvas = tk.Canvas(left, bg=CARD, highlightthickness=0)
-        list_sb = ttk.Scrollbar(left, command=list_canvas.yview)
+        list_sb = _ck.Scrollbar(left, command=list_canvas.yview)
         list_sb.pack(side="right", fill="y")
         list_canvas.pack(fill="both", expand=True)
         list_canvas.configure(yscrollcommand=list_sb.set)
-        list_frame = tk.Frame(list_canvas, bg=CARD)
+        list_frame = _ck.Frame(list_canvas, bg=CARD)
         list_wid = list_canvas.create_window((0, 0), window=list_frame, anchor="nw")
         list_frame.bind("<Configure>",
                         lambda e: list_canvas.configure(scrollregion=list_canvas.bbox("all")))
@@ -7533,15 +7538,15 @@ class SynthexApp:
                          lambda e: list_canvas.itemconfig(list_wid, width=e.width))
 
         # ── Right: post reader ───────────────────────────────────────────────
-        right = tk.Frame(body, bg=CARD)
+        right = _ck.Frame(body, bg=CARD)
         right.pack(side="left", fill="both", expand=True)
-        tk.Frame(right, bg="#7C3AED", height=4).pack(fill="x")
+        _ck.Frame(right, bg="#7C3AED", height=4).pack(fill="x")
 
-        reader_wrap = tk.Frame(right, bg="#0A0A18")
+        reader_wrap = _ck.Frame(right, bg="#0A0A18")
         reader_wrap.pack(fill="both", expand=True)
-        reader_sb = ttk.Scrollbar(reader_wrap)
+        reader_sb = _ck.Scrollbar(reader_wrap)
         reader_sb.pack(side="right", fill="y")
-        reader = tk.Text(reader_wrap, bg="#0A0A18", fg=FG,
+        reader = _ck.Text(reader_wrap, bg="#0A0A18", fg=FG,
                          font=("Segoe UI", 10),
                          relief="flat", bd=0, wrap="word",
                          state="disabled", padx=20, pady=16,
@@ -7678,15 +7683,15 @@ class SynthexApp:
                 if getattr(w, "_is_admin_btn", False):
                     w.destroy()
             if _is_admin:
-                admin_bar = tk.Frame(right, bg=CARD)
+                admin_bar = _ck.Frame(right, bg=CARD)
                 admin_bar._is_admin_btn = True
                 admin_bar.place(relx=1.0, rely=0.0, anchor="ne", x=-8, y=8)
-                tk.Button(admin_bar, text=" Edit ",
+                _ck.Button(admin_bar, text=" Edit ",
                           bg="#1D4E8F", fg="white",
                           font=("Segoe UI", 8), padx=8, pady=4,
                           relief="flat", bd=0, cursor="hand2",
                           command=lambda p=post: _open_editor(p)).pack(side="left", padx=(0, 4))
-                tk.Button(admin_bar, text=" Hapus ",
+                _ck.Button(admin_bar, text=" Hapus ",
                           bg="#7F1D1D", fg="white",
                           font=("Segoe UI", 8), padx=8, pady=4,
                           relief="flat", bd=0, cursor="hand2",
@@ -7704,7 +7709,7 @@ class SynthexApp:
             for w in list_frame.winfo_children():
                 w.destroy()
             if not _posts:
-                tk.Label(list_frame, text="Belum ada post.", bg=CARD, fg=MUT,
+                _ck.Label(list_frame, text="Belum ada post.", bg=CARD, fg=MUT,
                          font=("Segoe UI", 9, "italic"),
                          padx=12, pady=10).pack(anchor="w")
                 _show_empty()
@@ -7714,25 +7719,25 @@ class SynthexApp:
                 try: date_s = _dt.fromtimestamp(ts).strftime("%d %b %Y")
                 except Exception: date_s = ""
                 media_count = len(p.get("media") or [])
-                card = tk.Frame(list_frame, bg=CARD, cursor="hand2")
+                card = _ck.Frame(list_frame, bg=CARD, cursor="hand2")
                 card.pack(fill="x", pady=(0, 1))
-                tk.Frame(card, bg=CARD2, height=1).pack(fill="x")
-                inner = tk.Frame(card, bg=CARD, padx=12, pady=8)
+                _ck.Frame(card, bg=CARD2, height=1).pack(fill="x")
+                inner = _ck.Frame(card, bg=CARD, padx=12, pady=8)
                 inner.pack(fill="x")
-                tk.Label(inner, text=p.get("title", "")[:36],
+                _ck.Label(inner, text=p.get("title", "")[:36],
                          bg=CARD, fg=FG,
                          font=("Segoe UI", 9, "bold"),
                          wraplength=220, justify="left").pack(anchor="w")
-                tk.Label(inner, text=p.get("summary", "")[:70],
+                _ck.Label(inner, text=p.get("summary", "")[:70],
                          bg=CARD, fg=MUT,
                          font=("Segoe UI", 8),
                          wraplength=220, justify="left").pack(anchor="w", pady=(2, 0))
-                meta_row = tk.Frame(inner, bg=CARD)
+                meta_row = _ck.Frame(inner, bg=CARD)
                 meta_row.pack(anchor="w", pady=(4, 0), fill="x")
-                tk.Label(meta_row, text=date_s, bg=CARD, fg="#5A5A7A",
+                _ck.Label(meta_row, text=date_s, bg=CARD, fg="#5A5A7A",
                          font=("Segoe UI", 7)).pack(side="left")
                 if media_count:
-                    tk.Label(meta_row,
+                    _ck.Label(meta_row,
                              text="  \U0001f5bc {}  ".format(media_count),
                              bg=CARD, fg=BLUE_ACC,
                              font=("Segoe UI", 7)).pack(side="left")
@@ -7776,16 +7781,16 @@ class SynthexApp:
             dlg.resizable(True, True)
             dlg.attributes("-topmost", True)
 
-            tk.Frame(dlg, bg=BLUE_ACC, height=4).pack(fill="x")
-            _wrap = tk.Frame(dlg, bg="#0D0D14")
+            _ck.Frame(dlg, bg=BLUE_ACC, height=4).pack(fill="x")
+            _wrap = _ck.Frame(dlg, bg="#0D0D14")
             _wrap.pack(fill="both", expand=True)
-            _esb = ttk.Scrollbar(_wrap, orient="vertical")
+            _esb = _ck.Scrollbar(_wrap, orient="vertical")
             _esb.pack(side="right", fill="y")
             _ecv = tk.Canvas(_wrap, bg="#0D0D14", highlightthickness=0,
                              yscrollcommand=_esb.set)
             _ecv.pack(side="left", fill="both", expand=True)
             _esb.config(command=_ecv.yview)
-            ed = tk.Frame(_ecv, bg="#0D0D14", padx=20, pady=14)
+            ed = _ck.Frame(_ecv, bg="#0D0D14", padx=20, pady=14)
             _ewin = _ecv.create_window((0, 0), window=ed, anchor="nw")
             ed.bind("<Configure>", lambda e: _ecv.configure(
                 scrollregion=_ecv.bbox("all")))
@@ -7793,27 +7798,27 @@ class SynthexApp:
             _ecv.bind("<MouseWheel>", lambda e: _ecv.yview_scroll(
                 int(-1 * (e.delta / 120)), "units"))
 
-            tk.Label(ed, text="Judul", bg="#0D0D14", fg=MUT,
+            _ck.Label(ed, text="Judul", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
             title_var = tk.StringVar(value=post.get("title", "") if post else "")
-            tk.Entry(ed, textvariable=title_var,
+            _ck.Entry(ed, textvariable=title_var,
                      bg="#16162a", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 11), bd=6).pack(
                 fill="x", pady=(2, 8))
 
-            tk.Label(ed, text="Ringkasan (tampil di daftar)", bg="#0D0D14", fg=MUT,
+            _ck.Label(ed, text="Ringkasan (tampil di daftar)", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
             sum_var = tk.StringVar(value=post.get("summary", "") if post else "")
-            tk.Entry(ed, textvariable=sum_var,
+            _ck.Entry(ed, textvariable=sum_var,
                      bg="#16162a", fg=FG, insertbackground=FG,
                      relief="flat", font=("Segoe UI", 9), bd=6).pack(
                 fill="x", pady=(2, 8))
 
-            tk.Label(ed, text="Isi Artikel", bg="#0D0D14", fg=MUT,
+            _ck.Label(ed, text="Isi Artikel", bg="#0D0D14", fg=MUT,
                      font=("Segoe UI", 8)).pack(anchor="w")
-            fmt_bar = tk.Frame(ed, bg="#1c1c2e")
+            fmt_bar = _ck.Frame(ed, bg="#1c1c2e")
             fmt_bar.pack(fill="x", pady=(2, 0))
-            content_box = tk.Text(ed, bg="#16162a", fg=FG, insertbackground=FG,
+            content_box = _ck.Text(ed, bg="#16162a", fg=FG, insertbackground=FG,
                                   relief="flat", font=("Segoe UI", 10),
                                   bd=6, wrap="word", height=9)
             content_box.pack(fill="both", expand=True, pady=(0, 8))
@@ -7846,25 +7851,25 @@ class SynthexApp:
                 ("H2", lambda: _wrap_sel("## ", "")),
                 ("\U0001f517", _insert_link),
             ]:
-                tk.Button(fmt_bar, text=lbl, bg="#222236", fg=FG,
+                _ck.Button(fmt_bar, text=lbl, bg="#222236", fg=FG,
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                           padx=9, pady=3, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 2), pady=3)
-            tk.Label(fmt_bar, text="Markdown", bg="#1c1c2e", fg="#4A4A6A",
+            _ck.Label(fmt_bar, text="Markdown", bg="#1c1c2e", fg="#4A4A6A",
                      font=("Segoe UI", 7)).pack(side="right", padx=8)
 
             # ── Media section ─────────────────────────────────────────────────
             media_list = list(post.get("media") or []) if post else []
 
-            media_hdr = tk.Frame(ed, bg="#0D0D14")
+            media_hdr = _ck.Frame(ed, bg="#0D0D14")
             media_hdr.pack(fill="x")
-            tk.Label(media_hdr, text="Media (Foto & Video)",
+            _ck.Label(media_hdr, text="Media (Foto & Video)",
                      bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(side="left")
             upload_status = tk.StringVar(value="")
-            tk.Label(media_hdr, textvariable=upload_status, bg="#0D0D14",
+            _ck.Label(media_hdr, textvariable=upload_status, bg="#0D0D14",
                      fg=BLUE_ACC, font=("Segoe UI", 8)).pack(side="right")
 
-            media_frame = tk.Frame(ed, bg="#0D0D14")
+            media_frame = _ck.Frame(ed, bg="#0D0D14")
             media_frame.pack(fill="x", pady=(4, 0))
 
             def _refresh_media_ui():
@@ -7875,15 +7880,15 @@ class SynthexApp:
                     url   = item.get("url", "")
                     cap   = item.get("caption", "")
                     icon  = "\U0001f5bc" if mtype == "image" else "▶"
-                    row = tk.Frame(media_frame, bg="#16162a")
+                    row = _ck.Frame(media_frame, bg="#16162a")
                     row.pack(fill="x", pady=(0, 3))
-                    tk.Label(row, text=icon, bg="#16162a",
+                    _ck.Label(row, text=icon, bg="#16162a",
                              font=("Segoe UI", 10)).pack(side="left", padx=(6, 4))
-                    tk.Label(row, text=(url[:52] + "..." if len(url) > 52 else url),
+                    _ck.Label(row, text=(url[:52] + "..." if len(url) > 52 else url),
                              bg="#16162a", fg=FG,
                              font=("Segoe UI", 8)).pack(side="left")
                     cap_var = tk.StringVar(value=cap)
-                    cap_e = tk.Entry(row, textvariable=cap_var, width=16,
+                    cap_e = _ck.Entry(row, textvariable=cap_var, width=16,
                                      bg="#1E1E38", fg=MUT, insertbackground=FG,
                                      relief="flat", font=("Segoe UI", 8), bd=4)
                     cap_e.pack(side="left", padx=(6, 0))
@@ -7892,7 +7897,7 @@ class SynthexApp:
                             media_list[idx]["caption"] = cv.get()
                     cap_e.bind("<FocusOut>", _save_cap)
                     cap_e.bind("<Return>",   _save_cap)
-                    tk.Button(row, text="✕", bg="#3A0A0A", fg="#FF6060",
+                    _ck.Button(row, text="✕", bg="#3A0A0A", fg="#FF6060",
                               font=("Segoe UI", 8), relief="flat", bd=0,
                               padx=6, cursor="hand2",
                               command=lambda idx=i: (_remove_media(idx))).pack(
@@ -7909,11 +7914,11 @@ class SynthexApp:
                 url_dlg.configure(bg="#0D0D14")
                 url_dlg.geometry("440x100")
                 url_dlg.attributes("-topmost", True)
-                tk.Label(url_dlg, text="Masukkan URL gambar:",
+                _ck.Label(url_dlg, text="Masukkan URL gambar:",
                          bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
-                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
+                ue = _ck.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
                               insertbackground=FG, relief="flat",
                               font=("Segoe UI", 10), bd=6)
                 ue.pack(fill="x", padx=16)
@@ -7925,7 +7930,7 @@ class SynthexApp:
                         _refresh_media_ui()
                     url_dlg.destroy()
                 ue.bind("<Return>", _ok)
-                tk.Button(url_dlg, text="Tambah", bg=BLUE_ACC, fg="white",
+                _ck.Button(url_dlg, text="Tambah", bg=BLUE_ACC, fg="white",
                           relief="flat", bd=0, padx=12, pady=4,
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
@@ -7958,11 +7963,11 @@ class SynthexApp:
                 url_dlg.configure(bg="#0D0D14")
                 url_dlg.geometry("440x100")
                 url_dlg.attributes("-topmost", True)
-                tk.Label(url_dlg, text="Masukkan URL video (YouTube, dll):",
+                _ck.Label(url_dlg, text="Masukkan URL video (YouTube, dll):",
                          bg="#0D0D14", fg=FG, font=("Segoe UI", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
-                ue = tk.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
+                ue = _ck.Entry(url_dlg, textvariable=uv, bg="#16162a", fg=FG,
                               insertbackground=FG, relief="flat",
                               font=("Segoe UI", 10), bd=6)
                 ue.pack(fill="x", padx=16)
@@ -7974,27 +7979,27 @@ class SynthexApp:
                         _refresh_media_ui()
                     url_dlg.destroy()
                 ue.bind("<Return>", _ok)
-                tk.Button(url_dlg, text="Tambah", bg="#7C3AED", fg="white",
+                _ck.Button(url_dlg, text="Tambah", bg="#7C3AED", fg="white",
                           relief="flat", bd=0, padx=12, pady=4,
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.grab_set()
 
-            btn_row_media = tk.Frame(ed, bg="#0D0D14")
+            btn_row_media = _ck.Frame(ed, bg="#0D0D14")
             btn_row_media.pack(fill="x", pady=(6, 8))
             for lbl, cmd, bg_c in [
                 ("\U0001f5bc  Gambar URL",  _add_image_url,  "#1D4E8F"),
                 ("\U0001f4c2  Upload File", _add_image_file, BLUE_ACC),
                 ("▶  Tambah Video",    _add_video_url,  "#7C3AED"),
             ]:
-                tk.Button(btn_row_media, text=lbl, bg=bg_c, fg="white",
+                _ck.Button(btn_row_media, text=lbl, bg=bg_c, fg="white",
                           font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                           padx=10, pady=5, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 6))
 
             _refresh_media_ui()
 
-            sub_row = tk.Frame(ed, bg="#0D0D14")
+            sub_row = _ck.Frame(ed, bg="#0D0D14")
             sub_row.pack(anchor="e", pady=(4, 0))
 
             def _submit():
@@ -8022,12 +8027,12 @@ class SynthexApp:
                 _thr.Thread(target=_bg, daemon=True).start()
 
             btn_lbl = "Simpan Perubahan" if post else "Publikasikan"
-            tk.Button(sub_row, text=btn_lbl,
+            _ck.Button(sub_row, text=btn_lbl,
                       bg=BLUE_ACC, fg="white",
                       font=("Segoe UI", 9, "bold"), padx=16, pady=6,
                       relief="flat", cursor="hand2",
                       command=_submit).pack(side="left", padx=(0, 8))
-            tk.Button(sub_row, text="Batal", bg="#1c1c2e", fg=MUT,
+            _ck.Button(sub_row, text="Batal", bg="#1c1c2e", fg=MUT,
                       font=("Segoe UI", 9), padx=12, pady=6,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
@@ -8038,7 +8043,7 @@ class SynthexApp:
         return f
 
     def _pg_history(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Activity History")
         c = _card(f)
         c.pack(fill="both", expand=True, padx=20, pady=(8, 20))
@@ -8058,7 +8063,7 @@ class SynthexApp:
             self._ud.save()
             t.delete(*t.get_children())
 
-        ttk.Button(c, text="Clear All", style="Danger.TButton",
+        t_ck.Button(c, text="Clear All", style="Danger.TButton",
                    command=_clear_history).pack(anchor="e", pady=(8, 0))
         return f
 
@@ -8106,14 +8111,14 @@ class SynthexApp:
         _lbl(dlg, "Select a backup to restore:", bg=BG,
              font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 8))
 
-        lb_frame = tk.Frame(dlg, bg=BG)
+        lb_frame = _ck.Frame(dlg, bg=BG)
         lb_frame.pack(padx=20, fill="both", expand=True)
 
         lb = tk.Listbox(lb_frame, bg=CARD, fg=FG, selectbackground=ACC,
                         font=("Segoe UI", 9), relief="flat",
                         width=36, height=min(len(backups), 8))
         lb.pack(side="left", fill="both", expand=True)
-        sb = ttk.Scrollbar(lb_frame, orient="vertical", command=lb.yview)
+        sb = _ck.Scrollbar(lb_frame, orient="vertical", command=lb.yview)
         sb.pack(side="right", fill="y")
         lb.configure(yscrollcommand=sb.set)
 
@@ -8140,26 +8145,26 @@ class SynthexApp:
                 self._root.after(0, lambda: self._show_toast(msg, kind=kind))
             threading.Thread(target=_run, daemon=True).start()
 
-        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row = _ck.Frame(dlg, bg=BG)
         btn_row.pack(padx=20, pady=12, anchor="e")
-        ttk.Button(btn_row, text="Cancel",
+        t_ck.Button(btn_row, text="Cancel",
                    command=dlg.destroy).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Restore", bg=ACC, fg=BG,
+        _ck.Button(btn_row, text="Restore", bg=ACC, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat",
                   padx=10, pady=4, cursor="hand2",
                   command=_do_restore).pack(side="left")
 
     def _pg_settings(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Settings")
 
         # Scrollable container for all settings cards
-        _ssb = ttk.Scrollbar(f, orient="vertical")
+        _ssb = _ck.Scrollbar(f, orient="vertical")
         _ssb.pack(side="right", fill="y")
         _scv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_ssb.set)
         _scv.pack(side="left", fill="both", expand=True)
         _ssb.config(command=_scv.yview)
-        _sbody = tk.Frame(_scv, bg=BG)
+        _sbody = _ck.Frame(_scv, bg=BG)
         _swin = _scv.create_window((0, 0), window=_sbody, anchor="nw")
         _sbody.bind("<Configure>", lambda e: _scv.configure(
             scrollregion=_scv.bbox("all")))
@@ -8174,10 +8179,10 @@ class SynthexApp:
         _cur_theme = self.config.get("ui.theme", "dark")
         _theme_var = tk.StringVar(value=_cur_theme)
 
-        theme_row = tk.Frame(tc, bg=CARD)
+        theme_row = _ck.Frame(tc, bg=CARD)
         theme_row.pack(anchor="w", pady=(0, 10))
         for _lbl_t, _val_t in [("🌙  Dark", "dark"), ("☀️  Light", "light")]:
-            tk.Radiobutton(
+            _ck.Radiobutton(
                 theme_row, text=_lbl_t, variable=_theme_var, value=_val_t,
                 bg=CARD, fg=FG, selectcolor=CARD2,
                 activebackground=CARD, activeforeground=ACC,
@@ -8209,7 +8214,7 @@ class SynthexApp:
                 _sp.Popen([sys.executable] + sys.argv)
                 import os as _os2; _os2._exit(0)
 
-        tk.Button(tc, text="Terapkan Tema", bg=ACC, fg=BG,
+        _ck.Button(tc, text="Terapkan Tema", bg=ACC, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_apply_theme).pack(anchor="w")
@@ -8221,7 +8226,7 @@ class SynthexApp:
         bc = _card(_sbody, "Backup & Restore")
         bc.pack(fill="x", padx=20, pady=(8, 0))
 
-        info_row = tk.Frame(bc, bg=CARD)
+        info_row = _ck.Frame(bc, bg=CARD)
         info_row.pack(fill="x", pady=(0, 8))
         last_lbl = _lbl(info_row,
                         f"Last backup: {_ab.last_backup_label()}",
@@ -8230,30 +8235,30 @@ class SynthexApp:
         _lbl(info_row, "  |  Auto-backup: Daily",
              fg=MUT, bg=CARD, font=("Segoe UI", 9)).pack(side="left")
 
-        btn_row_b = tk.Frame(bc, bg=CARD)
+        btn_row_b = _ck.Frame(bc, bg=CARD)
         btn_row_b.pack(anchor="w")
-        tk.Button(btn_row_b, text="Backup Now",
+        _ck.Button(btn_row_b, text="Backup Now",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=lambda: self._backup_now(last_lbl)).pack(
                       side="left", padx=(0, 10))
-        ttk.Button(btn_row_b, text="Restore from Backup",
+        t_ck.Button(btn_row_b, text="Restore from Backup",
                    command=self._restore_backup_dialog).pack(side="left")
 
         # ---- Rekening API card ----------------------------------------
         rak = _card(_sbody, "Rekening API")
         rak.pack(fill="x", padx=20, pady=(12, 0))
 
-        _rak_row = tk.Frame(rak, bg=CARD)
+        _rak_row = _ck.Frame(rak, bg=CARD)
         _rak_row.pack(anchor="w", fill="x")
         _rak_has_key = bool(self.config.get("rekening_api_key", ""))
-        tk.Label(_rak_row, text="[*]", bg=CARD, fg=GRN if _rak_has_key else MUT,
+        _ck.Label(_rak_row, text="[*]", bg=CARD, fg=GRN if _rak_has_key else MUT,
                  font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
-        _rak_info = tk.Frame(_rak_row, bg=CARD)
+        _rak_info = _ck.Frame(_rak_row, bg=CARD)
         _rak_info.pack(side="left")
-        tk.Label(_rak_info, text="API Validasi Rekening",
+        _ck.Label(_rak_info, text="API Validasi Rekening",
                  bg=CARD, fg=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        tk.Label(_rak_info,
+        _ck.Label(_rak_info,
                  text="Aktif — disediakan oleh Synthex" if _rak_has_key else "Tidak aktif",
                  bg=CARD, fg=GRN if _rak_has_key else RED,
                  font=("Segoe UI", 9)).pack(anchor="w")
@@ -8279,15 +8284,15 @@ class SynthexApp:
                 "You are a helpful automation assistant. Answer concisely."))
 
         # Provider row
-        pr_row = tk.Frame(aic, bg=CARD)
+        pr_row = _ck.Frame(aic, bg=CARD)
         pr_row.pack(fill="x", pady=(0, 6))
-        tk.Label(pr_row, text="Provider:", bg=CARD, fg=MUT,
+        _ck.Label(pr_row, text="Provider:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
         _prov_disp = [PROVIDER_LABELS[PROVIDER_NAMES.index(
             self.config.get("ai.provider", "openai")
             if self.config.get("ai.provider", "openai") in PROVIDER_NAMES
             else "openai")]]
-        _prov_mb = ttk.Combobox(pr_row, values=PROVIDER_LABELS,
+        _prov_mb = _ck.Combobox(pr_row, values=PROVIDER_LABELS,
                                 state="readonly", width=24,
                                 font=("Segoe UI", 9))
         _prov_mb.set(_prov_disp[0])
@@ -8299,11 +8304,11 @@ class SynthexApp:
         _prov_mb.bind("<<ComboboxSelected>>", _on_prov_change)
 
         # API Key row
-        key_row = tk.Frame(aic, bg=CARD)
+        key_row = _ck.Frame(aic, bg=CARD)
         key_row.pack(fill="x", pady=(0, 6))
-        tk.Label(key_row, text="API Key:", bg=CARD, fg=MUT,
+        _ck.Label(key_row, text="API Key:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
-        _key_entry = tk.Entry(key_row, textvariable=_ai_key_var,
+        _key_entry = _ck.Entry(key_row, textvariable=_ai_key_var,
                               bg=CARD2, fg=FG, insertbackground=FG,
                               relief="flat", font=("Segoe UI", 9), show="*",
                               width=34)
@@ -8312,40 +8317,40 @@ class SynthexApp:
         def _toggle_show():
             _show_key[0] = not _show_key[0]
             _key_entry.configure(show="" if _show_key[0] else "*")
-        tk.Button(key_row, text="👁", bg=CARD2, fg=MUT,
+        _ck.Button(key_row, text="👁", bg=CARD2, fg=MUT,
                   relief="flat", bd=0, font=("Segoe UI", 9),
                   padx=4, cursor="hand2",
                   command=_toggle_show).pack(side="left", padx=(4, 0))
 
         # Model + max tokens row
-        mod_row = tk.Frame(aic, bg=CARD)
+        mod_row = _ck.Frame(aic, bg=CARD)
         mod_row.pack(fill="x", pady=(0, 6))
-        tk.Label(mod_row, text="Model (opsional):", bg=CARD, fg=MUT,
+        _ck.Label(mod_row, text="Model (opsional):", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
-        tk.Entry(mod_row, textvariable=_ai_model_var,
+        _ck.Entry(mod_row, textvariable=_ai_model_var,
                  bg=CARD2, fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 9),
                  width=22).pack(side="left")
-        tk.Label(mod_row, text="  Max tokens:", bg=CARD, fg=MUT,
+        _ck.Label(mod_row, text="  Max tokens:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(side="left", padx=(8, 4))
-        tk.Entry(mod_row, textvariable=_ai_tokens_var,
+        _ck.Entry(mod_row, textvariable=_ai_tokens_var,
                  bg=CARD2, fg=FG, insertbackground=FG,
                  relief="flat", font=("Segoe UI", 9), width=6).pack(side="left")
 
         # System prompt
-        tk.Label(aic, text="System Prompt default:", bg=CARD, fg=MUT,
+        _ck.Label(aic, text="System Prompt default:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 2))
-        _sys_txt = tk.Text(aic, bg=CARD2, fg=FG, insertbackground=FG,
+        _sys_txt = _ck.Text(aic, bg=CARD2, fg=FG, insertbackground=FG,
                            relief="flat", font=("Segoe UI", 9),
                            height=2, wrap="word")
         _sys_txt.insert("1.0", _ai_sys_var.get())
         _sys_txt.pack(fill="x", pady=(0, 8))
 
         # Buttons row
-        ai_btn_row = tk.Frame(aic, bg=CARD)
+        ai_btn_row = _ck.Frame(aic, bg=CARD)
         ai_btn_row.pack(anchor="w", pady=(0, 4))
         _ai_status = tk.StringVar(value="")
-        tk.Label(aic, textvariable=_ai_status, bg=CARD, fg=MUT,
+        _ck.Label(aic, textvariable=_ai_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w")
 
         def _save_ai():
@@ -8381,11 +8386,11 @@ class SynthexApp:
                     self._root.after(0, lambda m=msg: _ai_status.set(m))
             threading.Thread(target=_bg, daemon=True).start()
 
-        tk.Button(ai_btn_row, text="💾 Simpan",
+        _ck.Button(ai_btn_row, text="💾 Simpan",
                   bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_save_ai).pack(side="left", padx=(0, 8))
-        tk.Button(ai_btn_row, text="🔌 Test Koneksi",
+        _ck.Button(ai_btn_row, text="🔌 Test Koneksi",
                   bg=CARD2, fg=FG, font=("Segoe UI", 9),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_test_ai).pack(side="left")
@@ -8395,10 +8400,10 @@ class SynthexApp:
         upc.pack(fill="x", padx=20, pady=(8, 0))
         _cur_ver = self.config.get("app.version", "?")
         _upd_status = tk.StringVar(value="Versi saat ini: v{}".format(_cur_ver))
-        _upd_lbl = tk.Label(upc, textvariable=_upd_status, bg=CARD, fg=MUT,
+        _upd_lbl = _ck.Label(upc, textvariable=_upd_status, bg=CARD, fg=MUT,
                             font=("Segoe UI", 9))
         _upd_lbl.pack(anchor="w", pady=(0, 6))
-        _upd_bar_frame = tk.Frame(upc, bg=CARD)
+        _upd_bar_frame = _ck.Frame(upc, bg=CARD)
         _upd_bar_frame.pack(anchor="w", fill="x", pady=(0, 4))
         _upd_prog = ttk.Progressbar(_upd_bar_frame, mode="determinate",
                                     length=200, maximum=100)
@@ -8461,7 +8466,7 @@ class SynthexApp:
                         self._root.after(0, _upd_prog.pack_forget)
             threading.Thread(target=_bg, daemon=True).start()
 
-        tk.Button(upc, text="🔄 Cek Pembaruan",
+        _ck.Button(upc, text="🔄 Cek Pembaruan",
                   bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_do_check_update).pack(anchor="w")
@@ -8474,7 +8479,7 @@ class SynthexApp:
         apc = _card(_sbody, "Tampilan")
         apc.pack(fill="x", padx=20, pady=(12, 0))
         _cur_theme = self.config.get("ui.theme", "dark")
-        _theme_lbl = tk.Label(apc,
+        _theme_lbl = _ck.Label(apc,
             text="Tema saat ini: {}".format("Gelap 🌙" if _cur_theme == "dark" else "Terang ☀️"),
             bg=CARD, fg=FG, font=("Segoe UI", 9))
         _theme_lbl.pack(anchor="w", pady=(0, 6))
@@ -8487,7 +8492,7 @@ class SynthexApp:
             self._show_alert("Tema Diubah",
                 "Tema berhasil disimpan ke '{}'.\nRestart Synthex untuk menerapkan tema baru.".format(
                     new_t), kind="info")
-        tk.Button(apc, text="Toggle Gelap / Terang",
+        _ck.Button(apc, text="Toggle Gelap / Terang",
                   bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_toggle_theme).pack(anchor="w")
@@ -8497,17 +8502,17 @@ class SynthexApp:
         ac.pack(fill="x", padx=20, pady=(12, 0))
         _lbl(ac, "Email: {}".format(self._email or "-"), bg=CARD).pack(
             anchor="w")
-        btn_row = tk.Frame(ac, bg=CARD)
+        btn_row = _ck.Frame(ac, bg=CARD)
         btn_row.pack(anchor="w", pady=(8, 0))
-        ttk.Button(btn_row, text="Logout", style="Danger.TButton",
+        t_ck.Button(btn_row, text="Logout", style="Danger.TButton",
                    command=self._logout).pack(side="left", padx=(0, 10))
-        tk.Button(btn_row, text="Setup Guide",
+        _ck.Button(btn_row, text="Setup Guide",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=self._launch_onboarding).pack(side="left")
         lc = _card(_sbody, "System Log")
         lc.pack(fill="x", padx=20, pady=(12, 20))
-        self._lw = scrolledtext.ScrolledText(
+        self._lw = _ck.ScrolledText(
             lc, bg=BG, fg=FG, insertbackground=FG,
             font=("Consolas", 9), relief="flat", state="disabled")
         self._lw.pack(fill="both", expand=True)
@@ -8528,7 +8533,7 @@ class SynthexApp:
         import threading as _thr
         from datetime import datetime as _dt
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "📬 Inbox",
                   "Percakapan langsung dengan Admin Synthex")
 
@@ -8536,18 +8541,18 @@ class SynthexApp:
         token = self._token or ""
 
         # ── Main layout: messages top, input bottom ───────────────────────────
-        main = tk.Frame(f, bg=BG)
+        main = _ck.Frame(f, bg=BG)
         main.pack(fill="both", expand=True, padx=18, pady=(0, 12))
 
         # Messages area (scrollable canvas)
-        msg_sb = ttk.Scrollbar(main, orient="vertical")
+        msg_sb = _ck.Scrollbar(main, orient="vertical")
         msg_sb.pack(side="right", fill="y")
         msg_cv = tk.Canvas(main, bg=BG, highlightthickness=0,
                            yscrollcommand=msg_sb.set)
         msg_cv.pack(side="left", fill="both", expand=True)
         msg_sb.config(command=msg_cv.yview)
 
-        msg_inner = tk.Frame(msg_cv, bg=BG)
+        msg_inner = _ck.Frame(msg_cv, bg=BG)
         _mwid = msg_cv.create_window((0, 0), window=msg_inner, anchor="nw")
         msg_inner.bind("<Configure>",
                        lambda e: msg_cv.configure(scrollregion=msg_cv.bbox("all")))
@@ -8558,7 +8563,7 @@ class SynthexApp:
 
         # Status / loading label
         _status = tk.StringVar(value="Memuat pesan…")
-        status_lbl = tk.Label(msg_inner, textvariable=_status,
+        status_lbl = _ck.Label(msg_inner, textvariable=_status,
                               bg=BG, fg=MUT, font=("Segoe UI", 9))
         status_lbl.pack(pady=20)
 
@@ -8566,7 +8571,7 @@ class SynthexApp:
             for w in msg_inner.winfo_children():
                 w.destroy()
             if not msgs:
-                tk.Label(msg_inner,
+                _ck.Label(msg_inner,
                          text="Belum ada pesan dari Admin.\nPesan akan muncul di sini.",
                          bg=BG, fg=MUT, font=("Segoe UI", 10),
                          justify="center").pack(pady=60)
@@ -8580,7 +8585,7 @@ class SynthexApp:
                 except Exception:
                     t_str = ""
 
-                row = tk.Frame(msg_inner, bg=BG, pady=4)
+                row = _ck.Frame(msg_inner, bg=BG, pady=4)
                 row.pack(fill="x", padx=12)
 
                 if is_master:
@@ -8596,19 +8601,19 @@ class SynthexApp:
                     side      = "right"
                     name_txt  = "Kamu"
 
-                wrap_row = tk.Frame(row, bg=BG)
+                wrap_row = _ck.Frame(row, bg=BG)
                 wrap_row.pack(anchor="w" if side == "left" else "e")
 
-                bubble = tk.Frame(wrap_row, bg=bubble_bg, padx=12, pady=8)
+                bubble = _ck.Frame(wrap_row, bg=bubble_bg, padx=12, pady=8)
                 bubble.pack(side="left" if side == "left" else "right")
 
-                tk.Label(bubble, text=name_txt, bg=bubble_bg, fg=name_clr,
+                _ck.Label(bubble, text=name_txt, bg=bubble_bg, fg=name_clr,
                          font=("Segoe UI", 7, "bold")).pack(anchor="w")
-                tk.Label(bubble, text=m.get("message", ""),
+                _ck.Label(bubble, text=m.get("message", ""),
                          bg=bubble_bg, fg=FG,
                          font=("Segoe UI", 10), wraplength=420,
                          justify="left").pack(anchor="w", pady=(2, 0))
-                tk.Label(bubble, text=t_str, bg=bubble_bg, fg=MUT,
+                _ck.Label(bubble, text=t_str, bg=bubble_bg, fg=MUT,
                          font=("Segoe UI", 7)).pack(anchor="e", pady=(2, 0))
 
             # Scroll to bottom
@@ -8630,13 +8635,13 @@ class SynthexApp:
                     self._root.after(0, lambda: _status.set("Gagal memuat: {}".format(ex)))
 
         # ── Input area ────────────────────────────────────────────────────────
-        sep = tk.Frame(f, bg="#1c1c2e", height=1)
+        sep = _ck.Frame(f, bg="#1c1c2e", height=1)
         sep.pack(fill="x", padx=18)
 
-        inp_area = tk.Frame(f, bg=BG, padx=18, pady=10)
+        inp_area = _ck.Frame(f, bg=BG, padx=18, pady=10)
         inp_area.pack(fill="x")
 
-        inp_box = tk.Text(inp_area, bg=CARD2, fg=FG, insertbackground=FG,
+        inp_box = _ck.Text(inp_area, bg=CARD2, fg=FG, insertbackground=FG,
                           relief="flat", font=("Segoe UI", 10), height=3,
                           wrap="word", bd=8)
         inp_box.pack(side="left", fill="x", expand=True, padx=(0, 10))
@@ -8661,13 +8666,13 @@ class SynthexApp:
 
         inp_box.bind("<Return>", lambda e: _send_reply() if not (e.state & 0x1) else None)
 
-        btn_col = tk.Frame(inp_area, bg=BG)
+        btn_col = _ck.Frame(inp_area, bg=BG)
         btn_col.pack(side="right")
-        tk.Button(btn_col, text="📨 Kirim",
+        _ck.Button(btn_col, text="📨 Kirim",
                   bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=16, pady=10, cursor="hand2",
                   command=_send_reply).pack(fill="x")
-        tk.Label(btn_col, text="Enter = kirim\nShift+Enter = baris baru",
+        _ck.Label(btn_col, text="Enter = kirim\nShift+Enter = baris baru",
                  bg=BG, fg=MUT, font=("Segoe UI", 7)).pack(pady=(4, 0))
 
         # Refresh button
@@ -8677,7 +8682,7 @@ class SynthexApp:
                 w.destroy()
             _thr.Thread(target=_load, daemon=True).start()
 
-        tk.Button(f, text="🔄 Refresh",
+        _ck.Button(f, text="🔄 Refresh",
                   bg=CARD2, fg=FG, font=("Segoe UI", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=_refresh).place(relx=1.0, x=-30, y=10, anchor="ne")
@@ -8693,11 +8698,11 @@ class SynthexApp:
         import threading as _thr
         from datetime import datetime as _dt
 
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
 
         _email_now = self._email
         if _email_now != self.MASTER_EMAIL:
-            tk.Label(f, text="Akses ditolak.", bg=BG, fg=RED,
+            _ck.Label(f, text="Akses ditolak.", bg=BG, fg=RED,
                      font=("Segoe UI", 14, "bold")).pack(pady=40)
             return f
 
@@ -8709,25 +8714,25 @@ class SynthexApp:
             return tok
 
         # ── Header crown bar ─────────────────────────────────────────────────
-        hdr = tk.Frame(f, bg="#0D0D1F", padx=20, pady=14)
+        hdr = _ck.Frame(f, bg="#0D0D1F", padx=20, pady=14)
         hdr.pack(fill="x")
-        tk.Label(hdr, text="\U0001f451", bg="#0D0D1F", fg="#F59E0B",
+        _ck.Label(hdr, text="\U0001f451", bg="#0D0D1F", fg="#F59E0B",
                  font=("Segoe UI", 22)).pack(side="left", padx=(0, 12))
-        hdr_txt = tk.Frame(hdr, bg="#0D0D1F")
+        hdr_txt = _ck.Frame(hdr, bg="#0D0D1F")
         hdr_txt.pack(side="left")
-        tk.Label(hdr_txt, text="Master Panel", bg="#0D0D1F", fg=FG,
+        _ck.Label(hdr_txt, text="Master Panel", bg="#0D0D1F", fg=FG,
                  font=("Segoe UI", 15, "bold")).pack(anchor="w")
-        tk.Label(hdr_txt, text=self.MASTER_EMAIL, bg="#0D0D1F", fg="#7C3AED",
+        _ck.Label(hdr_txt, text=self.MASTER_EMAIL, bg="#0D0D1F", fg="#7C3AED",
                  font=("Segoe UI", 8)).pack(anchor="w")
-        tk.Frame(f, bg="#7C3AED", height=2).pack(fill="x")
+        _ck.Frame(f, bg="#7C3AED", height=2).pack(fill="x")
 
         # ── Scrollable body ──────────────────────────────────────────────────
-        _msb = ttk.Scrollbar(f, orient="vertical")
+        _msb = _ck.Scrollbar(f, orient="vertical")
         _msb.pack(side="right", fill="y")
         _mcv = tk.Canvas(f, bg=BG, highlightthickness=0, yscrollcommand=_msb.set)
         _mcv.pack(side="left", fill="both", expand=True)
         _msb.config(command=_mcv.yview)
-        body = tk.Frame(_mcv, bg=BG)
+        body = _ck.Frame(_mcv, bg=BG)
         _mwid = _mcv.create_window((0, 0), window=body, anchor="nw")
         body.bind("<Configure>", lambda e: _mcv.configure(
             scrollregion=_mcv.bbox("all")))
@@ -8745,40 +8750,40 @@ class SynthexApp:
                 int(ab + (bb - ab) * t))
 
         def _mk(parent, title, icon, accent):
-            wrap = tk.Frame(parent, bg=BG)
+            wrap = _ck.Frame(parent, bg=BG)
             wrap.pack(fill="x", padx=16, pady=(0, 10))
-            tk.Frame(wrap, bg=accent, width=4).pack(side="left", fill="y")
-            inner = tk.Frame(wrap, bg=CARD, padx=16, pady=14)
+            _ck.Frame(wrap, bg=accent, width=4).pack(side="left", fill="y")
+            inner = _ck.Frame(wrap, bg=CARD, padx=16, pady=14)
             inner.pack(side="left", fill="both", expand=True)
-            hrow = tk.Frame(inner, bg=CARD)
+            hrow = _ck.Frame(inner, bg=CARD)
             hrow.pack(fill="x", pady=(0, 10))
             bdg_bg = _hex_blend(CARD, accent, 0.22)
-            bdg = tk.Frame(hrow, bg=bdg_bg, padx=8, pady=4)
+            bdg = _ck.Frame(hrow, bg=bdg_bg, padx=8, pady=4)
             bdg.pack(side="left", padx=(0, 10))
-            tk.Label(bdg, text=icon, bg=bdg_bg, fg=accent,
+            _ck.Label(bdg, text=icon, bg=bdg_bg, fg=accent,
                      font=("Segoe UI", 14)).pack()
-            tk.Label(hrow, text=title, bg=CARD, fg=FG,
+            _ck.Label(hrow, text=title, bg=CARD, fg=FG,
                      font=("Segoe UI", 11, "bold")).pack(side="left", anchor="w")
             return inner
 
         def _sect(parent, label):
-            row = tk.Frame(parent, bg=BG)
+            row = _ck.Frame(parent, bg=BG)
             row.pack(fill="x", padx=16, pady=(16, 6))
-            tk.Label(row, text=label.upper(), bg=BG, fg="#5B5B8A",
+            _ck.Label(row, text=label.upper(), bg=BG, fg="#5B5B8A",
                      font=("Segoe UI", 7, "bold")).pack(side="left")
-            tk.Frame(row, bg="#2A2A4A", height=1).pack(
+            _ck.Frame(row, bg="#2A2A4A", height=1).pack(
                 side="left", fill="x", expand=True, padx=(8, 0), pady=5)
 
         def _btn(parent, text, bg, fg="white", cmd=None, **kw):
             defaults = dict(font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                             padx=14, pady=6, cursor="hand2")
             defaults.update(kw)
-            return tk.Button(parent, text=text, bg=bg, fg=fg, command=cmd, **defaults)
+            return _ck.Button(parent, text=text, bg=bg, fg=fg, command=cmd, **defaults)
 
         # ══════════════════════════════════════════════════════════════════════
         # STATS BAR
         # ══════════════════════════════════════════════════════════════════════
-        stats_row = tk.Frame(body, bg=BG)
+        stats_row = _ck.Frame(body, bg=BG)
         stats_row.pack(fill="x", padx=16, pady=(16, 4))
         _sb = {}
         for col, (icon, key, lbl, clr) in enumerate([
@@ -8787,15 +8792,15 @@ class SynthexApp:
             ("\U0001f6ab", "banned", "Dibanned",    RED),
             ("\U0001f4ac", "dm",     "DM Baru",     PRP),
         ]):
-            box = tk.Frame(stats_row, bg=CARD, padx=12, pady=10)
+            box = _ck.Frame(stats_row, bg=CARD, padx=12, pady=10)
             box.grid(row=0, column=col, padx=(0, 8), sticky="nsew")
             stats_row.columnconfigure(col, weight=1)
-            tk.Label(box, text=icon, bg=CARD, fg=clr,
+            _ck.Label(box, text=icon, bg=CARD, fg=clr,
                      font=("Segoe UI", 18)).pack()
-            v = tk.Label(box, text="—", bg=CARD, fg=clr,
+            v = _ck.Label(box, text="—", bg=CARD, fg=clr,
                          font=("Segoe UI", 20, "bold"))
             v.pack()
-            tk.Label(box, text=lbl, bg=CARD, fg=MUT,
+            _ck.Label(box, text=lbl, bg=CARD, fg=MUT,
                      font=("Segoe UI", 7)).pack()
             _sb[key] = v
 
@@ -8824,25 +8829,25 @@ class SynthexApp:
         _wo_card = _mk(body, "User Aktif Sekarang", "\U0001f7e2", "#22D3EE")
 
         _wo_status = tk.StringVar(value="Memuat…")
-        tk.Label(_wo_card, textvariable=_wo_status, bg=CARD, fg=MUT,
+        _ck.Label(_wo_card, textvariable=_wo_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
 
-        _wo_list_frame = tk.Frame(_wo_card, bg=CARD)
+        _wo_list_frame = _ck.Frame(_wo_card, bg=CARD)
         _wo_list_frame.pack(fill="x")
 
         def _render_online(users):
             for w in _wo_list_frame.winfo_children():
                 w.destroy()
             if not users:
-                tk.Label(_wo_list_frame, text="Tidak ada user online saat ini.",
+                _ck.Label(_wo_list_frame, text="Tidak ada user online saat ini.",
                          bg=CARD, fg=MUT, font=("Segoe UI", 9)).pack(anchor="w")
                 return
             for u in users:
-                row = tk.Frame(_wo_list_frame, bg=CARD2, pady=5, padx=10)
+                row = _ck.Frame(_wo_list_frame, bg=CARD2, pady=5, padx=10)
                 row.pack(fill="x", pady=(0, 3))
-                tk.Label(row, text="\U0001f7e2", bg=CARD2, fg="#22D3EE",
+                _ck.Label(row, text="\U0001f7e2", bg=CARD2, fg="#22D3EE",
                          font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
-                tk.Label(row, text=u["email"], bg=CARD2, fg=FG,
+                _ck.Label(row, text=u["email"], bg=CARD2, fg=FG,
                          font=("Segoe UI", 9, "bold")).pack(side="left")
                 secs = int(time.time() - u.get("last_seen", time.time()))
                 if secs < 60:
@@ -8851,7 +8856,7 @@ class SynthexApp:
                     ago = "{}m lalu".format(secs // 60)
                 else:
                     ago = "{}j lalu".format(secs // 3600)
-                tk.Label(row, text=ago, bg=CARD2, fg=MUT,
+                _ck.Label(row, text=ago, bg=CARD2, fg=MUT,
                          font=("Segoe UI", 8)).pack(side="right")
 
         _wo_refresh_id = [None]
@@ -8886,23 +8891,23 @@ class SynthexApp:
 
         # ── Maintenance Mode ─────────────────────────────────────────────────
         mnt = _mk(body, "Maintenance Mode", "\U0001f527", RED)
-        tk.Label(mnt, text="Aktifkan untuk memblokir semua user masuk ke app.",
+        _ck.Label(mnt, text="Aktifkan untuk memblokir semua user masuk ke app.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
         _mnt_en = tk.BooleanVar(value=False)
-        mnt_row = tk.Frame(mnt, bg=CARD)
+        mnt_row = _ck.Frame(mnt, bg=CARD)
         mnt_row.pack(fill="x", pady=(0, 6))
-        tk.Checkbutton(mnt_row, text="MAINTENANCE AKTIF (user diblokir)",
+        _ck.Checkbutton(mnt_row, text="MAINTENANCE AKTIF (user diblokir)",
                        variable=_mnt_en, bg=CARD, fg=RED, selectcolor=CARD2,
                        activebackground=CARD,
                        font=("Segoe UI", 9, "bold")).pack(side="left")
-        tk.Label(mnt, text="Pesan yang ditampilkan ke user:",
+        _ck.Label(mnt, text="Pesan yang ditampilkan ke user:",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 2))
         _mnt_msg = tk.StringVar()
-        tk.Entry(mnt, textvariable=_mnt_msg, bg=CARD2, fg=FG,
+        _ck.Entry(mnt, textvariable=_mnt_msg, bg=CARD2, fg=FG,
                  insertbackground=FG, relief="flat", font=("Segoe UI", 10),
                  bd=6).pack(fill="x", pady=(0, 8))
         _mnt_status = tk.StringVar(value="Memuat…")
-        tk.Label(mnt, textvariable=_mnt_status, bg=CARD, fg=MUT,
+        _ck.Label(mnt, textvariable=_mnt_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
 
         def _load_mnt():
@@ -8932,18 +8937,18 @@ class SynthexApp:
 
         # ── Force Update ─────────────────────────────────────────────────────
         fu = _mk(body, "Force Update / Min Version", "\U0001f4e6", "#F59E0B")
-        tk.Label(fu, text="User dengan versi lebih lama akan dipaksa update.",
+        _ck.Label(fu, text="User dengan versi lebih lama akan dipaksa update.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
-        fu_row = tk.Frame(fu, bg=CARD)
+        fu_row = _ck.Frame(fu, bg=CARD)
         fu_row.pack(fill="x", pady=(0, 6))
         _fu_ver = tk.StringVar()
-        tk.Label(fu_row, text="Min Version:", bg=CARD, fg=FG,
+        _ck.Label(fu_row, text="Min Version:", bg=CARD, fg=FG,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Entry(fu_row, textvariable=_fu_ver, bg=CARD2, fg=FG,
+        _ck.Entry(fu_row, textvariable=_fu_ver, bg=CARD2, fg=FG,
                  insertbackground=FG, relief="flat", font=("Segoe UI", 10),
                  bd=6, width=12).pack(side="left", padx=6)
         _fu_status = tk.StringVar(value="Memuat…")
-        tk.Label(fu, textvariable=_fu_status, bg=CARD, fg=MUT,
+        _ck.Label(fu, textvariable=_fu_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_fu():
@@ -8974,33 +8979,33 @@ class SynthexApp:
 
         # ── Announcement Bar ─────────────────────────────────────────────────
         ann = _mk(body, "Announcement Bar", "\U0001f4e3", "#0EA5E9")
-        tk.Label(ann, text="Tampilkan banner pesan di atas app semua user.",
+        _ck.Label(ann, text="Tampilkan banner pesan di atas app semua user.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
         _ann_en = tk.BooleanVar(value=False)
-        ann_r1 = tk.Frame(ann, bg=CARD)
+        ann_r1 = _ck.Frame(ann, bg=CARD)
         ann_r1.pack(fill="x", pady=(0, 4))
-        tk.Label(ann_r1, text="Aktif:", bg=CARD, fg=FG,
+        _ck.Label(ann_r1, text="Aktif:", bg=CARD, fg=FG,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Checkbutton(ann_r1, variable=_ann_en, bg=CARD, fg=FG,
+        _ck.Checkbutton(ann_r1, variable=_ann_en, bg=CARD, fg=FG,
                        selectcolor=CARD2, activebackground=CARD,
                        font=("Segoe UI", 9)).pack(side="left", padx=4)
         _ann_clr = tk.StringVar(value="#B45309")
         _clr_opts = ["#B45309", "#1E40AF", "#065F46", "#7C2D12",
                      "#6B21A8", "#BE123C"]
-        ann_r2 = tk.Frame(ann, bg=CARD)
+        ann_r2 = _ck.Frame(ann, bg=CARD)
         ann_r2.pack(fill="x", pady=(0, 4))
-        tk.Label(ann_r2, text="Warna:", bg=CARD, fg=FG,
+        _ck.Label(ann_r2, text="Warna:", bg=CARD, fg=FG,
                  font=("Segoe UI", 9)).pack(side="left")
         ann_clr_m = tk.OptionMenu(ann_r2, _ann_clr, *_clr_opts)
         ann_clr_m.config(bg=CARD2, fg=FG, relief="flat",
                          highlightthickness=0, font=("Segoe UI", 9),
                          activebackground=ACC)
         ann_clr_m.pack(side="left", padx=4)
-        ann_txt = tk.Entry(ann, bg=CARD2, fg=FG, insertbackground=FG,
+        ann_txt = _ck.Entry(ann, bg=CARD2, fg=FG, insertbackground=FG,
                            relief="flat", font=("Segoe UI", 10), bd=6)
         ann_txt.pack(fill="x", pady=(0, 6))
         _ann_status = tk.StringVar(value="")
-        tk.Label(ann, textvariable=_ann_status, bg=CARD, fg=MUT,
+        _ck.Label(ann, textvariable=_ann_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _set_ann():
@@ -9046,7 +9051,7 @@ class SynthexApp:
 
         # ── Remote Config Toggles ─────────────────────────────────────────────
         rc = _mk(body, "Remote Config — Toggle Fitur", "⚙️", "#6366F1")
-        tk.Label(rc, text="Toggle on/off fitur untuk SEMUA user secara realtime.",
+        _ck.Label(rc, text="Toggle on/off fitur untuk SEMUA user secara realtime.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
         _RC_LABELS = {
             "rekening_enabled": "\U0001f4b3 Cek Rekening",
@@ -9057,17 +9062,17 @@ class SynthexApp:
             "spy_enabled":      "\U0001f441️ Spy",
         }
         _rc_vars = {k: tk.BooleanVar(value=True) for k in _RC_LABELS}
-        rc_grid = tk.Frame(rc, bg=CARD)
+        rc_grid = _ck.Frame(rc, bg=CARD)
         rc_grid.pack(fill="x", pady=(0, 8))
         for i, (k, lbl) in enumerate(_RC_LABELS.items()):
-            r_f = tk.Frame(rc_grid, bg=CARD)
+            r_f = _ck.Frame(rc_grid, bg=CARD)
             r_f.grid(row=i // 2, column=i % 2, sticky="w", padx=8, pady=2)
-            tk.Checkbutton(r_f, text=lbl, variable=_rc_vars[k],
+            _ck.Checkbutton(r_f, text=lbl, variable=_rc_vars[k],
                            bg=CARD, fg=FG, selectcolor=CARD2,
                            activebackground=CARD,
                            font=("Segoe UI", 9)).pack(side="left")
         _rc_status = tk.StringVar(value="Memuat…")
-        tk.Label(rc, textvariable=_rc_status, bg=CARD, fg=MUT,
+        _ck.Label(rc, textvariable=_rc_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_rc():
@@ -9102,24 +9107,24 @@ class SynthexApp:
 
         # ── Changelog Editor ─────────────────────────────────────────────────
         cl = _mk(body, "Changelog / Release Notes", "\U0001f4dd", "#8B5CF6")
-        tk.Label(cl, text="Popup akan muncul ke user saat versi berubah.",
+        _ck.Label(cl, text="Popup akan muncul ke user saat versi berubah.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
-        cl_vrow = tk.Frame(cl, bg=CARD)
+        cl_vrow = _ck.Frame(cl, bg=CARD)
         cl_vrow.pack(fill="x", pady=(0, 4))
-        tk.Label(cl_vrow, text="Versi:", bg=CARD, fg=FG,
+        _ck.Label(cl_vrow, text="Versi:", bg=CARD, fg=FG,
                  font=("Segoe UI", 9)).pack(side="left")
         _cl_ver = tk.StringVar()
-        tk.Entry(cl_vrow, textvariable=_cl_ver, bg=CARD2, fg=FG,
+        _ck.Entry(cl_vrow, textvariable=_cl_ver, bg=CARD2, fg=FG,
                  insertbackground=FG, relief="flat", font=("Segoe UI", 9),
                  bd=6, width=12).pack(side="left", padx=6)
-        tk.Label(cl, text="Release notes:", bg=CARD, fg=MUT,
+        _ck.Label(cl, text="Release notes:", bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
-        cl_txt = tk.Text(cl, bg=CARD2, fg=FG, insertbackground=FG,
+        cl_txt = _ck.Text(cl, bg=CARD2, fg=FG, insertbackground=FG,
                          relief="flat", font=("Segoe UI", 9),
                          height=5, wrap="word")
         cl_txt.pack(fill="x", pady=(0, 6))
         _cl_status = tk.StringVar(value="Memuat…")
-        tk.Label(cl, textvariable=_cl_status, bg=CARD, fg=MUT,
+        _ck.Label(cl, textvariable=_cl_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_cl():
@@ -9159,16 +9164,16 @@ class SynthexApp:
 
         # ── Firebase Templates Sync ───────────────────────────────────────────
         tpl = _mk(body, "Firebase Templates Sync", "\U0001f4cb", GRN)
-        tk.Label(tpl,
+        _ck.Label(tpl,
                  text="Push template lokal ke Firebase → semua user dapat template"
                       " terbaru tanpa rebuild.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8),
                  wraplength=500, justify="left").pack(anchor="w", pady=(0, 8))
-        _tpl_count = tk.Label(tpl, text="", bg=CARD, fg=FG,
+        _tpl_count = _ck.Label(tpl, text="", bg=CARD, fg=FG,
                               font=("Segoe UI", 9, "bold"))
         _tpl_count.pack(anchor="w", pady=(0, 4))
         _tpl_status = tk.StringVar(value="")
-        tk.Label(tpl, textvariable=_tpl_status, bg=CARD, fg=MUT,
+        _ck.Label(tpl, textvariable=_tpl_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
 
         def _count_local():
@@ -9227,7 +9232,7 @@ class SynthexApp:
                         _tpl_status.set(msg), _count_local()))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        tpl_btns = tk.Frame(tpl, bg=CARD)
+        tpl_btns = _ck.Frame(tpl, bg=CARD)
         tpl_btns.pack(anchor="w")
         _btn(tpl_btns, "\U0001f4e4 Push ke Firebase", GRN, fg="black",
              cmd=_push_templates).pack(side="left", padx=(0, 8))
@@ -9242,23 +9247,23 @@ class SynthexApp:
 
         # ── Whitelist ─────────────────────────────────────────────────────────
         wl = _mk(body, "Whitelist Akses", "\U0001f511", "#0EA5E9")
-        tk.Label(wl, text="Aktifkan whitelist → hanya email terdaftar yang bisa login.",
+        _ck.Label(wl, text="Aktifkan whitelist → hanya email terdaftar yang bisa login.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
         _wl_en = tk.BooleanVar(value=False)
-        wl_r = tk.Frame(wl, bg=CARD)
+        wl_r = _ck.Frame(wl, bg=CARD)
         wl_r.pack(fill="x", pady=(0, 4))
-        tk.Checkbutton(wl_r, text="Whitelist Aktif", variable=_wl_en,
+        _ck.Checkbutton(wl_r, text="Whitelist Aktif", variable=_wl_en,
                        bg=CARD, fg=FG, selectcolor=CARD2,
                        activebackground=CARD,
                        font=("Segoe UI", 9, "bold")).pack(side="left")
-        tk.Label(wl, text="Daftar email (satu per baris):",
+        _ck.Label(wl, text="Daftar email (satu per baris):",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 2))
-        wl_txt = tk.Text(wl, bg=CARD2, fg=FG, insertbackground=FG,
+        wl_txt = _ck.Text(wl, bg=CARD2, fg=FG, insertbackground=FG,
                          relief="flat", font=("Segoe UI", 9),
                          height=5, wrap="none")
         wl_txt.pack(fill="x", pady=(0, 6))
         _wl_status = tk.StringVar(value="Memuat…")
-        tk.Label(wl, textvariable=_wl_status, bg=CARD, fg=MUT,
+        _ck.Label(wl, textvariable=_wl_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_wl():
@@ -9293,18 +9298,18 @@ class SynthexApp:
 
         # ── Kick / Ban ────────────────────────────────────────────────────────
         kb = _mk(body, "Kick / Ban User", "\U0001f6ab", RED)
-        tk.Label(kb, text="Kick = paksa logout. Ban = blokir login permanen.",
+        _ck.Label(kb, text="Kick = paksa logout. Ban = blokir login permanen.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
-        kb_ir = tk.Frame(kb, bg=CARD)
+        kb_ir = _ck.Frame(kb, bg=CARD)
         kb_ir.pack(fill="x", pady=(0, 6))
         _kb_email = tk.StringVar()
-        tk.Label(kb_ir, text="Email:", bg=CARD, fg=FG,
+        _ck.Label(kb_ir, text="Email:", bg=CARD, fg=FG,
                  font=("Segoe UI", 9)).pack(side="left")
-        tk.Entry(kb_ir, textvariable=_kb_email, bg=CARD2, fg=FG,
+        _ck.Entry(kb_ir, textvariable=_kb_email, bg=CARD2, fg=FG,
                  insertbackground=FG, relief="flat", font=("Segoe UI", 9),
                  bd=6, width=28).pack(side="left", padx=6)
         _kb_status = tk.StringVar(value="")
-        tk.Label(kb, textvariable=_kb_status, bg=CARD, fg=MUT,
+        _ck.Label(kb, textvariable=_kb_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _do_kick():
@@ -9353,23 +9358,23 @@ class SynthexApp:
                         else "✗ Gagal unban."))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        kb_btns = tk.Frame(kb, bg=CARD)
+        kb_btns = _ck.Frame(kb, bg=CARD)
         kb_btns.pack(fill="x", pady=(0, 8))
-        tk.Button(kb_btns, text="\U0001f462 Kick", bg="#92400E", fg="white",
+        _ck.Button(kb_btns, text="\U0001f462 Kick", bg="#92400E", fg="white",
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_kick).pack(side="left", padx=(0, 6))
-        tk.Button(kb_btns, text="\U0001f6ab Ban + Kick", bg=RED, fg="white",
+        _ck.Button(kb_btns, text="\U0001f6ab Ban + Kick", bg=RED, fg="white",
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_ban).pack(side="left", padx=(0, 6))
-        tk.Button(kb_btns, text="✅ Unban", bg=GRN, fg="white",
+        _ck.Button(kb_btns, text="✅ Unban", bg=GRN, fg="white",
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_unban).pack(side="left")
-        tk.Label(kb, text="Daftar user yang di-ban:",
+        _ck.Label(kb, text="Daftar user yang di-ban:",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
-        kb_list = tk.Frame(kb, bg=CARD)
+        kb_list = _ck.Frame(kb, bg=CARD)
         kb_list.pack(fill="x")
 
         def _load_banned():
@@ -9379,16 +9384,16 @@ class SynthexApp:
                 for w in kb_list.winfo_children():
                     w.destroy()
                 if not banned:
-                    tk.Label(kb_list, text="Tidak ada user yang di-ban.",
+                    _ck.Label(kb_list, text="Tidak ada user yang di-ban.",
                              bg=CARD, fg=MUT, font=("Segoe UI", 8),
                              padx=6).pack(anchor="w")
                     return
                 for em in banned:
-                    row = tk.Frame(kb_list, bg=CARD)
+                    row = _ck.Frame(kb_list, bg=CARD)
                     row.pack(fill="x", pady=1)
-                    tk.Label(row, text="\U0001f6ab {}".format(em), bg=CARD, fg=RED,
+                    _ck.Label(row, text="\U0001f6ab {}".format(em), bg=CARD, fg=RED,
                              font=("Segoe UI", 8)).pack(side="left")
-                    tk.Button(row, text="Unban", bg=CARD2, fg=FG,
+                    _ck.Button(row, text="Unban", bg=CARD2, fg=FG,
                               font=("Segoe UI", 7), relief="flat", bd=0,
                               padx=6, pady=2, cursor="hand2",
                               command=lambda e=em: (
@@ -9397,7 +9402,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _upd)
 
-        tk.Button(kb, text="\U0001f504 Refresh Banned List",
+        _ck.Button(kb, text="\U0001f504 Refresh Banned List",
                   bg=CARD2, fg=FG, font=("Segoe UI", 8),
                   relief="flat", bd=0, padx=10, pady=3, cursor="hand2",
                   command=lambda: _thr.Thread(
@@ -9408,9 +9413,9 @@ class SynthexApp:
         # ── Online Users ──────────────────────────────────────────────────────
         ou = _mk(body, "User Online Sekarang", "\U0001f465", "#22D3EE")
         _ou_status = tk.StringVar(value="Memuat…")
-        tk.Label(ou, textvariable=_ou_status, bg=CARD, fg=MUT,
+        _ck.Label(ou, textvariable=_ou_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
-        ou_frame = tk.Frame(ou, bg=CARD)
+        ou_frame = _ck.Frame(ou, bg=CARD)
         ou_frame.pack(fill="x")
 
         def _load_users():
@@ -9431,25 +9436,25 @@ class SynthexApp:
                         t_str = _dt.fromtimestamp(ts).strftime("%H:%M:%S")
                     except Exception:
                         t_str = "-"
-                    row = tk.Frame(ou_frame, bg=CARD, padx=10, pady=4)
+                    row = _ck.Frame(ou_frame, bg=CARD, padx=10, pady=4)
                     row.pack(fill="x")
-                    tk.Label(row, text="●", bg=CARD, fg=GRN,
+                    _ck.Label(row, text="●", bg=CARD, fg=GRN,
                              font=("Segoe UI", 9)).pack(side="left")
-                    tk.Label(row, text=em, bg=CARD, fg=FG,
+                    _ck.Label(row, text=em, bg=CARD, fg=FG,
                              font=("Segoe UI", 9, "bold")).pack(
                         side="left", padx=(6, 0))
-                    tk.Label(row, text="last seen {}".format(t_str),
+                    _ck.Label(row, text="last seen {}".format(t_str),
                              bg=CARD, fg=MUT,
                              font=("Segoe UI", 8)).pack(side="right")
                 if not users:
-                    tk.Label(ou_frame,
+                    _ck.Label(ou_frame,
                              text="Tidak ada user lain yang online.",
                              bg=CARD, fg=MUT, font=("Segoe UI", 9),
                              padx=10, pady=6).pack(anchor="w")
             if self._root:
                 self._root.after(0, _upd)
 
-        tk.Button(ou, text="\U0001f504 Refresh",
+        _ck.Button(ou, text="\U0001f504 Refresh",
                   bg=CARD2, fg=FG, font=("Segoe UI", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=lambda: _thr.Thread(
@@ -9460,26 +9465,26 @@ class SynthexApp:
         # ── Statistics ────────────────────────────────────────────────────────
         st = _mk(body, "Statistik Pengguna", "\U0001f4ca", "#A78BFA")
         _sl = {}
-        st_grid = tk.Frame(st, bg=CARD)
+        st_grid = _ck.Frame(st, bg=CARD)
         st_grid.pack(fill="x", pady=(0, 8))
         for col, (icon, key, lbl, clr) in enumerate([
             ("\U0001f465", "sessions", "Total Sesi", GRN),
             ("\U0001f7e2", "online2",  "Online Now", "#22D3EE"),
             ("\U0001f6ab", "banned2",  "Dibanned",   RED),
         ]):
-            box = tk.Frame(st_grid, bg=CARD2, padx=16, pady=12)
+            box = _ck.Frame(st_grid, bg=CARD2, padx=16, pady=12)
             box.grid(row=0, column=col, padx=6, sticky="nsew")
             st_grid.columnconfigure(col, weight=1)
-            tk.Label(box, text=icon, bg=CARD2, fg=clr,
+            _ck.Label(box, text=icon, bg=CARD2, fg=clr,
                      font=("Segoe UI", 20)).pack()
-            v = tk.Label(box, text="…", bg=CARD2, fg=clr,
+            v = _ck.Label(box, text="…", bg=CARD2, fg=clr,
                          font=("Segoe UI", 18, "bold"))
             v.pack()
-            tk.Label(box, text=lbl, bg=CARD2, fg=MUT,
+            _ck.Label(box, text=lbl, bg=CARD2, fg=MUT,
                      font=("Segoe UI", 7)).pack()
             _sl[key] = v
         _st_status = tk.StringVar(value="Memuat statistik…")
-        tk.Label(st, textvariable=_st_status, bg=CARD, fg=MUT,
+        _ck.Label(st, textvariable=_st_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_stats():
@@ -9498,7 +9503,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _upd)
 
-        tk.Button(st, text="\U0001f504 Refresh Statistik",
+        _ck.Button(st, text="\U0001f504 Refresh Statistik",
                   bg=CARD2, fg=FG, font=("Segoe UI", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=lambda: _thr.Thread(
@@ -9513,14 +9518,14 @@ class SynthexApp:
 
         # ── Broadcast ─────────────────────────────────────────────────────────
         bc = _mk(body, "Broadcast ke Semua User", "\U0001f4e2", PRP)
-        tk.Label(bc, text="Pesan broadcast akan muncul di Chat semua user yang online.",
+        _ck.Label(bc, text="Pesan broadcast akan muncul di Chat semua user yang online.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
-        bc_txt = tk.Text(bc, bg=CARD2, fg=FG, insertbackground=FG,
+        bc_txt = _ck.Text(bc, bg=CARD2, fg=FG, insertbackground=FG,
                          relief="flat", font=("Segoe UI", 10),
                          height=3, wrap="word")
         bc_txt.pack(fill="x", pady=(0, 8))
         _bc_status = tk.StringVar(value="")
-        tk.Label(bc, textvariable=_bc_status, bg=CARD, fg=MUT,
+        _ck.Label(bc, textvariable=_bc_status, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
 
         def _send_bc():
@@ -9545,54 +9550,54 @@ class SynthexApp:
 
         # ── DM Conversations ──────────────────────────────────────────────────
         dm = _mk(body, "DM — Percakapan dengan User", "\U0001f4ac", ACC)
-        tk.Label(dm, text="Pilih user → lihat percakapan → balas.",
+        _ck.Label(dm, text="Pilih user → lihat percakapan → balas.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
-        dm_split = tk.Frame(dm, bg=CARD)
+        dm_split = _ck.Frame(dm, bg=CARD)
         dm_split.pack(fill="x")
-        dm_left = tk.Frame(dm_split, bg="#0D0D18", width=200)
+        dm_left = _ck.Frame(dm_split, bg="#0D0D18", width=200)
         dm_left.pack(side="left", fill="y", padx=(0, 8))
         dm_left.pack_propagate(False)
-        tk.Label(dm_left, text="Inbox", bg="#0D0D18", fg=MUT,
+        _ck.Label(dm_left, text="Inbox", bg="#0D0D18", fg=MUT,
                  font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
-        thread_frame = tk.Frame(dm_left, bg="#0D0D18")
+        thread_frame = _ck.Frame(dm_left, bg="#0D0D18")
         thread_frame.pack(fill="both", expand=True)
-        dm_right = tk.Frame(dm_split, bg=CARD2)
+        dm_right = _ck.Frame(dm_split, bg=CARD2)
         dm_right.pack(side="left", fill="both", expand=True)
         _conv_title = tk.StringVar(value="← Pilih percakapan")
-        tk.Label(dm_right, textvariable=_conv_title, bg=CARD2, fg=ACC,
+        _ck.Label(dm_right, textvariable=_conv_title, bg=CARD2, fg=ACC,
                  font=("Segoe UI", 9, "bold"), anchor="w", padx=10,
                  pady=6).pack(fill="x")
-        tk.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
-        conv_sb = ttk.Scrollbar(dm_right, orient="vertical")
+        _ck.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
+        conv_sb = _ck.Scrollbar(dm_right, orient="vertical")
         conv_sb.pack(side="right", fill="y")
         conv_cv = tk.Canvas(dm_right, bg=CARD2, highlightthickness=0,
                             height=220, yscrollcommand=conv_sb.set)
         conv_cv.pack(side="top", fill="both", expand=True)
         conv_sb.config(command=conv_cv.yview)
-        conv_inner = tk.Frame(conv_cv, bg=CARD2)
+        conv_inner = _ck.Frame(conv_cv, bg=CARD2)
         _cwid = conv_cv.create_window((0, 0), window=conv_inner, anchor="nw")
         conv_inner.bind("<Configure>",
                         lambda e: conv_cv.configure(
                             scrollregion=conv_cv.bbox("all")))
         conv_cv.bind("<Configure>",
                      lambda e: conv_cv.itemconfig(_cwid, width=e.width))
-        tk.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
-        dm_ir = tk.Frame(dm_right, bg=CARD2, padx=8, pady=6)
+        _ck.Frame(dm_right, bg="#1c1c2e", height=1).pack(fill="x")
+        dm_ir = _ck.Frame(dm_right, bg=CARD2, padx=8, pady=6)
         dm_ir.pack(fill="x")
-        dm_inp = tk.Text(dm_ir, bg="#0D0D18", fg=FG, insertbackground=FG,
+        dm_inp = _ck.Text(dm_ir, bg="#0D0D18", fg=FG, insertbackground=FG,
                          relief="flat", font=("Segoe UI", 9),
                          height=2, wrap="word", bd=6)
         dm_inp.pack(side="left", fill="x", expand=True, padx=(0, 6))
         _dm_sel = [None]
         _dm_st = tk.StringVar(value="")
-        tk.Label(dm_right, textvariable=_dm_st, bg=CARD2, fg=MUT,
+        _ck.Label(dm_right, textvariable=_dm_st, bg=CARD2, fg=MUT,
                  font=("Segoe UI", 7)).pack(anchor="w", padx=8)
 
         def _render_conv(msgs, target):
             for w in conv_inner.winfo_children():
                 w.destroy()
             if not msgs:
-                tk.Label(conv_inner, text="Belum ada pesan.", bg=CARD2,
+                _ck.Label(conv_inner, text="Belum ada pesan.", bg=CARD2,
                          fg=MUT, font=("Segoe UI", 9), pady=20).pack()
                 return
             for m in msgs:
@@ -9602,16 +9607,16 @@ class SynthexApp:
                     t_str = _dt.fromtimestamp(ts).strftime("%H:%M")
                 except Exception:
                     t_str = ""
-                row = tk.Frame(conv_inner, bg=CARD2, pady=2)
+                row = _ck.Frame(conv_inner, bg=CARD2, pady=2)
                 row.pack(fill="x", padx=6)
                 bub_bg = "#1E1B4B" if is_me else "#052e16"
-                bub = tk.Frame(row, bg=bub_bg, padx=8, pady=5)
+                bub = _ck.Frame(row, bg=bub_bg, padx=8, pady=5)
                 bub.pack(anchor="w" if is_me else "e")
                 prefix = "\U0001f451 " if is_me else "↩ "
-                tk.Label(bub, text="{}{}".format(prefix, m.get("message", "")),
+                _ck.Label(bub, text="{}{}".format(prefix, m.get("message", "")),
                          bg=bub_bg, fg=FG, font=("Segoe UI", 9),
                          wraplength=300, justify="left").pack(anchor="w")
-                tk.Label(bub, text=t_str, bg=bub_bg, fg=MUT,
+                _ck.Label(bub, text=t_str, bg=bub_bg, fg=MUT,
                          font=("Segoe UI", 7)).pack(anchor="e")
             conv_cv.update_idletasks()
             conv_cv.yview_moveto(1.0)
@@ -9647,12 +9652,12 @@ class SynthexApp:
                     self._root.after(0, _u)
             _thr.Thread(target=_bg, daemon=True).start()
 
-        tk.Button(dm_ir, text="\U0001f4e8 Kirim",
+        _ck.Button(dm_ir, text="\U0001f4e8 Kirim",
                   bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
                   command=_send_dm).pack(side="right")
         _dm_ts = tk.StringVar(value="Memuat thread…")
-        tk.Label(dm_left, textvariable=_dm_ts, bg="#0D0D18", fg=MUT,
+        _ck.Label(dm_left, textvariable=_dm_ts, bg="#0D0D18", fg=MUT,
                  font=("Segoe UI", 7), wraplength=180).pack(
             anchor="w", padx=8)
 
@@ -9663,7 +9668,7 @@ class SynthexApp:
                 for w in thread_frame.winfo_children():
                     w.destroy()
                 if not threads:
-                    tk.Label(thread_frame, text="Belum ada percakapan.",
+                    _ck.Label(thread_frame, text="Belum ada percakapan.",
                              bg="#0D0D18", fg=MUT, font=("Segoe UI", 8),
                              padx=8, pady=8).pack(anchor="w")
                     _dm_ts.set("")
@@ -9676,19 +9681,19 @@ class SynthexApp:
                             if len(t["last_message"]) > 28
                             else t["last_message"])
                     btn_bg = "#1A1A30" if unrd == 0 else "#2A1A3A"
-                    trow = tk.Frame(thread_frame, bg=btn_bg, pady=5,
+                    trow = _ck.Frame(thread_frame, bg=btn_bg, pady=5,
                                     padx=8, cursor="hand2")
                     trow.pack(fill="x", pady=1)
-                    tk.Label(trow, text=em.split("@")[0], bg=btn_bg,
+                    _ck.Label(trow, text=em.split("@")[0], bg=btn_bg,
                              fg=FG if unrd == 0 else "#A78BFA",
                              font=("Segoe UI", 8,
                                    "bold" if unrd else "normal"),
                              anchor="w").pack(anchor="w")
                     if unrd:
-                        tk.Label(trow, text="● {} baru".format(unrd),
+                        _ck.Label(trow, text="● {} baru".format(unrd),
                                  bg=btn_bg, fg="#E11D48",
                                  font=("Segoe UI", 7)).pack(anchor="w")
-                    tk.Label(trow, text=last or "(kosong)", bg=btn_bg,
+                    _ck.Label(trow, text=last or "(kosong)", bg=btn_bg,
                              fg=MUT, font=("Segoe UI", 7),
                              anchor="w").pack(anchor="w")
                     trow.bind("<Button-1>", lambda e, em=em: _load_conv(em))
@@ -9697,7 +9702,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _render)
 
-        tk.Button(dm_left, text="\U0001f504",
+        _ck.Button(dm_left, text="\U0001f504",
                   bg="#0D0D18", fg=MUT, font=("Segoe UI", 8),
                   relief="flat", bd=0, padx=6, pady=2, cursor="hand2",
                   command=lambda: _thr.Thread(
@@ -9713,7 +9718,7 @@ class SynthexApp:
         # ── Firebase Rules ────────────────────────────────────────────────────
         rl = _mk(body, "Firebase Security Rules", "\U0001f512", GRN)
         _rules_st = tk.StringVar(value="Auto-deploy rules saat master login aktif.")
-        tk.Label(rl, textvariable=_rules_st, bg=CARD, fg=MUT,
+        _ck.Label(rl, textvariable=_rules_st, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8), wraplength=580,
                  justify="left").pack(anchor="w", pady=(0, 6))
 
@@ -9726,7 +9731,7 @@ class SynthexApp:
                     self._root.after(0, lambda m=msg: _rules_st.set(m))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        tk.Button(rl, text="\U0001f512 Deploy Firebase Rules",
+        _ck.Button(rl, text="\U0001f512 Deploy Firebase Rules",
                   bg="#1A3A1A", fg=GRN, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_deploy_rules).pack(anchor="w")
@@ -9738,12 +9743,12 @@ class SynthexApp:
         # ── Rekening API URL ──────────────────────────────────────────────────
         rek = _mk(body, "Rekening API URL", "\U0001f517", "#F59E0B")
         _url_st = tk.StringVar(value="Memuat URL dari Firebase…")
-        tk.Label(rek, textvariable=_url_st, bg=CARD, fg=MUT,
+        _ck.Label(rek, textvariable=_url_st, bg=CARD, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
         _url_var = tk.StringVar()
-        url_row = tk.Frame(rek, bg=CARD)
+        url_row = _ck.Frame(rek, bg=CARD)
         url_row.pack(fill="x", pady=(0, 8))
-        tk.Entry(url_row, textvariable=_url_var, bg=CARD2, fg=FG,
+        _ck.Entry(url_row, textvariable=_url_var, bg=CARD2, fg=FG,
                  insertbackground=FG, relief="flat",
                  font=("Segoe UI", 10), bd=6).pack(
             side="left", fill="x", expand=True, padx=(0, 8))
@@ -9781,7 +9786,7 @@ class SynthexApp:
         _btn(url_row, "\U0001f4be Simpan", "#F59E0B", fg="black",
              cmd=_save_url).pack(side="left")
         _thr.Thread(target=_load_url, daemon=True).start()
-        tk.Label(rek,
+        _ck.Label(rek,
                  text="URL ini dipakai SEMUA user untuk validasi rekening.\n"
                       "Ganti di sini → langsung berlaku tanpa update app.",
                  bg=CARD, fg=MUT, font=("Segoe UI", 8),
@@ -10009,7 +10014,7 @@ class SynthexApp:
         _lbl(dlg, "Sheet tujuan:", bg=BG, font=("Segoe UI", 9)).pack(
             anchor="w", padx=16, pady=(14, 2))
         sheet_var = tk.StringVar(value=sheets[0])
-        ttk.Combobox(dlg, textvariable=sheet_var, values=sheets,
+        _ck.Combobox(dlg, textvariable=sheet_var, values=sheets,
                      state="readonly", font=("Segoe UI", 10)).pack(
             fill="x", padx=16)
 
@@ -10017,7 +10022,7 @@ class SynthexApp:
              bg=BG, font=("Segoe UI", 9), fg=MUT).pack(
             anchor="w", padx=16, pady=(10, 2))
         col_var = tk.StringVar()
-        ttk.Entry(dlg, textvariable=col_var,
+        t_ck.Entry(dlg, textvariable=col_var,
                   font=("Segoe UI", 10)).pack(fill="x", padx=16)
 
         def _do_scrape():
@@ -10043,11 +10048,11 @@ class SynthexApp:
 
             threading.Thread(target=_worker, daemon=True).start()
 
-        btn_row_dlg = tk.Frame(dlg, bg=BG)
+        btn_row_dlg = _ck.Frame(dlg, bg=BG)
         btn_row_dlg.pack(anchor="e", padx=16, pady=(12, 0))
-        ttk.Button(btn_row_dlg, text="Scrape", style="Accent.TButton",
+        t_ck.Button(btn_row_dlg, text="Scrape", style="Accent.TButton",
                    command=_do_scrape).pack(side="left", padx=(0, 6))
-        ttk.Button(btn_row_dlg, text="Batal",
+        t_ck.Button(btn_row_dlg, text="Batal",
                    command=dlg.destroy).pack(side="left")
 
     def _copy_spy_selector(self):
@@ -10108,10 +10113,10 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("200x120+{}+{}".format(sw // 2 - 100, sh // 2 - 60))
 
-        lbl = tk.Label(dlg, text="Recording starts in", bg=BG, fg=MUT,
+        lbl = _ck.Label(dlg, text="Recording starts in", bg=BG, fg=MUT,
                        font=("Segoe UI", 11))
         lbl.pack(pady=(18, 4))
-        num = tk.Label(dlg, text=str(count), bg=BG, fg=ACC,
+        num = _ck.Label(dlg, text=str(count), bg=BG, fg=ACC,
                        font=("Segoe UI", 40, "bold"))
         num.pack()
 
@@ -10193,20 +10198,20 @@ class SynthexApp:
                 e.x_root - _drag["x"], e.y_root - _drag["y"]))
 
         # ── Header (compact 22px) ────────────────────────────────────────────
-        hdr = tk.Frame(win, bg=ACC, height=22, cursor="fleur")
+        hdr = _ck.Frame(win, bg=ACC, height=22, cursor="fleur")
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         hdr.bind("<ButtonPress-1>", _drag_start)
         hdr.bind("<B1-Motion>",     _drag_move)
 
-        tk.Label(hdr, text="  SYNTHEX REC", bg=ACC, fg="#FFFFFF",
+        _ck.Label(hdr, text="  SYNTHEX REC", bg=ACC, fg="#FFFFFF",
                  font=("Segoe UI", 8, "bold")).pack(side="left", pady=3)
-        tk.Button(hdr, text="x", bg=ACC, fg="#FFFFFF",
+        _ck.Button(hdr, text="x", bg=ACC, fg="#FFFFFF",
                   font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=7, cursor="hand2",
                   activebackground=RED, activeforeground="#FFFFFF",
                   command=lambda: _close_ref[0]()).pack(side="right", fill="y")
-        tk.Button(hdr, text="—", bg=ACC, fg="#FFFFFF",
+        _ck.Button(hdr, text="—", bg=ACC, fg="#FFFFFF",
                   font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=7, cursor="hand2",
                   activebackground="#8870FF", activeforeground="#FFFFFF",
@@ -10218,20 +10223,20 @@ class SynthexApp:
         timer_var = tk.StringVar(value="00:00")
         steps_var = tk.StringVar(value="0 steps")
 
-        st = tk.Frame(win, bg="#0D0D14")
+        st = _ck.Frame(win, bg="#0D0D14")
         st.pack(fill="x", padx=8, pady=(4, 2))
 
-        dot_lbl = tk.Label(st, textvariable=dot_var, bg="#0D0D14", fg=MUT,
+        dot_lbl = _ck.Label(st, textvariable=dot_var, bg="#0D0D14", fg=MUT,
                            font=("Segoe UI", 10))
         dot_lbl.pack(side="left")
-        tk.Label(st, textvariable=state_var, bg="#0D0D14", fg=FG,
+        _ck.Label(st, textvariable=state_var, bg="#0D0D14", fg=FG,
                  font=("Segoe UI", 8, "bold")).pack(side="left", padx=(4, 0))
-        tk.Label(st, textvariable=timer_var, bg="#0D0D14", fg=MUT,
+        _ck.Label(st, textvariable=timer_var, bg="#0D0D14", fg=MUT,
                  font=("Consolas", 8)).pack(side="right", padx=(0, 2))
-        tk.Label(st, textvariable=steps_var, bg="#0D0D14", fg=MUT,
+        _ck.Label(st, textvariable=steps_var, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 8)).pack(side="right", padx=(0, 6))
 
-        tk.Frame(win, bg="#2A2A40", height=1).pack(fill="x", pady=(2, 0))
+        _ck.Frame(win, bg="#2A2A40", height=1).pack(fill="x", pady=(2, 0))
 
         # No live preview — keep empty list for compatibility
         self._rec_preview_labels = []
@@ -10364,32 +10369,32 @@ class SynthexApp:
         # ── 4 equal buttons in single horizontal row ──────────────────────────
         ICON_F = ("Segoe UI Emoji", 15)
 
-        btn_row = tk.Frame(win, bg="#0D0D14", height=52)
+        btn_row = _ck.Frame(win, bg="#0D0D14", height=52)
         btn_row.pack(fill="x", padx=8, pady=(6, 8))
         btn_row.pack_propagate(False)
 
-        btn_rec = tk.Button(btn_row, text="⏺",
+        btn_rec = _ck.Button(btn_row, text="⏺",
                             bg=RED, fg="#FFFFFF", font=ICON_F,
                             relief="flat", bd=0, cursor="hand2",
                             activebackground="#CC3050",
                             command=_toggle_recording)
         btn_rec.pack(side="left", fill="both", expand=True, padx=(0, 3))
 
-        btn_pause = tk.Button(btn_row, text="⏸",
+        btn_pause = _ck.Button(btn_row, text="⏸",
                               bg=CARD2, fg=MUT, font=ICON_F,
                               relief="flat", bd=0, cursor="hand2",
                               state="disabled", activebackground=CARD,
                               command=_toggle_pause)
         btn_pause.pack(side="left", fill="both", expand=True, padx=(0, 3))
 
-        btn_play = tk.Button(btn_row, text="▶",
+        btn_play = _ck.Button(btn_row, text="▶",
                              bg="#1A3A2A", fg=GRN, font=ICON_F,
                              relief="flat", bd=0, cursor="hand2",
                              activebackground="#254D38",
                              command=_play_last)
         btn_play.pack(side="left", fill="both", expand=True, padx=(0, 3))
 
-        btn_unlim = tk.Button(btn_row, text="∞",
+        btn_unlim = _ck.Button(btn_row, text="∞",
                               bg=CARD2, fg=MUT, font=ICON_F,
                               relief="flat", bd=0, cursor="hand2",
                               activebackground=CARD,
@@ -10526,7 +10531,7 @@ class SynthexApp:
         # ------------------------------------------------------------------ #
         #  Top bar: Name / Description / Folder                               #
         # ------------------------------------------------------------------ #
-        top_bar = tk.Frame(dlg, bg=CARD, padx=12, pady=8)
+        top_bar = _ck.Frame(dlg, bg=CARD, padx=12, pady=8)
         top_bar.pack(fill="x", padx=0, pady=0)
 
         # Single compact row
@@ -10534,7 +10539,7 @@ class SynthexApp:
              font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         name_var = tk.StringVar(
             value=existing.get("name", "") if existing else "")
-        tk.Entry(top_bar, textvariable=name_var, bg=BG, fg=FG,
+        _ck.Entry(top_bar, textvariable=name_var, bg=BG, fg=FG,
                  insertbackground=FG, font=("Segoe UI", 10),
                  relief="flat", bd=0, width=22).pack(
             side="left", padx=(0, 14), ipady=4)
@@ -10543,7 +10548,7 @@ class SynthexApp:
              font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         desc_var = tk.StringVar(
             value=existing.get("description", "") if existing else "")
-        tk.Entry(top_bar, textvariable=desc_var, bg=BG, fg=FG,
+        _ck.Entry(top_bar, textvariable=desc_var, bg=BG, fg=FG,
                  insertbackground=FG, font=("Segoe UI", 10),
                  relief="flat", bd=0, width=28).pack(
             side="left", padx=(0, 14), ipady=4)
@@ -10555,13 +10560,13 @@ class SynthexApp:
             | {"General", "Work", "Personal"})
         folder_var = tk.StringVar(
             value=existing.get("folder", "General") if existing else "General")
-        ttk.Combobox(top_bar, textvariable=folder_var, values=folders,
+        _ck.Combobox(top_bar, textvariable=folder_var, values=folders,
                      width=14).pack(side="left")
 
         # Filter combobox on the right side of top bar
         _lbl(top_bar, "  Filter:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left", padx=(18, 4))
-        filter_cb = ttk.Combobox(top_bar, textvariable=_filter_var,
+        filter_cb = _ck.Combobox(top_bar, textvariable=_filter_var,
                                  values=["Semua", "click", "type", "key", "scroll"],
                                  state="readonly", width=8)
         filter_cb.pack(side="left")
@@ -10569,12 +10574,12 @@ class SynthexApp:
         # ------------------------------------------------------------------ #
         #  Toolbar row                                                         #
         # ------------------------------------------------------------------ #
-        toolbar = tk.Frame(dlg, bg=SIDE, padx=8, pady=5)
+        toolbar = _ck.Frame(dlg, bg=SIDE, padx=8, pady=5)
         toolbar.pack(fill="x")
 
         def _tb_btn(parent, text, cmd, fg_col=FG, width=None):
             kw = {"width": width} if width else {}
-            b = tk.Button(parent, text=text, command=cmd,
+            b = _ck.Button(parent, text=text, command=cmd,
                           bg=CARD, fg=fg_col, relief="flat", bd=0,
                           font=("Segoe UI", 9), padx=8, pady=3,
                           activebackground=ACC, activeforeground=BG,
@@ -10583,7 +10588,7 @@ class SynthexApp:
             return b
 
         def _tb_sep():
-            tk.Label(toolbar, text="|", bg=SIDE, fg=MUT,
+            _ck.Label(toolbar, text="|", bg=SIDE, fg=MUT,
                      font=("Segoe UI", 10)).pack(side="left", padx=4)
 
         # Add button with dropdown menu
@@ -10617,7 +10622,7 @@ class SynthexApp:
                 label=_t.capitalize(),
                 command=lambda t=_t: _add_step(t))
 
-        add_btn = tk.Button(toolbar, text="+ Tambah",
+        add_btn = _ck.Button(toolbar, text="+ Tambah",
                             bg=ACC, fg=BG, relief="flat", bd=0,
                             font=("Segoe UI", 9, "bold"), padx=10, pady=3,
                             activebackground=PRP, activeforeground=BG,
@@ -10756,21 +10761,21 @@ class SynthexApp:
         _tb_sep()
 
         # Right-aligned counters
-        step_count_lbl = tk.Label(toolbar, text="0 langkah",
+        step_count_lbl = _ck.Label(toolbar, text="0 langkah",
                                   bg=SIDE, fg=MUT, font=("Segoe UI", 9))
         step_count_lbl.pack(side="right", padx=(4, 8))
-        total_dur_lbl = tk.Label(toolbar, text="Total: 0.0s",
+        total_dur_lbl = _ck.Label(toolbar, text="Total: 0.0s",
                                  bg=SIDE, fg=MUT, font=("Segoe UI", 9))
         total_dur_lbl.pack(side="right", padx=(4, 4))
 
         # ------------------------------------------------------------------ #
         #  Main area: treeview (65%) + right edit panel (35%)                 #
         # ------------------------------------------------------------------ #
-        main_area = tk.Frame(dlg, bg=BG)
+        main_area = _ck.Frame(dlg, bg=BG)
         main_area.pack(fill="both", expand=True, padx=0, pady=0)
 
         # --- LEFT: Treeview ------------------------------------------------ #
-        left_frame = tk.Frame(main_area, bg=CARD)
+        left_frame = _ck.Frame(main_area, bg=CARD)
         left_frame.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
 
         st = ttk.Treeview(
@@ -10799,22 +10804,22 @@ class SynthexApp:
         st.tag_configure("key",    foreground="#7090FF")
         st.tag_configure("scroll", foreground="#F0C060")
 
-        vsb = ttk.Scrollbar(left_frame, orient="vertical", command=st.yview)
+        vsb = _ck.Scrollbar(left_frame, orient="vertical", command=st.yview)
         st.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
         st.pack(side="left", fill="both", expand=True)
 
         # --- RIGHT: Edit panel --------------------------------------------- #
-        right_frame = tk.Frame(main_area, bg=CARD, width=310)
+        right_frame = _ck.Frame(main_area, bg=CARD, width=310)
         right_frame.pack(side="right", fill="y", padx=(4, 8), pady=8)
         right_frame.pack_propagate(False)
 
-        edit_header = tk.Label(right_frame, text="Pilih langkah untuk diedit",
+        edit_header = _ck.Label(right_frame, text="Pilih langkah untuk diedit",
                                bg=CARD, fg=MUT,
                                font=("Segoe UI", 10, "bold"), anchor="w")
         edit_header.pack(fill="x", padx=10, pady=(10, 6))
 
-        edit_fields = tk.Frame(right_frame, bg=CARD)
+        edit_fields = _ck.Frame(right_frame, bg=CARD)
         edit_fields.pack(fill="both", expand=True, padx=8)
 
         # Shared edit-panel variables
@@ -10830,7 +10835,7 @@ class SynthexApp:
         _edit_widgets = {}   # name → widget reference for later use
 
         def _ep_lbl(parent, text):
-            return tk.Label(parent, text=text, bg=CARD, fg=MUT,
+            return _ck.Label(parent, text=text, bg=CARD, fg=MUT,
                             font=("Segoe UI", 9), anchor="w")
 
         def _build_edit_panel(atype="click"):
@@ -10839,10 +10844,10 @@ class SynthexApp:
             _edit_widgets.clear()
 
             # Type row
-            r0 = tk.Frame(edit_fields, bg=CARD)
+            r0 = _ck.Frame(edit_fields, bg=CARD)
             r0.pack(fill="x", pady=(4, 2))
             _ep_lbl(r0, "Tipe:").pack(anchor="w")
-            type_cb = ttk.Combobox(r0, textvariable=_ep_type,
+            type_cb = _ck.Combobox(r0, textvariable=_ep_type,
                                    values=["click", "type", "scroll", "key"],
                                    state="readonly", width=14)
             type_cb.pack(fill="x", pady=(2, 0))
@@ -10851,7 +10856,7 @@ class SynthexApp:
             _edit_widgets["type_cb"] = type_cb
 
             # Delay row
-            r1 = tk.Frame(edit_fields, bg=CARD)
+            r1 = _ck.Frame(edit_fields, bg=CARD)
             r1.pack(fill="x", pady=(6, 2))
             _ep_lbl(r1, "Delay (ms):").pack(anchor="w")
             delay_sp = tk.Spinbox(r1, from_=0, to=30000, increment=50,
@@ -10865,7 +10870,7 @@ class SynthexApp:
             if atype == "click":
                 for lbl_t, var, name in [("X:", _ep_x, "x_sp"),
                                           ("Y:", _ep_y, "y_sp")]:
-                    rf = tk.Frame(edit_fields, bg=CARD)
+                    rf = _ck.Frame(edit_fields, bg=CARD)
                     rf.pack(fill="x", pady=(4, 2))
                     _ep_lbl(rf, lbl_t).pack(anchor="w")
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
@@ -10874,20 +10879,20 @@ class SynthexApp:
                                     font=("Segoe UI", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
                     _edit_widgets[name] = sp
-                rb = tk.Frame(edit_fields, bg=CARD)
+                rb = _ck.Frame(edit_fields, bg=CARD)
                 rb.pack(fill="x", pady=(4, 2))
                 _ep_lbl(rb, "Button:").pack(anchor="w")
-                btn_cb = ttk.Combobox(rb, textvariable=_ep_button,
+                btn_cb = _ck.Combobox(rb, textvariable=_ep_button,
                                       values=["left", "right", "middle"],
                                       state="readonly", width=10)
                 btn_cb.pack(fill="x", pady=(2, 0))
                 _edit_widgets["btn_cb"] = btn_cb
 
             elif atype == "type":
-                rt = tk.Frame(edit_fields, bg=CARD)
+                rt = _ck.Frame(edit_fields, bg=CARD)
                 rt.pack(fill="x", pady=(4, 2))
                 _ep_lbl(rt, "Teks:").pack(anchor="w")
-                txt_e = tk.Entry(rt, textvariable=_ep_text,
+                txt_e = _ck.Entry(rt, textvariable=_ep_text,
                                  bg=BG, fg=FG, insertbackground=FG,
                                  font=("Segoe UI", 9), relief="flat", bd=0)
                 txt_e.pack(fill="x", pady=(2, 0), ipady=4)
@@ -10896,7 +10901,7 @@ class SynthexApp:
             elif atype == "scroll":
                 for lbl_t, var, name in [("X:", _ep_x, "sx_sp"),
                                           ("Y:", _ep_y, "sy_sp")]:
-                    rf = tk.Frame(edit_fields, bg=CARD)
+                    rf = _ck.Frame(edit_fields, bg=CARD)
                     rf.pack(fill="x", pady=(4, 2))
                     _ep_lbl(rf, lbl_t).pack(anchor="w")
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
@@ -10905,7 +10910,7 @@ class SynthexApp:
                                     font=("Segoe UI", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
                     _edit_widgets[name] = sp
-                ra = tk.Frame(edit_fields, bg=CARD)
+                ra = _ck.Frame(edit_fields, bg=CARD)
                 ra.pack(fill="x", pady=(4, 2))
                 _ep_lbl(ra, "Jumlah:").pack(anchor="w")
                 amt_sp = tk.Spinbox(ra, from_=-100, to=100, textvariable=_ep_amount,
@@ -10916,10 +10921,10 @@ class SynthexApp:
                 _edit_widgets["amt_sp"] = amt_sp
 
             elif atype == "key":
-                rk = tk.Frame(edit_fields, bg=CARD)
+                rk = _ck.Frame(edit_fields, bg=CARD)
                 rk.pack(fill="x", pady=(4, 2))
                 _ep_lbl(rk, "Key:").pack(anchor="w")
-                key_e = tk.Entry(rk, textvariable=_ep_key,
+                key_e = _ck.Entry(rk, textvariable=_ep_key,
                                  bg=BG, fg=FG, insertbackground=FG,
                                  font=("Segoe UI", 9), relief="flat", bd=0)
                 key_e.pack(fill="x", pady=(2, 0), ipady=4)
@@ -10927,7 +10932,7 @@ class SynthexApp:
                 _edit_widgets["key_e"] = key_e
 
             # Test Step + Apply buttons
-            btn_sep = tk.Frame(edit_fields, bg=MUT, height=1)
+            btn_sep = _ck.Frame(edit_fields, bg=MUT, height=1)
             btn_sep.pack(fill="x", pady=(14, 6))
 
             def _test_one_step():
@@ -10946,7 +10951,7 @@ class SynthexApp:
                     }
                     self._play_simple_recording(tmp, -1)
 
-            tk.Button(edit_fields, text="Test Step",
+            _ck.Button(edit_fields, text="Test Step",
                       bg=CARD, fg=BLUE, relief="flat", bd=0,
                       font=("Segoe UI", 9), padx=8, pady=4,
                       activebackground=BLUE, activeforeground=BG,
@@ -10989,7 +10994,7 @@ class SynthexApp:
                 step_data[orig_idx] = act
                 _refresh_tree(keep_sel=orig_idx)
 
-            tk.Button(edit_fields, text="Terapkan",
+            _ck.Button(edit_fields, text="Terapkan",
                       bg=GRN, fg=BG, relief="flat", bd=0,
                       font=("Segoe UI", 9, "bold"), padx=8, pady=4,
                       activebackground="#3A9F70", activeforeground=BG,
@@ -11114,7 +11119,7 @@ class SynthexApp:
 
             cur_ms = int(round(step_data[orig_idx].get("delay", 0) * 1000))
             popup_var = tk.StringVar(value=str(cur_ms))
-            popup_e = tk.Entry(popup, textvariable=popup_var,
+            popup_e = _ck.Entry(popup, textvariable=popup_var,
                                bg=BG, fg=FG, insertbackground=FG,
                                font=("Segoe UI", 9), relief="flat",
                                justify="center")
@@ -11174,17 +11179,17 @@ class SynthexApp:
         # ------------------------------------------------------------------ #
         #  Bottom bar: playback settings + action buttons                     #
         # ------------------------------------------------------------------ #
-        bottom = tk.Frame(dlg, bg=SIDE, padx=12, pady=8)
+        bottom = _ck.Frame(dlg, bg=SIDE, padx=12, pady=8)
         bottom.pack(fill="x", side="bottom")
 
-        left_bottom = tk.Frame(bottom, bg=SIDE)
+        left_bottom = _ck.Frame(bottom, bg=SIDE)
         left_bottom.pack(side="left", fill="y")
 
         _lbl(left_bottom, "Speed:", fg=MUT, bg=SIDE,
              font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
         speed_var = tk.DoubleVar(
             value=float(existing.get("speed", 1.0)) if existing else 1.0)
-        ttk.Combobox(left_bottom, textvariable=speed_var,
+        _ck.Combobox(left_bottom, textvariable=speed_var,
                      values=[0.25, 0.5, 1.0, 1.5, 2.0],
                      state="readonly", width=5).pack(side="left", padx=(0, 14))
 
@@ -11200,7 +11205,7 @@ class SynthexApp:
 
         silent_var = tk.BooleanVar(
             value=bool(existing.get("silent_mode", False)) if existing else False)
-        tk.Checkbutton(left_bottom, text="Silent Mode",
+        _ck.Checkbutton(left_bottom, text="Silent Mode",
                        variable=silent_var, bg=SIDE, fg=FG,
                        activebackground=SIDE, activeforeground=FG,
                        selectcolor=CARD,
@@ -11216,17 +11221,17 @@ class SynthexApp:
                 repeat_var.set(1)
                 repeat_sp.configure(state="normal")
 
-        tk.Checkbutton(left_bottom, text="Loop Tak Terbatas",
+        _ck.Checkbutton(left_bottom, text="Loop Tak Terbatas",
                        variable=unlimited_var, command=_toggle_unlimited,
                        bg=SIDE, fg=FG,
                        activebackground=SIDE, activeforeground=FG,
                        selectcolor=CARD,
                        font=("Segoe UI", 9)).pack(side="left")
 
-        right_bottom = tk.Frame(bottom, bg=SIDE)
+        right_bottom = _ck.Frame(bottom, bg=SIDE)
         right_bottom.pack(side="right", fill="y")
 
-        warn_lbl = tk.Label(right_bottom,
+        warn_lbl = _ck.Label(right_bottom,
                             text="Belum tersimpan", bg=SIDE, fg=YEL,
                             font=("Segoe UI", 8))
         warn_lbl.pack(side="left", padx=(0, 12))
@@ -11304,20 +11309,20 @@ class SynthexApp:
                     if (edit_idx is not None and
                         0 <= (edit_idx or -1) < len(self._ud.recordings))
                     else "SIMPAN REKAMAN")
-        tk.Button(right_bottom, text=lbl_save,
+        _ck.Button(right_bottom, text=lbl_save,
                   bg=GRN, fg="#FFFFFF",
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=6, cursor="hand2",
                   activebackground="#3A9F70", activeforeground="#FFFFFF",
                   command=_save).pack(side="left", padx=(0, 6))
 
-        tk.Button(right_bottom, text="Test Run",
+        _ck.Button(right_bottom, text="Test Run",
                   bg=CARD, fg=FG, relief="flat", bd=0,
                   font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
                   activebackground=ACC, activeforeground=BG,
                   command=_test_run).pack(side="left", padx=(0, 6))
 
-        tk.Button(right_bottom, text="Batal",
+        _ck.Button(right_bottom, text="Batal",
                   bg=CARD, fg=MUT, relief="flat", bd=0,
                   font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
                   activebackground=RED, activeforeground=BG,
@@ -11429,7 +11434,7 @@ class SynthexApp:
         dlg.protocol("WM_DELETE_WINDOW", _on_editor_close)
 
         # Header
-        hdr_f = tk.Frame(dlg, bg=BG)
+        hdr_f = _ck.Frame(dlg, bg=BG)
         hdr_f.pack(fill="x", padx=20, pady=(16, 4))
         _lbl(hdr_f, "Editor Langkah Rekaman",
              font=("Segoe UI", 13, "bold"), bg=BG).pack(anchor="w")
@@ -11440,19 +11445,19 @@ class SynthexApp:
              textvariable=step_count_var).pack(anchor="w", pady=(2, 0))
 
         # Panduan cepat
-        guide = tk.Frame(dlg, bg="#1A2A1A", padx=12, pady=8)
+        guide = _ck.Frame(dlg, bg="#1A2A1A", padx=12, pady=8)
         guide.pack(fill="x", padx=20, pady=(0, 6))
-        tk.Label(guide, text="Cara pakai: ",
+        _ck.Label(guide, text="Cara pakai: ",
                  bg="#1A2A1A", fg=GRN,
                  font=("Segoe UI", 8, "bold")).pack(side="left")
-        tk.Label(guide,
+        _ck.Label(guide,
                  text="Pilih baris di tabel -> Edit tipe & nilai di bawah -> Klik [Perbarui]. "
                       "Klik [+ Tambah] untuk langkah baru.",
                  bg="#1A2A1A", fg=FG,
                  font=("Segoe UI", 8), wraplength=580, justify="left").pack(
             side="left", fill="x", expand=True)
 
-        lf = tk.Frame(dlg, bg=CARD, padx=8, pady=8)
+        lf = _ck.Frame(dlg, bg=CARD, padx=8, pady=8)
         lf.pack(fill="both", expand=True, padx=20, pady=(0, 6))
 
         st = ttk.Treeview(lf, columns=("no", "type", "value"),
@@ -11463,7 +11468,7 @@ class SynthexApp:
         st.column("no",    width=36, anchor="center")
         st.column("type",  width=130)
         st.column("value", width=420)
-        vsb = ttk.Scrollbar(lf, orient="vertical", command=st.yview)
+        vsb = _ck.Scrollbar(lf, orient="vertical", command=st.yview)
         st.configure(yscrollcommand=vsb.set)
         st.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
@@ -11483,21 +11488,21 @@ class SynthexApp:
         refresh()
 
         # Edit form
-        form = tk.Frame(dlg, bg=CARD, padx=14, pady=10)
+        form = _ck.Frame(dlg, bg=CARD, padx=14, pady=10)
         form.pack(fill="x", padx=20, pady=(0, 4))
 
         type_var = tk.StringVar(value=_FRIENDLY_TYPES[0])
         val_var  = tk.StringVar()
         hint_var = tk.StringVar(value="Pilih jenis aksi untuk melihat petunjuk")
 
-        r1 = tk.Frame(form, bg=CARD)
+        r1 = _ck.Frame(form, bg=CARD)
         r1.pack(fill="x", pady=(0, 4))
         _lbl(r1, "Jenis Aksi:", fg=MUT, bg=CARD, width=12, anchor="w").pack(side="left")
-        type_cb = ttk.Combobox(r1, textvariable=type_var,
+        type_cb = _ck.Combobox(r1, textvariable=type_var,
                                values=_FRIENDLY_TYPES,
                                state="readonly", width=18)
         type_cb.pack(side="left", padx=(0, 8))
-        hint_lbl = tk.Label(r1, textvariable=hint_var,
+        hint_lbl = _ck.Label(r1, textvariable=hint_var,
                             bg=CARD, fg=MUT, font=("Segoe UI", 8),
                             anchor="w")
         hint_lbl.pack(side="left", fill="x", expand=True)
@@ -11507,11 +11512,11 @@ class SynthexApp:
             hint_var.set(_TYPE_HINT.get(eng, ""))
         type_cb.bind("<<ComboboxSelected>>", _update_hint)
 
-        r2 = tk.Frame(form, bg=CARD)
+        r2 = _ck.Frame(form, bg=CARD)
         r2.pack(fill="x")
         _lbl(r2, "Nilai / Target:", fg=MUT, bg=CARD, width=12, anchor="w").pack(
             side="left")
-        ttk.Entry(r2, textvariable=val_var,
+        t_ck.Entry(r2, textvariable=val_var,
                   font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True)
 
         def on_sel(event):
@@ -11568,7 +11573,7 @@ class SynthexApp:
                 step_data[i + 1], step_data[i] = step_data[i], step_data[i + 1]
                 refresh()
 
-        btn_row = tk.Frame(form, bg=CARD)
+        btn_row = _ck.Frame(form, bg=CARD)
         btn_row.pack(fill="x", pady=(8, 0))
         for txt, cmd, col in [
             ("Perbarui",  upd,       ACC),
@@ -11577,7 +11582,7 @@ class SynthexApp:
             ("Naik",      move_up,   MUT),
             ("Turun",     move_down, MUT),
         ]:
-            tk.Button(btn_row, text=txt, bg=col if col != MUT else CARD,
+            _ck.Button(btn_row, text=txt, bg=col if col != MUT else CARD,
                       fg=BG if col != MUT else FG,
                       font=("Segoe UI", 9), relief="flat", bd=0,
                       padx=10, pady=5, cursor="hand2",
@@ -11612,13 +11617,13 @@ class SynthexApp:
             self._sv.set(
                 "Rekaman '{}' disimpan ({} langkah).".format(name, len(step_data)))
 
-        sr = tk.Frame(dlg, bg=BG)
+        sr = _ck.Frame(dlg, bg=BG)
         sr.pack(fill="x", padx=20, pady=(0, 16))
-        tk.Button(sr, text="Simpan Rekaman", bg=ACC, fg=BG,
+        _ck.Button(sr, text="Simpan Rekaman", bg=ACC, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=8, cursor="hand2",
                   command=save_rec).pack(side="left")
-        ttk.Button(sr, text="Batal",
+        t_ck.Button(sr, text="Batal",
                    command=_on_editor_close).pack(side="left", padx=(8, 0))
 
         # Centre on screen, force render, bring to front
@@ -11724,21 +11729,21 @@ class SynthexApp:
              fg=ACC, bg=CARD, font=("Segoe UI", 10, "bold")).pack(
             pady=(12, 4), padx=12)
         step_var = tk.StringVar(value="Step 0 / {}".format(total))
-        tk.Label(win, textvariable=step_var, fg=FG, bg=CARD,
+        _ck.Label(win, textvariable=step_var, fg=FG, bg=CARD,
                  font=("Segoe UI", 9)).pack(padx=12)
         desc_var = tk.StringVar(value="Preparing...")
-        tk.Label(win, textvariable=desc_var, fg=MUT, bg=CARD,
+        _ck.Label(win, textvariable=desc_var, fg=MUT, bg=CARD,
                  font=("Segoe UI", 8), wraplength=196,
                  justify="left").pack(padx=12, pady=(2, 6))
 
         pct_var = tk.StringVar(value="0%")
-        tk.Label(win, textvariable=pct_var, fg=GRN, bg=CARD,
+        _ck.Label(win, textvariable=pct_var, fg=GRN, bg=CARD,
                  font=("Consolas", 9, "bold")).pack(padx=12)
         pb = tk.Canvas(win, width=196, height=10, bg=BG, highlightthickness=0)
         pb.pack(padx=12, pady=(2, 8))
         win._pct_var = pct_var
 
-        btn_row  = tk.Frame(win, bg=CARD)
+        btn_row  = _ck.Frame(win, bg=CARD)
         btn_row.pack(fill="x", padx=12, pady=(0, 12))
         pause_var = tk.StringVar(value="Pause")
 
@@ -11750,11 +11755,11 @@ class SynthexApp:
                 self._playback_pause.set()
                 pause_var.set("Resume")
 
-        tk.Button(btn_row, textvariable=pause_var, bg=YEL, fg=BG,
+        _ck.Button(btn_row, textvariable=pause_var, bg=YEL, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=8, pady=4, command=toggle_pause).pack(
             side="left", padx=(0, 4))
-        tk.Button(btn_row, text="Stop", bg=RED, fg=BG,
+        _ck.Button(btn_row, text="Stop", bg=RED, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=8, pady=4,
                   command=self._playback_stop.set).pack(side="left")
@@ -11937,36 +11942,36 @@ class SynthexApp:
         dlg.attributes("-topmost", True)
         dlg.overrideredirect(False)
 
-        hdr = tk.Frame(dlg, bg=RED, height=44)
+        hdr = _ck.Frame(dlg, bg=RED, height=44)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="  Hapus Rekaman", bg=RED, fg="white",
+        _ck.Label(hdr, text="  Hapus Rekaman", bg=RED, fg="white",
                  font=("Segoe UI", 11, "bold")).pack(side="left", pady=10)
 
-        body = tk.Frame(dlg, bg=BG, padx=24, pady=18)
+        body = _ck.Frame(dlg, bg=BG, padx=24, pady=18)
         body.pack(fill="both", expand=True)
-        tk.Label(body,
+        _ck.Label(body,
                  text='Yakin hapus rekaman ini?',
                  bg=BG, fg=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        tk.Label(body, text='"{}"'.format(name),
+        _ck.Label(body, text='"{}"'.format(name),
                  bg=BG, fg=ACC2, font=("Segoe UI", 10, "italic"),
                  wraplength=320).pack(anchor="w", pady=(4, 12))
-        tk.Label(body, text="Rekaman yang dihapus tidak bisa dipulihkan.",
+        _ck.Label(body, text="Rekaman yang dihapus tidak bisa dipulihkan.",
                  bg=BG, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
 
         result = [False]
-        btn_row = tk.Frame(body, bg=BG)
+        btn_row = _ck.Frame(body, bg=BG)
         btn_row.pack(anchor="w", pady=(16, 0))
 
         def _yes():
             result[0] = True
             dlg.destroy()
 
-        tk.Button(btn_row, text="Hapus", bg=RED, fg="white",
+        _ck.Button(btn_row, text="Hapus", bg=RED, fg="white",
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=18, pady=7, cursor="hand2",
                   command=_yes).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Batal", bg=CARD, fg=FG,
+        _ck.Button(btn_row, text="Batal", bg=CARD, fg=FG,
                   font=("Segoe UI", 10), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
@@ -12035,25 +12040,25 @@ class SynthexApp:
         dlg.attributes("-topmost", True)
 
         # ── Header ────────────────────────────────────────────────────
-        hdr = tk.Frame(dlg, bg=ACC, height=48)
+        hdr = _ck.Frame(dlg, bg=ACC, height=48)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="  Simpan Rekaman",
+        _ck.Label(hdr, text="  Simpan Rekaman",
                  bg=ACC, fg="white",
                  font=("Segoe UI", 12, "bold")).pack(side="left", pady=12, padx=4)
 
         # ── Body ──────────────────────────────────────────────────────
-        body = tk.Frame(dlg, bg=BG, padx=24, pady=20)
+        body = _ck.Frame(dlg, bg=BG, padx=24, pady=20)
         body.pack(fill="both", expand=True)
 
-        tk.Label(body, text="Nama Rekaman",
+        _ck.Label(body, text="Nama Rekaman",
                  bg=BG, fg=FG,
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
 
         # Entry with rounded-look border frame
-        ef = tk.Frame(body, bg=ACC, padx=1, pady=1)
+        ef = _ck.Frame(body, bg=ACC, padx=1, pady=1)
         ef.pack(fill="x", pady=(4, 2))
-        name_entry = tk.Entry(ef, bg=CARD2, fg=FG, insertbackground=FG,
+        name_entry = _ck.Entry(ef, bg=CARD2, fg=FG, insertbackground=FG,
                               relief="flat", font=("Segoe UI", 11),
                               bd=6)
         name_entry.pack(fill="x")
@@ -12061,14 +12066,14 @@ class SynthexApp:
             name_entry.insert(0, current_name)
             name_entry.select_range(0, "end")
 
-        tk.Label(body,
+        _ck.Label(body,
                  text="Contoh: Login Admin, Isi Form Pesanan, Klik Tombol Beli",
                  bg=BG, fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(2, 14))
 
         # ── Buttons ───────────────────────────────────────────────────
         result = [""]
-        btn_row = tk.Frame(body, bg=BG)
+        btn_row = _ck.Frame(body, bg=BG)
         btn_row.pack(anchor="w")
 
         def _save():
@@ -12083,11 +12088,11 @@ class SynthexApp:
         def _cancel():
             dlg.destroy()
 
-        tk.Button(btn_row, text="Simpan", bg=ACC, fg="white",
+        _ck.Button(btn_row, text="Simpan", bg=ACC, fg="white",
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=20, pady=8, cursor="hand2",
                   command=_save).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Batal", bg=CARD, fg=FG,
+        _ck.Button(btn_row, text="Batal", bg=CARD, fg=FG,
                   font=("Segoe UI", 10), relief="flat", bd=0,
                   padx=14, pady=8, cursor="hand2",
                   command=_cancel).pack(side="left")
@@ -12327,15 +12332,15 @@ class SynthexApp:
         dlg.grab_set()
         dlg.attributes("-topmost", True)
 
-        tk.Label(dlg, text='Run: "{}"'.format(task.get("name", "")),
+        _ck.Label(dlg, text='Run: "{}"'.format(task.get("name", "")),
                  bg=BG, fg=FG, font=("Segoe UI", 12, "bold"),
                  padx=20, pady=(14)).pack(anchor="w")
-        tk.Label(dlg, text=msg, bg=BG, fg=MUT,
+        _ck.Label(dlg, text=msg, bg=BG, fg=MUT,
                  font=("Segoe UI", 9), justify="left",
                  padx=20).pack(anchor="w")
 
         result = [False]
-        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row = _ck.Frame(dlg, bg=BG)
         btn_row.pack(fill="x", padx=20, pady=14)
 
         def _yes():
@@ -12345,11 +12350,11 @@ class SynthexApp:
         def _no():
             dlg.destroy()
 
-        tk.Button(btn_row, text="Yes, Run", bg=GRN, fg=BG,
+        _ck.Button(btn_row, text="Yes, Run", bg=GRN, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=7, cursor="hand2",
                   command=_yes).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Cancel", bg=CARD, fg=FG,
+        _ck.Button(btn_row, text="Cancel", bg=CARD, fg=FG,
                   font=("Segoe UI", 10), relief="flat", bd=0,
                   padx=16, pady=7, cursor="hand2",
                   command=_no).pack(side="left")
@@ -12376,11 +12381,11 @@ class SynthexApp:
         w.attributes("-topmost", True)
         w.geometry("440x340")
 
-        tk.Label(w, text="Running: {}".format(task.get("name", "")),
+        _ck.Label(w, text="Running: {}".format(task.get("name", "")),
                  bg=BG, fg=FG, font=("Segoe UI", 11, "bold"),
                  padx=16, pady=10).pack(anchor="w")
 
-        step_lbl = tk.Label(w, text="Preparing...",
+        step_lbl = _ck.Label(w, text="Preparing...",
                             bg=BG, fg=ACC, font=("Segoe UI", 10),
                             padx=16, anchor="w")
         step_lbl.pack(fill="x")
@@ -12390,9 +12395,9 @@ class SynthexApp:
                              length=400, mode="determinate")
         pb.pack(padx=16, pady=(6, 0))
 
-        log_frame = tk.Frame(w, bg=BG)
+        log_frame = _ck.Frame(w, bg=BG)
         log_frame.pack(fill="both", expand=True, padx=16, pady=(8, 0))
-        log_box = scrolledtext.ScrolledText(
+        log_box = _ck.ScrolledText(
             log_frame, bg=CARD, fg=FG, font=("Consolas", 8),
             relief="flat", height=8, state="disabled")
         log_box.pack(fill="both", expand=True)
@@ -12400,14 +12405,14 @@ class SynthexApp:
         log_box.tag_configure("fail", foreground=RED)
         log_box.tag_configure("info", foreground=MUT)
 
-        btn_row = tk.Frame(w, bg=BG)
+        btn_row = _ck.Frame(w, bg=BG)
         btn_row.pack(fill="x", padx=16, pady=10)
 
         def _stop():
             stop_flag.set()
             stop_btn.configure(state="disabled", text="Stopping...")
 
-        stop_btn = tk.Button(btn_row, text="Stop", bg=RED, fg=BG,
+        stop_btn = _ck.Button(btn_row, text="Stop", bg=RED, fg=BG,
                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                              padx=12, pady=5, cursor="hand2", command=_stop)
         stop_btn.pack(side="left")
@@ -12581,21 +12586,21 @@ class SynthexApp:
         w.geometry("400x530")
 
         # ── Title row ────────────────────────────────────────────────
-        title_frame = tk.Frame(w, bg=CARD, padx=12, pady=10)
+        title_frame = _ck.Frame(w, bg=CARD, padx=12, pady=10)
         title_frame.pack(fill="x")
-        tk.Label(title_frame,
+        _ck.Label(title_frame,
                  text=task.get("name", "Bulk Order Confirmation"),
                  bg=CARD, fg=FG, font=("Segoe UI", 11, "bold")).pack(side="left")
-        loop_lbl = tk.Label(title_frame, text="[● READY]",
+        loop_lbl = _ck.Label(title_frame, text="[● READY]",
                             bg=CARD, fg=GRN, font=("Segoe UI", 9, "bold"))
         loop_lbl.pack(side="right")
 
-        tk.Frame(w, bg=MUT, height=1).pack(fill="x")
+        _ck.Frame(w, bg=MUT, height=1).pack(fill="x")
 
         # ── This loop stats ───────────────────────────────────────────
-        loop_frame = tk.Frame(w, bg=BG, padx=14, pady=8)
+        loop_frame = _ck.Frame(w, bg=BG, padx=14, pady=8)
         loop_frame.pack(fill="x")
-        tk.Label(loop_frame, text="This loop:",
+        _ck.Label(loop_frame, text="This loop:",
                  bg=BG, fg=MUT, font=("Segoe UI", 8, "bold")).pack(anchor="w")
 
         stats_vars = {
@@ -12608,16 +12613,16 @@ class SynthexApp:
             "checked": FG, "confirmed": GRN, "skipped": FG, "mismatches": RED,
         }
         for key, var in stats_vars.items():
-            tk.Label(loop_frame, textvariable=var,
+            _ck.Label(loop_frame, textvariable=var,
                      bg=BG, fg=_stat_colors[key],
                      font=("Segoe UI", 9)).pack(anchor="w", padx=(10, 0))
 
-        tk.Frame(w, bg=MUT, height=1).pack(fill="x")
+        _ck.Frame(w, bg=MUT, height=1).pack(fill="x")
 
         # ── All-time totals ───────────────────────────────────────────
-        totals_frame = tk.Frame(w, bg=BG, padx=14, pady=8)
+        totals_frame = _ck.Frame(w, bg=BG, padx=14, pady=8)
         totals_frame.pack(fill="x")
-        tk.Label(totals_frame, text="All time totals:",
+        _ck.Label(totals_frame, text="All time totals:",
                  bg=BG, fg=MUT, font=("Segoe UI", 8, "bold")).pack(anchor="w")
 
         totals_vars = {
@@ -12629,16 +12634,16 @@ class SynthexApp:
             "confirmed_total": GRN, "mismatches_total": RED, "unverified_total": YEL,
         }
         for key, var in totals_vars.items():
-            tk.Label(totals_frame, textvariable=var,
+            _ck.Label(totals_frame, textvariable=var,
                      bg=BG, fg=_tot_colors[key],
                      font=("Segoe UI", 9)).pack(anchor="w", padx=(10, 0))
 
-        tk.Frame(w, bg=MUT, height=1).pack(fill="x")
+        _ck.Frame(w, bg=MUT, height=1).pack(fill="x")
 
         # ── Live log ──────────────────────────────────────────────────
-        log_frame = tk.Frame(w, bg=BG)
+        log_frame = _ck.Frame(w, bg=BG)
         log_frame.pack(fill="both", expand=True, padx=14, pady=(6, 0))
-        log_box = scrolledtext.ScrolledText(
+        log_box = _ck.ScrolledText(
             log_frame, bg=CARD, fg=FG, font=("Consolas", 7),
             relief="flat", height=6, state="disabled")
         log_box.pack(fill="both", expand=True)
@@ -12647,17 +12652,17 @@ class SynthexApp:
         log_box.tag_configure("fail", foreground=RED)
         log_box.tag_configure("info", foreground=MUT)
 
-        tk.Frame(w, bg=MUT, height=1).pack(fill="x")
+        _ck.Frame(w, bg=MUT, height=1).pack(fill="x")
 
         # ── Countdown + buttons ───────────────────────────────────────
-        bottom = tk.Frame(w, bg=BG, padx=14, pady=10)
+        bottom = _ck.Frame(w, bg=BG, padx=14, pady=10)
         bottom.pack(fill="x")
 
         countdown_var = tk.StringVar(value="")
-        tk.Label(bottom, textvariable=countdown_var,
+        _ck.Label(bottom, textvariable=countdown_var,
                  bg=BG, fg=ACC, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 6))
 
-        btn_row = tk.Frame(bottom, bg=BG)
+        btn_row = _ck.Frame(bottom, bg=BG)
         btn_row.pack(fill="x")
 
         def _stop():
@@ -12674,12 +12679,12 @@ class SynthexApp:
             else:
                 self._show_alert("Export Report", "No report data yet for today.")
 
-        stop_btn = tk.Button(btn_row, text="STOP", bg=RED, fg=BG,
+        stop_btn = _ck.Button(btn_row, text="STOP", bg=RED, fg=BG,
                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                              padx=12, pady=5, cursor="hand2", command=_stop)
         stop_btn.pack(side="left", padx=(0, 8))
 
-        tk.Button(btn_row, text="Export Report", bg=CARD, fg=FG,
+        _ck.Button(btn_row, text="Export Report", bg=CARD, fg=FG,
                   font=("Segoe UI", 9), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_export).pack(side="left")
@@ -12927,30 +12932,30 @@ class SynthexApp:
             w.configure(bg=card_col)
 
             # outer frame with border effect
-            outer = tk.Frame(w, bg=stripe_col, bd=0)
+            outer = _ck.Frame(w, bg=stripe_col, bd=0)
             outer.pack(fill="both", expand=True)
 
-            inner = tk.Frame(outer, bg=card_col, bd=0)
+            inner = _ck.Frame(outer, bg=card_col, bd=0)
             inner.pack(fill="both", expand=True, padx=(3, 0))  # 3px left stripe
 
             # top row: icon + message + close btn
-            top = tk.Frame(inner, bg=card_col)
+            top = _ck.Frame(inner, bg=card_col)
             top.pack(fill="x", padx=(10, 8), pady=(10, 4))
 
             photo = ImageTk.PhotoImage(icon_img)
             w._icon_photo = photo  # prevent GC
-            tk.Label(top, image=photo, bg=card_col).pack(side="left", padx=(0, 8))
+            _ck.Label(top, image=photo, bg=card_col).pack(side="left", padx=(0, 8))
 
             import textwrap
             wrapped = "\n".join(textwrap.wrap(message[:220], width=42))
-            tk.Label(top, text=wrapped, bg=card_col, fg=FG,
+            _ck.Label(top, text=wrapped, bg=card_col, fg=FG,
                      font=("Segoe UI", 9), justify="left",
                      wraplength=230).pack(side="left", fill="x", expand=True, anchor="w")
 
             def _dismiss():
                 _toast_close(w)
 
-            close_btn = tk.Label(top, text="✕", bg=card_col, fg=MUT,
+            close_btn = _ck.Label(top, text="✕", bg=card_col, fg=MUT,
                                  font=("Segoe UI", 9), cursor="hand2")
             close_btn.pack(side="right", anchor="n", padx=(4, 0))
             close_btn.bind("<Button-1>", lambda e: _dismiss())
@@ -12965,15 +12970,15 @@ class SynthexApp:
                     dw.title("Error Details")
                     dw.configure(bg=BG)
                     dw.geometry("600x320")
-                    st = scrolledtext.ScrolledText(dw, bg=CARD, fg=MUT,
+                    st = _ck.ScrolledText(dw, bg=CARD, fg=MUT,
                                                    font=("Consolas", 9), relief="flat")
                     st.pack(fill="both", expand=True, padx=12, pady=12)
                     st.insert(tk.END, _det)
                     st.configure(state="disabled")
-                    ttk.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
-                det_row = tk.Frame(inner, bg=card_col)
+                    t_ck.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
+                det_row = _ck.Frame(inner, bg=card_col)
                 det_row.pack(fill="x", padx=12, pady=(0, 6))
-                tk.Label(det_row, text="Lihat Detail →", bg=card_col,
+                _ck.Label(det_row, text="Lihat Detail →", bg=card_col,
                          fg=stripe_col, font=("Segoe UI", 8), cursor="hand2").pack(
                     side="left").bind("<Button-1>", lambda e: _show_det())
 
@@ -13102,26 +13107,26 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        tk.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
-        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+        _ck.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        _ck.Label(dlg, text=title, bg="#0D0D14", fg=FG,
                  font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
-        tk.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
+        _ck.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 9), justify="center",
                  wraplength=330).pack(pady=(8, 14))
-        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+        _ck.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
 
-        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        btn_row = _ck.Frame(dlg, bg="#0D0D14")
         btn_row.pack(pady=14)
 
         def _yes():
             result.set(True)
             dlg.destroy()
 
-        tk.Button(btn_row, text="  {}  ".format(confirm_text), bg=accent,
+        _ck.Button(btn_row, text="  {}  ".format(confirm_text), bg=accent,
                   fg="white", relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=12, pady=6,
                   command=_yes).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="  {}  ".format(cancel_text), bg=CARD2, fg=FG,
+        _ck.Button(btn_row, text="  {}  ".format(cancel_text), bg=CARD2, fg=FG,
                   relief="flat", font=("Segoe UI", 10),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(side="left")
@@ -13151,41 +13156,41 @@ class SynthexApp:
         except Exception:
             pass
 
-        tk.Frame(dlg, bg=ACC, height=4).pack(fill="x")
-        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
+        _ck.Frame(dlg, bg=ACC, height=4).pack(fill="x")
+        bd = _ck.Frame(dlg, bg="#0D0D14", padx=28, pady=20)
         bd.pack(fill="both", expand=True)
 
         # Header: logo PIL + judul
-        hdr = tk.Frame(bd, bg="#0D0D14")
+        hdr = _ck.Frame(bd, bg="#0D0D14")
         hdr.pack(fill="x", anchor="w", pady=(0, 12))
         try:
             from ui.icons import generate_all_icons
             _ico_img = generate_all_icons(28, (108, 74, 255), keys=["settings"])["settings"]
             _ico_ph  = ImageTk.PhotoImage(_ico_img)
             dlg._ico_ph = _ico_ph  # prevent GC
-            tk.Label(hdr, image=_ico_ph, bg="#0D0D14").pack(side="left", padx=(0, 10))
+            _ck.Label(hdr, image=_ico_ph, bg="#0D0D14").pack(side="left", padx=(0, 10))
         except Exception:
             pass
-        title_wrap = tk.Frame(hdr, bg="#0D0D14")
+        title_wrap = _ck.Frame(hdr, bg="#0D0D14")
         title_wrap.pack(side="left")
-        tk.Label(title_wrap, text="Synthex  {}  Tersedia".format(tag),
+        _ck.Label(title_wrap, text="Synthex  {}  Tersedia".format(tag),
                  bg="#0D0D14", fg=ACC, font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        tk.Label(title_wrap,
+        _ck.Label(title_wrap,
                  text="Versi kamu: v{}  →  {}".format(
                      self.config.get("app.version", "?"), tag),
                  bg="#0D0D14", fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
 
-        tk.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.",
+        _ck.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.",
                  bg="#0D0D14", fg=FG, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 14))
 
         status_var = tk.StringVar(value="Siap mengunduh…")
-        tk.Label(bd, textvariable=status_var, bg="#0D0D14", fg=MUT,
+        _ck.Label(bd, textvariable=status_var, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w")
 
         bar = ttk.Progressbar(bd, mode="determinate", length=400, maximum=100)
         bar.pack(anchor="w", pady=(4, 12))
 
-        btn = tk.Button(bd, text="⬇  Download & Install Sekarang",
+        btn = _ck.Button(bd, text="⬇  Download & Install Sekarang",
                         bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
                         relief="flat", bd=0, padx=18, pady=8, cursor="hand2")
         btn.pack(anchor="w")
@@ -13227,21 +13232,21 @@ class SynthexApp:
         dlg.grab_set()
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("440x260+{}+{}".format((sw-440)//2, (sh-260)//2))
-        tk.Frame(dlg, bg=RED, height=4).pack(fill="x")
-        bd = tk.Frame(dlg, bg="#0D0D14", padx=28, pady=24)
+        _ck.Frame(dlg, bg=RED, height=4).pack(fill="x")
+        bd = _ck.Frame(dlg, bg="#0D0D14", padx=28, pady=24)
         bd.pack(fill="both", expand=True)
-        tk.Label(bd, text="⚠ Update Wajib", bg="#0D0D14", fg=RED,
+        _ck.Label(bd, text="⚠ Update Wajib", bg="#0D0D14", fg=RED,
                  font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tk.Label(bd, text="Versi minimum yang diizinkan: v{}".format(min_ver),
+        _ck.Label(bd, text="Versi minimum yang diizinkan: v{}".format(min_ver),
                  bg="#0D0D14", fg=FG, font=("Segoe UI", 10)).pack(anchor="w", pady=(8,0))
-        tk.Label(bd, text="Versi kamu saat ini terlalu lama dan tidak bisa digunakan.\n"
+        _ck.Label(bd, text="Versi kamu saat ini terlalu lama dan tidak bisa digunakan.\n"
                           "Download versi terbaru dari GitHub untuk melanjutkan.",
                  bg="#0D0D14", fg=MUT, font=("Segoe UI", 9), justify="left").pack(
             anchor="w", pady=(6,16))
         def _open_gh():
             import webbrowser
             webbrowser.open("https://github.com/Yohn18/synthex-releases/releases/latest")
-        tk.Button(bd, text="⬇ Download Update",
+        _ck.Button(bd, text="⬇ Download Update",
                   bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_open_gh).pack(anchor="w")
@@ -13255,21 +13260,21 @@ class SynthexApp:
         dlg.attributes("-topmost", True)
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("480x380+{}+{}".format((sw-480)//2, (sh-380)//2))
-        tk.Frame(dlg, bg=GRN, height=4).pack(fill="x")
-        bd = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=20)
+        _ck.Frame(dlg, bg=GRN, height=4).pack(fill="x")
+        bd = _ck.Frame(dlg, bg="#0D0D14", padx=24, pady=20)
         bd.pack(fill="both", expand=True)
-        tk.Label(bd, text="🎉 Update v{}".format(cl.get("version","")),
+        _ck.Label(bd, text="🎉 Update v{}".format(cl.get("version","")),
                  bg="#0D0D14", fg=GRN,
                  font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tk.Label(bd, text="Berikut perubahan terbaru:", bg="#0D0D14", fg=MUT,
+        _ck.Label(bd, text="Berikut perubahan terbaru:", bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 8)).pack(anchor="w", pady=(4,8))
-        txt = scrolledtext.ScrolledText(bd, bg=CARD, fg=FG, relief="flat",
+        txt = _ck.ScrolledText(bd, bg=CARD, fg=FG, relief="flat",
                                         font=("Segoe UI", 9), height=10, wrap="word",
                                         state="normal")
         txt.insert("1.0", cl.get("notes",""))
         txt.configure(state="disabled")
         txt.pack(fill="both", expand=True)
-        tk.Button(bd, text="Mengerti, Lanjutkan",
+        _ck.Button(bd, text="Mengerti, Lanjutkan",
                   bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=dlg.destroy).pack(anchor="e", pady=(12,0))
@@ -13284,24 +13289,24 @@ class SynthexApp:
         dlg.attributes("-topmost", True)
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("460x320+{}+{}".format((sw-460)//2, (sh-320)//2))
-        tk.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
-        bd = tk.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
+        _ck.Frame(dlg, bg="#7C3AED", height=4).pack(fill="x")
+        bd = _ck.Frame(dlg, bg="#0D0D14", padx=24, pady=18)
         bd.pack(fill="both", expand=True)
-        tk.Label(bd, text="📬 {} Pesan Baru dari Admin".format(len(msgs)),
+        _ck.Label(bd, text="📬 {} Pesan Baru dari Admin".format(len(msgs)),
                  bg="#0D0D14", fg=ACC, font=("Segoe UI", 12, "bold")).pack(anchor="w")
         from datetime import datetime as _dt2
-        msg_frame = tk.Frame(bd, bg=CARD)
+        msg_frame = _ck.Frame(bd, bg=CARD)
         msg_frame.pack(fill="both", expand=True, pady=(10,0))
         for m in msgs:
             ts = m.get("ts", 0)
             try: t_str = _dt2.fromtimestamp(ts).strftime("%d %b %Y  %H:%M")
             except Exception: t_str = ""
-            mf = tk.Frame(msg_frame, bg=CARD, padx=12, pady=8)
+            mf = _ck.Frame(msg_frame, bg=CARD, padx=12, pady=8)
             mf.pack(fill="x")
-            tk.Frame(msg_frame, bg="#1c1c2e", height=1).pack(fill="x")
-            tk.Label(mf, text=t_str, bg=CARD, fg=MUT,
+            _ck.Frame(msg_frame, bg="#1c1c2e", height=1).pack(fill="x")
+            _ck.Label(mf, text=t_str, bg=CARD, fg=MUT,
                      font=("Segoe UI", 7)).pack(anchor="w")
-            tk.Label(mf, text=m.get("message",""), bg=CARD, fg=FG,
+            _ck.Label(mf, text=m.get("message",""), bg=CARD, fg=FG,
                      font=("Segoe UI", 9), wraplength=380, justify="left").pack(anchor="w")
         def _close():
             from modules.master_config import mark_dm_read
@@ -13311,7 +13316,7 @@ class SynthexApp:
                         mark_dm_read(my_email, k, token),
                     daemon=True).start()
             dlg.destroy()
-        tk.Button(bd, text="Tandai Sudah Dibaca",
+        _ck.Button(bd, text="Tandai Sudah Dibaca",
                   bg=ACC, fg="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_close).pack(anchor="e", pady=(12,0))
@@ -13336,14 +13341,14 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        tk.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
-        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+        _ck.Frame(dlg, bg=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        _ck.Label(dlg, text=title, bg="#0D0D14", fg=FG,
                  font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
-        tk.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
+        _ck.Label(dlg, text=message, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 9), justify="center",
                  wraplength=330).pack(pady=(8, 14))
-        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
-        tk.Button(dlg, text="  OK  ", bg=accent, fg="white",
+        _ck.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+        _ck.Button(dlg, text="  OK  ", bg=accent, fg="white",
                   relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(pady=14)
@@ -13368,20 +13373,20 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        tk.Frame(dlg, bg=ACC, bd=0).place(x=0, y=0, width=W, height=3)
-        tk.Label(dlg, text=title, bg="#0D0D14", fg=FG,
+        _ck.Frame(dlg, bg=ACC, bd=0).place(x=0, y=0, width=W, height=3)
+        _ck.Label(dlg, text=title, bg="#0D0D14", fg=FG,
                  font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
-        tk.Label(dlg, text=prompt, bg="#0D0D14", fg=MUT,
+        _ck.Label(dlg, text=prompt, bg="#0D0D14", fg=MUT,
                  font=("Segoe UI", 9)).pack(pady=(6, 4))
-        entry = tk.Entry(dlg, bg=CARD2, fg=FG, insertbackground=FG,
+        entry = _ck.Entry(dlg, bg=CARD2, fg=FG, insertbackground=FG,
                          relief="flat", font=("Segoe UI", 10),
                          width=32, bd=6)
         entry.insert(0, initial)
         entry.pack(padx=24)
         entry.focus_set()
 
-        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24, pady=(12, 0))
-        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        _ck.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24, pady=(12, 0))
+        btn_row = _ck.Frame(dlg, bg="#0D0D14")
         btn_row.pack(pady=12)
 
         def _ok():
@@ -13391,11 +13396,11 @@ class SynthexApp:
         entry.bind("<Return>", lambda e: _ok())
         entry.bind("<Escape>", lambda e: dlg.destroy())
 
-        tk.Button(btn_row, text="  OK  ", bg=ACC, fg="white",
+        _ck.Button(btn_row, text="  OK  ", bg=ACC, fg="white",
                   relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=12, pady=6,
                   command=_ok).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
+        _ck.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
                   relief="flat", font=("Segoe UI", 10),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(side="left")
@@ -13646,7 +13651,7 @@ class SynthexApp:
              justify="left").pack(anchor="w", pady=(0, 10))
 
         # Accounts list frame
-        list_frame = tk.Frame(card, bg=CARD)
+        list_frame = _ck.Frame(card, bg=CARD)
         list_frame.pack(fill="x", pady=(0, 8))
 
         def _refresh_accounts():
@@ -13660,32 +13665,32 @@ class SynthexApp:
                 return
 
             # Header
-            hdr = tk.Frame(list_frame, bg=SIDE)
+            hdr = _ck.Frame(list_frame, bg=SIDE)
             hdr.pack(fill="x", pady=(0, 2))
             for txt, w in [("Nama", 110), ("Service Account Email", 280),
                            ("Status", 70), ("Aksi", 120)]:
-                tk.Label(hdr, text=txt, bg=SIDE, fg=MUT,
+                _ck.Label(hdr, text=txt, bg=SIDE, fg=MUT,
                          font=("Segoe UI", 8, "bold"),
                          width=w // 8, anchor="w").pack(side="left", padx=4)
 
             for acc in accounts:
-                row = tk.Frame(list_frame, bg=BG, pady=3)
+                row = _ck.Frame(list_frame, bg=BG, pady=3)
                 row.pack(fill="x")
 
                 # Name
-                name_lbl = tk.Label(row, text=acc["name"], bg=BG, fg=FG,
+                name_lbl = _ck.Label(row, text=acc["name"], bg=BG, fg=FG,
                                     font=("Segoe UI", 9, "bold"),
                                     width=14, anchor="w")
                 name_lbl.pack(side="left", padx=(4, 0))
 
                 # Email (with copy button)
-                email_frame = tk.Frame(row, bg=BG)
+                email_frame = _ck.Frame(row, bg=BG)
                 email_frame.pack(side="left", padx=(4, 0))
                 email_txt = acc["email"] or "(invalid)"
-                tk.Label(email_frame, text=email_txt[:38],
+                _ck.Label(email_frame, text=email_txt[:38],
                          bg=BG, fg=GRN if acc["email"] else RED,
                          font=("Consolas", 8), anchor="w").pack(side="left")
-                tk.Button(email_frame, text="copy", bg=BG, fg=MUT,
+                _ck.Button(email_frame, text="copy", bg=BG, fg=MUT,
                           font=("Segoe UI", 7), relief="flat", bd=0,
                           cursor="hand2", padx=4,
                           command=lambda e=acc["email"]: [
@@ -13696,11 +13701,11 @@ class SynthexApp:
 
                 # Active badge
                 if acc["active"]:
-                    tk.Label(row, text=" AKTIF ", bg=GRN, fg=BG,
+                    _ck.Label(row, text=" AKTIF ", bg=GRN, fg=BG,
                              font=("Segoe UI", 7, "bold"),
                              padx=4).pack(side="left", padx=(8, 0))
                 else:
-                    tk.Button(row, text="Aktifkan", bg=CARD, fg=ACC,
+                    _ck.Button(row, text="Aktifkan", bg=CARD, fg=ACC,
                               font=("Segoe UI", 8), relief="flat", bd=0,
                               padx=6, pady=2, cursor="hand2",
                               command=lambda n=acc["name"]: [
@@ -13711,7 +13716,7 @@ class SynthexApp:
                               ]).pack(side="left", padx=(8, 0))
 
                 # Delete
-                tk.Button(row, text="Hapus", bg=CARD, fg=RED,
+                _ck.Button(row, text="Hapus", bg=CARD, fg=RED,
                           font=("Segoe UI", 8), relief="flat", bd=0,
                           padx=6, pady=2, cursor="hand2",
                           command=lambda n=acc["name"]: self._google_remove_account(
@@ -13721,15 +13726,15 @@ class SynthexApp:
         _refresh_accounts()
 
         # Action buttons
-        btn_row = tk.Frame(card, bg=CARD)
+        btn_row = _ck.Frame(card, bg=CARD)
         btn_row.pack(anchor="w", pady=(4, 0))
-        tk.Button(btn_row, text="+ Tambah Akun Google",
+        _ck.Button(btn_row, text="+ Tambah Akun Google",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
                   relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
                   command=lambda: self._show_sheets_setup_guide(
                       on_done=_refresh_accounts)
                   ).pack(side="left", padx=(0, 8))
-        tk.Button(btn_row, text="Panduan Setup",
+        _ck.Button(btn_row, text="Panduan Setup",
                   bg=CARD, fg=FG, font=("Segoe UI", 9),
                   relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
                   command=lambda: self._show_sheets_setup_guide()
@@ -13856,49 +13861,49 @@ class SynthexApp:
         ]
 
         # ── Header bar ────────────────────────────────────────────────────
-        hdr = tk.Frame(dlg, bg=ACC, height=46)
+        hdr = _ck.Frame(dlg, bg=ACC, height=46)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="  Panduan Setup Google Sheets", bg=ACC, fg=BG,
+        _ck.Label(hdr, text="  Panduan Setup Google Sheets", bg=ACC, fg=BG,
                  font=("Segoe UI", 12, "bold")).pack(side="left", pady=12)
-        tk.Button(hdr, text="X", bg=ACC, fg=BG,
+        _ck.Button(hdr, text="X", bg=ACC, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=10, cursor="hand2",
                   command=dlg.destroy).pack(side="right", padx=8, pady=10)
 
         # ── Progress dots ─────────────────────────────────────────────────
-        dot_frame = tk.Frame(dlg, bg=BG, pady=8)
+        dot_frame = _ck.Frame(dlg, bg=BG, pady=8)
         dot_frame.pack(fill="x", padx=20)
         dot_labels = []
         for i, s in enumerate(STEPS):
-            lbl = tk.Label(dot_frame, text=" ", bg=SIDE, width=4, height=1)
+            lbl = _ck.Label(dot_frame, text=" ", bg=SIDE, width=4, height=1)
             lbl.pack(side="left", padx=3)
             dot_labels.append((lbl, s["color"]))
 
         # ── Content area ──────────────────────────────────────────────────
-        content_frame = tk.Frame(dlg, bg=BG)
+        content_frame = _ck.Frame(dlg, bg=BG)
         content_frame.pack(fill="both", expand=True, padx=20, pady=(0, 8))
 
         # ── Bottom nav ────────────────────────────────────────────────────
-        nav = tk.Frame(dlg, bg=CARD, pady=10)
+        nav = _ck.Frame(dlg, bg=CARD, pady=10)
         nav.pack(fill="x", side="bottom")
 
-        btn_prev = tk.Button(nav, text="< Kembali", bg=SIDE, fg=FG,
+        btn_prev = _ck.Button(nav, text="< Kembali", bg=SIDE, fg=FG,
                              font=("Segoe UI", 9), relief="flat", bd=0,
                              padx=14, pady=6, cursor="hand2")
         btn_prev.pack(side="left", padx=16)
 
-        step_lbl = tk.Label(nav, text="", bg=CARD, fg=MUT,
+        step_lbl = _ck.Label(nav, text="", bg=CARD, fg=MUT,
                             font=("Segoe UI", 9))
         step_lbl.pack(side="left", expand=True)
 
-        btn_close = tk.Button(nav, text="Tutup", bg=SIDE, fg=FG,
+        btn_close = _ck.Button(nav, text="Tutup", bg=SIDE, fg=FG,
                               font=("Segoe UI", 9), relief="flat", bd=0,
                               padx=14, pady=6, cursor="hand2",
                               command=dlg.destroy)
         btn_close.pack(side="right", padx=16)
 
-        btn_next = tk.Button(nav, text="Lanjut >", bg=ACC, fg=BG,
+        btn_next = _ck.Button(nav, text="Lanjut >", bg=ACC, fg=BG,
                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                              padx=14, pady=6, cursor="hand2")
         btn_next.pack(side="right", padx=(0, 8))
@@ -13925,41 +13930,41 @@ class SynthexApp:
                 text="Selesai!" if is_last else "Lanjut >",
                 bg=GRN if is_last else ACC)
 
-            top_row = tk.Frame(content_frame, bg=BG)
+            top_row = _ck.Frame(content_frame, bg=BG)
             top_row.pack(fill="x", pady=(8, 4))
-            tk.Label(top_row, text=step["icon"], bg=step["color"], fg=BG,
+            _ck.Label(top_row, text=step["icon"], bg=step["color"], fg=BG,
                      font=("Segoe UI", 11, "bold"), width=3, pady=4,
                      ).pack(side="left")
-            tk.Label(top_row, text="  " + step["title"], bg=BG, fg=FG,
+            _ck.Label(top_row, text="  " + step["title"], bg=BG, fg=FG,
                      font=("Segoe UI", 11, "bold"), anchor="w",
                      ).pack(side="left", fill="x", expand=True)
 
-            tk.Frame(content_frame, bg=SIDE, height=1).pack(fill="x", pady=(4, 10))
+            _ck.Frame(content_frame, bg=SIDE, height=1).pack(fill="x", pady=(4, 10))
 
-            tk.Label(content_frame, text=step["body"], bg=BG, fg=MUT,
+            _ck.Label(content_frame, text=step["body"], bg=BG, fg=MUT,
                      font=("Segoe UI", 10), justify="left", anchor="nw",
                      wraplength=500).pack(anchor="w", fill="x")
 
             if step.get("btn_label"):
-                tk.Button(content_frame, text=step["btn_label"],
+                _ck.Button(content_frame, text=step["btn_label"],
                           bg=step["color"], fg=BG,
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                           padx=14, pady=7, cursor="hand2",
                           command=step["btn_cmd"]).pack(anchor="w", pady=(14, 0))
 
             if step.get("is_upload"):
-                up_row = tk.Frame(content_frame, bg=BG)
+                up_row = _ck.Frame(content_frame, bg=BG)
                 up_row.pack(fill="x", pady=(12, 0))
-                tk.Label(up_row, text="Nama akun (bebas):", bg=BG, fg=MUT,
+                _ck.Label(up_row, text="Nama akun (bebas):", bg=BG, fg=MUT,
                          font=("Segoe UI", 9)).pack(side="left")
-                tk.Entry(up_row, textvariable=upload_name_var,
+                _ck.Entry(up_row, textvariable=upload_name_var,
                          bg=CARD, fg=FG, insertbackground=ACC,
                          font=("Segoe UI", 10), relief="flat",
                          bd=0, highlightthickness=1,
                          highlightbackground=SIDE, highlightcolor=ACC,
                          width=18).pack(side="left", padx=(8, 0))
 
-                status_up = tk.Label(content_frame, textvariable=upload_status_var,
+                status_up = _ck.Label(content_frame, textvariable=upload_status_var,
                                      bg=BG, fg=GRN, font=("Segoe UI", 9),
                                      wraplength=500, justify="left")
 
@@ -13985,7 +13990,7 @@ class SynthexApp:
                         upload_status_var.set("Gagal: {}".format(msg))
                         s_lbl.configure(fg=RED)
 
-                tk.Button(content_frame, text="Pilih File credentials.json",
+                _ck.Button(content_frame, text="Pilih File credentials.json",
                           bg=ACC, fg=BG, font=("Segoe UI", 10, "bold"),
                           relief="flat", bd=0, padx=16, pady=8,
                           cursor="hand2", command=_do_upload
@@ -13998,19 +14003,19 @@ class SynthexApp:
                     acts = _sc.list_accounts()
                     email_show = next((a["email"] for a in acts if a["active"]), "")
 
-                share_f = tk.Frame(content_frame, bg=CARD, padx=14, pady=12)
+                share_f = _ck.Frame(content_frame, bg=CARD, padx=14, pady=12)
                 share_f.pack(fill="x", pady=(14, 0))
-                tk.Label(share_f,
+                _ck.Label(share_f,
                          text="Email service account (salin & tempel ke Share):",
                          bg=CARD, fg=YEL,
                          font=("Segoe UI", 9, "bold")).pack(anchor="w")
-                em_row = tk.Frame(share_f, bg=CARD)
+                em_row = _ck.Frame(share_f, bg=CARD)
                 em_row.pack(fill="x", pady=(6, 0))
                 disp = email_show or "(belum ada akun - selesaikan langkah 5 dulu)"
-                tk.Label(em_row, text=disp, bg=CARD, fg=GRN,
+                _ck.Label(em_row, text=disp, bg=CARD, fg=GRN,
                          font=("Consolas", 10, "bold")).pack(side="left")
                 if email_show:
-                    tk.Button(em_row, text="Salin",
+                    _ck.Button(em_row, text="Salin",
                               bg=ACC, fg=BG,
                               font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                               padx=10, pady=3, cursor="hand2",
@@ -14020,7 +14025,7 @@ class SynthexApp:
                                   self._sv.set("Email disalin!")
                               ]).pack(side="left", padx=(10, 0))
 
-                tk.Button(content_frame, text="Buka Google Sheets sekarang",
+                _ck.Button(content_frame, text="Buka Google Sheets sekarang",
                           bg=GRN, fg=BG,
                           font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                           padx=14, pady=7, cursor="hand2",
@@ -14042,7 +14047,7 @@ class SynthexApp:
     # ================================================================
 
     def _pg_templates(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Template Macros",
                   "Pilih template siap pakai, kustomisasi, lalu simpan sebagai macro.")
 
@@ -14054,11 +14059,11 @@ class SynthexApp:
 
         # Scrollable canvas
         canvas = tk.Canvas(f, bg=BG, highlightthickness=0)
-        sb = ttk.Scrollbar(f, orient="vertical", command=canvas.yview)
+        sb = _ck.Scrollbar(f, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=sb.set)
         sb.pack(side="right", fill="y")
         canvas.pack(side="left", fill="both", expand=True)
-        inner = tk.Frame(canvas, bg=BG)
+        inner = _ck.Frame(canvas, bg=BG)
         win_id = canvas.create_window((0, 0), window=inner, anchor="nw")
         inner.bind("<Configure>", lambda e: canvas.configure(
             scrollregion=canvas.bbox("all")))
@@ -14087,23 +14092,23 @@ class SynthexApp:
         for t_idx, tpl in enumerate(templates):
             card_acc = _CARD_COLORS[t_idx % len(_CARD_COLORS)]
 
-            card = tk.Frame(inner, bg=CARD, padx=0, pady=0)
+            card = _ck.Frame(inner, bg=CARD, padx=0, pady=0)
             card.pack(fill="x", padx=20, pady=(0, 14))
 
             # Color stripe on left
-            tk.Frame(card, bg=card_acc, width=5).pack(side="left", fill="y")
+            _ck.Frame(card, bg=card_acc, width=5).pack(side="left", fill="y")
 
-            body = tk.Frame(card, bg=CARD, padx=16, pady=12)
+            body = _ck.Frame(card, bg=CARD, padx=16, pady=12)
             body.pack(side="left", fill="both", expand=True)
 
             # Header row
-            hrow = tk.Frame(body, bg=CARD)
+            hrow = _ck.Frame(body, bg=CARD)
             hrow.pack(fill="x")
             cont = tk.BooleanVar(value=tpl.get("continuous_mode", False))
             _lbl(hrow, tpl.get("name", ""), bg=CARD, fg=FG,
                  font=("Segoe UI", 12, "bold")).pack(side="left")
             if cont.get():
-                tk.Label(hrow, text=" LOOP ", bg=YEL, fg=BG,
+                _ck.Label(hrow, text=" LOOP ", bg=YEL, fg=BG,
                          font=("Segoe UI", 7, "bold"),
                          padx=4).pack(side="left", padx=(8, 0))
             steps_count = len(tpl.get("steps", []))
@@ -14115,32 +14120,32 @@ class SynthexApp:
                 anchor="w", pady=(4, 8))
 
             # Step preview chips
-            chip_row = tk.Frame(body, bg=CARD)
+            chip_row = _ck.Frame(body, bg=CARD)
             chip_row.pack(fill="x", pady=(0, 10))
             for step in tpl.get("steps", [])[:8]:
                 stype = step.get("type", "")
                 icon  = _TICONS.get(stype, "[?]")
                 clr   = _TCOLORS.get(stype, MUT)
-                chip  = tk.Frame(chip_row, bg=BG, padx=5, pady=2)
+                chip  = _ck.Frame(chip_row, bg=BG, padx=5, pady=2)
                 chip.pack(side="left", padx=(0, 4), pady=2)
-                tk.Label(chip, text=icon, bg=BG, fg=clr,
+                _ck.Label(chip, text=icon, bg=BG, fg=clr,
                          font=("Consolas", 8)).pack()
             if steps_count > 8:
-                tk.Label(chip_row, text="+{}".format(steps_count - 8),
+                _ck.Label(chip_row, text="+{}".format(steps_count - 8),
                          bg=BG, fg=MUT, font=("Consolas", 8),
                          padx=4, pady=2).pack(side="left")
 
             # Action buttons
-            btn_row = tk.Frame(body, bg=CARD)
+            btn_row = _ck.Frame(body, bg=CARD)
             btn_row.pack(anchor="w")
-            tk.Button(
+            _ck.Button(
                 btn_row, text="Load Template",
                 bg=card_acc, fg=BG,
                 font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                 padx=14, pady=5, cursor="hand2",
                 command=lambda t=tpl: self._mb_open_with_template(t)
             ).pack(side="left", padx=(0, 8))
-            tk.Button(
+            _ck.Button(
                 btn_row, text="Preview Steps",
                 bg=CARD, fg=FG,
                 font=("Segoe UI", 9), relief="flat", bd=0,
@@ -14162,9 +14167,9 @@ class SynthexApp:
              font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(16, 2))
         _lbl(dlg, tpl.get("description", ""),
              fg=MUT, font=("Segoe UI", 9)).pack(anchor="w", padx=20, pady=(0, 10))
-        tk.Frame(dlg, bg=SIDE, height=1).pack(fill="x", padx=20)
+        _ck.Frame(dlg, bg=SIDE, height=1).pack(fill="x", padx=20)
 
-        lf = tk.Frame(dlg, bg=CARD, padx=10, pady=10)
+        lf = _ck.Frame(dlg, bg=CARD, padx=10, pady=10)
         lf.pack(fill="both", expand=True, padx=20, pady=10)
 
         st = ttk.Treeview(lf, columns=("no", "type", "detail"),
@@ -14175,7 +14180,7 @@ class SynthexApp:
         st.column("no",     width=36,  anchor="center")
         st.column("type",   width=160, anchor="w")
         st.column("detail", width=310, anchor="w")
-        vsb = ttk.Scrollbar(lf, orient="vertical", command=st.yview)
+        vsb = _ck.Scrollbar(lf, orient="vertical", command=st.yview)
         st.configure(yscrollcommand=vsb.set)
         st.pack(side="left", fill="both", expand=True)
         vsb.pack(side="right", fill="y")
@@ -14183,14 +14188,14 @@ class SynthexApp:
         for i, step in enumerate(tpl.get("steps", []), 1):
             st.insert("", "end", values=(i, step.get("type", ""), _step_label(step)))
 
-        btn_f = tk.Frame(dlg, bg=BG)
+        btn_f = _ck.Frame(dlg, bg=BG)
         btn_f.pack(fill="x", padx=20, pady=(0, 16))
-        tk.Button(btn_f, text="Load this Template", bg=ACC, fg=BG,
+        _ck.Button(btn_f, text="Load this Template", bg=ACC, fg=BG,
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=lambda: [dlg.destroy(),
                                    self._mb_open_with_template(tpl)]).pack(side="left")
-        ttk.Button(btn_f, text="Close", command=dlg.destroy).pack(
+        t_ck.Button(btn_f, text="Close", command=dlg.destroy).pack(
             side="left", padx=(10, 0))
 
     # ================================================================
@@ -14198,12 +14203,12 @@ class SynthexApp:
     # ================================================================
 
     def _pg_logs(self):
-        f = tk.Frame(self._content, bg=BG)
+        f = _ck.Frame(self._content, bg=BG)
         self._hdr(f, "Live Logs",
                   "Semua event & error Synthex ditampilkan di sini secara real-time.")
 
         # Toolbar
-        tb = tk.Frame(f, bg=BG)
+        tb = _ck.Frame(f, bg=BG)
         tb.pack(fill="x", padx=20, pady=(0, 6))
 
         level_var = tk.StringVar(value="ALL")
@@ -14222,13 +14227,13 @@ class SynthexApp:
             lw.see(tk.END)
 
         for lv in ("ALL", "INFO", "WARNING", "ERROR"):
-            tk.Radiobutton(tb, text=lv, variable=level_var, value=lv,
+            _ck.Radiobutton(tb, text=lv, variable=level_var, value=lv,
                            bg=BG, fg=FG, selectcolor=CARD,
                            activebackground=BG, activeforeground=ACC,
                            font=("Segoe UI", 8),
                            command=_apply_filter).pack(side="left", padx=(0, 8))
 
-        tk.Button(tb, text="Clear", bg=CARD, fg=RED,
+        _ck.Button(tb, text="Clear", bg=CARD, fg=RED,
                   font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=lambda: [
@@ -14236,7 +14241,7 @@ class SynthexApp:
                       lw.delete("1.0", tk.END),
                       lw.configure(state="disabled")
                   ]).pack(side="right")
-        tk.Button(tb, text="Copy All", bg=CARD, fg=FG,
+        _ck.Button(tb, text="Copy All", bg=CARD, fg=FG,
                   font=("Segoe UI", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=lambda: [
@@ -14299,20 +14304,20 @@ class SynthexApp:
             except Exception as ex:
                 self._show_toast("Gagal export: {}".format(ex), kind="error")
 
-        tk.Button(tb, text="Export CSV", bg=CARD, fg=GRN,
+        _ck.Button(tb, text="Export CSV", bg=CARD, fg=GRN,
                   font=("Segoe UI", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=_export_csv).pack(side="right", padx=(0, 4))
-        tk.Button(tb, text="Export TXT", bg=CARD, fg=ACC,
+        _ck.Button(tb, text="Export TXT", bg=CARD, fg=ACC,
                   font=("Segoe UI", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=_export_txt).pack(side="right", padx=(0, 4))
 
         # Log widget
-        lf = tk.Frame(f, bg=CARD, padx=6, pady=6)
+        lf = _ck.Frame(f, bg=CARD, padx=6, pady=6)
         lf.pack(fill="both", expand=True, padx=20, pady=(0, 20))
 
-        lw = scrolledtext.ScrolledText(
+        lw = _ck.ScrolledText(
             lf, bg="#0A0A0F", fg=FG, insertbackground=FG,
             font=("Consolas", 9), relief="flat", state="disabled",
             wrap="word")
@@ -14352,7 +14357,7 @@ class SynthexApp:
         f.bind("<Destroy>", _on_destroy)
 
         # Guide hint
-        tk.Label(f, text="Logs dari semua modul (browser, sheets, scheduler, macro) muncul otomatis.",
+        _ck.Label(f, text="Logs dari semua modul (browser, sheets, scheduler, macro) muncul otomatis.",
                  bg=BG, fg=MUT, font=("Segoe UI", 7)).pack(padx=20, pady=(0, 4))
         return f
 
@@ -14506,32 +14511,32 @@ class SynthexApp:
         ov.configure(bg="#0A0A14")
 
         # outer border
-        border = tk.Frame(ov, bg=ACC, bd=0)
+        border = _ck.Frame(ov, bg=ACC, bd=0)
         border.pack(fill="both", expand=True, padx=1, pady=1)
-        body  = tk.Frame(border, bg="#0D0D18")
+        body  = _ck.Frame(border, bg="#0D0D18")
         body.pack(fill="both", expand=True)
 
         # search row
-        s_row = tk.Frame(body, bg="#0D0D18")
+        s_row = _ck.Frame(body, bg="#0D0D18")
         s_row.pack(fill="x", padx=PAD, pady=(PAD, 0))
-        tk.Label(s_row, text="🔍", bg="#0D0D18", fg=MUT,
+        _ck.Label(s_row, text="🔍", bg="#0D0D18", fg=MUT,
                  font=("Segoe UI", 11)).pack(side="left", padx=(0, 6))
         _var = tk.StringVar()
-        entry = tk.Entry(s_row, textvariable=_var, bg="#0D0D18", fg=FG,
+        entry = _ck.Entry(s_row, textvariable=_var, bg="#0D0D18", fg=FG,
                          font=("Segoe UI", 12), relief="flat", bd=0,
                          insertbackground=ACC, width=36)
         entry.pack(side="left", fill="x", expand=True, ipady=6)
-        tk.Label(s_row, text="Esc", bg="#1A1A28", fg=MUT,
+        _ck.Label(s_row, text="Esc", bg="#1A1A28", fg=MUT,
                  font=("Segoe UI", 7), padx=5, pady=2).pack(side="right")
 
-        tk.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(PAD, 0))
+        _ck.Frame(body, bg="#1c1c2e", height=1).pack(fill="x", pady=(PAD, 0))
 
         # results frame (scrollable)
-        results_frame = tk.Frame(body, bg="#0D0D18")
+        results_frame = _ck.Frame(body, bg="#0D0D18")
         results_frame.pack(fill="both", expand=True, pady=(0, PAD))
 
         # hint label (shown when empty results)
-        hint_lbl = tk.Label(results_frame, text="Tidak ada hasil ditemukan.",
+        hint_lbl = _ck.Label(results_frame, text="Tidak ada hasil ditemukan.",
                             bg="#0D0D18", fg=MUT, font=("Segoe UI", 9))
 
         _rows: list = []      # list of (frame, key) for keyboard nav
@@ -14580,26 +14585,26 @@ class SynthexApp:
                 return
 
             for i, (label, key, desc) in enumerate(filtered[:12]):
-                rf = tk.Frame(results_frame, bg="#0D0D18", cursor="hand2")
+                rf = _ck.Frame(results_frame, bg="#0D0D18", cursor="hand2")
                 rf.pack(fill="x", padx=0)
 
                 # icon
                 photo = self._nav_photo_dim.get(key)
                 if photo:
-                    ic = tk.Label(rf, image=photo, bg="#0D0D18", padx=10, pady=8)
+                    ic = _ck.Label(rf, image=photo, bg="#0D0D18", padx=10, pady=8)
                     ic.pack(side="left")
 
                 # text
-                tf = tk.Frame(rf, bg="#0D0D18")
+                tf = _ck.Frame(rf, bg="#0D0D18")
                 tf.pack(side="left", fill="x", expand=True, pady=6)
-                tk.Label(tf, text=label, bg="#0D0D18", fg=FG,
+                _ck.Label(tf, text=label, bg="#0D0D18", fg=FG,
                          font=("Segoe UI", 10, "bold"), anchor="w").pack(anchor="w")
                 if desc:
-                    tk.Label(tf, text=desc, bg="#0D0D18", fg=MUT,
+                    _ck.Label(tf, text=desc, bg="#0D0D18", fg=MUT,
                              font=("Segoe UI", 8), anchor="w").pack(anchor="w")
 
                 # arrow hint
-                tk.Label(rf, text="↵", bg="#0D0D18", fg="#2A2A44",
+                _ck.Label(rf, text="↵", bg="#0D0D18", fg="#2A2A44",
                          font=("Segoe UI", 10), padx=10).pack(side="right")
 
                 _rows.append((rf, key))
@@ -14683,19 +14688,19 @@ class SynthexApp:
         dlg.attributes("-topmost", True)
 
         # Header
-        hdr = tk.Frame(dlg, bg=ACC, height=42)
+        hdr = _ck.Frame(dlg, bg=ACC, height=42)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        tk.Label(hdr, text="  Panduan: {}".format(page.upper()),
+        _ck.Label(hdr, text="  Panduan: {}".format(page.upper()),
                  bg=ACC, fg=BG, font=("Segoe UI", 11, "bold")).pack(
             side="left", pady=10)
-        tk.Button(hdr, text="X", bg=ACC, fg=BG,
+        _ck.Button(hdr, text="X", bg=ACC, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                   padx=10, cursor="hand2",
                   command=dlg.destroy).pack(side="right", pady=8, padx=8)
 
         # Content
-        txt = scrolledtext.ScrolledText(
+        txt = _ck.ScrolledText(
             dlg, bg=CARD, fg=FG, font=("Segoe UI", 10),
             relief="flat", wrap="word", padx=16, pady=12,
             state="normal")
@@ -14704,13 +14709,13 @@ class SynthexApp:
         txt.configure(state="disabled")
 
         # Tip: navigate to other helps
-        nav_f = tk.Frame(dlg, bg=BG)
+        nav_f = _ck.Frame(dlg, bg=BG)
         nav_f.pack(fill="x", padx=10, pady=(0, 10))
         _lbl(nav_f, "Panduan lain:", fg=MUT, bg=BG,
              font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
         for pg in ("home", "record", "spy", "schedule", "templates", "sheet", "logs"):
             if pg != page:
-                tk.Button(nav_f, text=pg, bg=CARD, fg=MUT,
+                _ck.Button(nav_f, text=pg, bg=CARD, fg=MUT,
                           font=("Segoe UI", 7), relief="flat", bd=0,
                           padx=6, pady=2, cursor="hand2",
                           command=lambda p=pg, d=dlg: [
@@ -14733,23 +14738,23 @@ class SynthexApp:
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
         # Border frame
-        border = tk.Frame(dlg, bg=ACC, bd=0)
+        border = _ck.Frame(dlg, bg=ACC, bd=0)
         border.place(x=0, y=0, width=W, height=3)
 
         # Icon + title
-        tk.Label(dlg, text="✕", bg="#0D0D14", fg=ACC,
+        _ck.Label(dlg, text="✕", bg="#0D0D14", fg=ACC,
                  font=("Segoe UI", 22, "bold")).pack(pady=(22, 0))
-        tk.Label(dlg, text="Tutup Synthex?", bg="#0D0D14", fg=FG,
+        _ck.Label(dlg, text="Tutup Synthex?", bg="#0D0D14", fg=FG,
                  font=("Segoe UI", 13, "bold")).pack(pady=(6, 0))
-        tk.Label(dlg, text="Kamu akan otomatis ter-logout\ndan semua proses akan dihentikan.",
+        _ck.Label(dlg, text="Kamu akan otomatis ter-logout\ndan semua proses akan dihentikan.",
                  bg="#0D0D14", fg=MUT, font=("Segoe UI", 9),
                  justify="center").pack(pady=(6, 16))
 
         # Separator
-        tk.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
+        _ck.Frame(dlg, bg=CARD, height=1).pack(fill="x", padx=24)
 
         # Buttons
-        btn_row = tk.Frame(dlg, bg="#0D0D14")
+        btn_row = _ck.Frame(dlg, bg="#0D0D14")
         btn_row.pack(pady=16)
 
         def _do_quit():
@@ -14808,11 +14813,11 @@ class SynthexApp:
             else:
                 _os._exit(0)
 
-        tk.Button(btn_row, text="  Ya, Tutup  ", bg=RED,
+        _ck.Button(btn_row, text="  Ya, Tutup  ", bg=RED,
                   fg="white", relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
                   command=_do_quit).pack(side="left", padx=(0, 10))
-        tk.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
+        _ck.Button(btn_row, text="  Batal  ", bg=CARD2, fg=FG,
                   relief="flat", font=("Segoe UI", 10),
                   cursor="hand2", padx=14, pady=7,
                   command=dlg.destroy).pack(side="left")
