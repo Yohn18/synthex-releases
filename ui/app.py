@@ -1833,10 +1833,10 @@ class SynthexApp:
         row = _ck.Frame(c, bg=CARD)
         row.pack(fill="x")
         self._url = tk.StringVar()
-        t_ck.Entry(row, textvariable=self._url,
+        _ck.Entry(row, textvariable=self._url,
                   font=("Segoe UI", 10)).pack(
             side="left", fill="x", expand=True, padx=(0, 8))
-        t_ck.Button(row, text="Open", style="Accent.TButton",
+        _ck.Button(row, text="Open",
                    command=self._open_url).pack(side="left")
         sc = _card(f, "Saved Sites")
         sc.pack(fill="both", expand=True, padx=20, pady=(12, 20))
@@ -1867,7 +1867,7 @@ class SynthexApp:
             font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
             padx=16, pady=8, cursor="hand2", command=self._toggle_spy)
         self._spy_btn.pack(side="left", padx=(0, 8))
-        t_ck.Button(ctrl, text="Open Floating Spy",
+        _ck.Button(ctrl, text="Open Floating Spy",
                    command=self._open_floating_spy).pack(side="left",
                                                           padx=(0, 8))
         self._spy_status_lbl = _lbl(
@@ -1907,7 +1907,7 @@ class SynthexApp:
                      font=("Segoe UI", 9), anchor="w").pack(
                 side="left", fill="x", expand=True)
             self._spy_fields[key] = var
-        t_ck.Button(info, text="Save Element", style="Accent.TButton",
+        _ck.Button(info, text="Save Element",
                    command=self._save_spy_element).pack(
             anchor="w", pady=(10, 0))
 
@@ -1920,16 +1920,16 @@ class SynthexApp:
         ])
         btn_row = _ck.Frame(saved, bg=CARD)
         btn_row.pack(fill="x", pady=(6, 0))
-        t_ck.Button(btn_row, text="Fetch Value",
+        _ck.Button(btn_row, text="Fetch Value",
                    command=self._fetch_spy_element_value).pack(
             side="left", padx=(0, 4))
-        t_ck.Button(btn_row, text="Copy Selector",
+        _ck.Button(btn_row, text="Copy Selector",
                    command=self._copy_spy_selector).pack(
             side="left", padx=(0, 4))
-        t_ck.Button(btn_row, text="Scrape ke Sheet",
+        _ck.Button(btn_row, text="Scrape ke Sheet",
                    command=self._scrape_spy_to_sheet).pack(
             side="left", padx=(0, 4))
-        t_ck.Button(btn_row, text="Delete", style="Danger.TButton",
+        _ck.Button(btn_row, text="Delete",
                    command=self._delete_spy_element).pack(side="right")
         self._refresh_spy_elements_tree()
         return f
@@ -2097,17 +2097,17 @@ class SynthexApp:
                   bg=ACC, fg=BG, font=("Segoe UI", 11, "bold"),
                   relief="flat", bd=0, padx=18, pady=9, cursor="hand2",
                   command=lambda: self._mb_open(parent=f)).pack(side="left")
-        t_ck.Button(top_bar, text="Run Now",
+        _ck.Button(top_bar, text="Run Now",
                    command=self._run_selected_task).pack(
             side="left", padx=(8, 0))
-        t_ck.Button(top_bar, text="Edit",
+        _ck.Button(top_bar, text="Edit",
                    command=lambda: self._mb_open(
                        parent=f, edit_idx=self._selected_task_idx()
                    )).pack(side="left", padx=(4, 0))
-        t_ck.Button(top_bar, text="Toggle ON/OFF",
+        _ck.Button(top_bar, text="Toggle ON/OFF",
                    command=self._toggle_task_enabled).pack(
             side="left", padx=(4, 0))
-        t_ck.Button(top_bar, text="Delete", style="Danger.TButton",
+        _ck.Button(top_bar, text="Delete",
                    command=self._delete_selected_task).pack(
             side="left", padx=(4, 0))
 
@@ -2242,11 +2242,11 @@ class SynthexApp:
             values=["manual", "interval", "daily", "hourly"],
             state="readonly", width=9)
         sched_cb.pack(side="left", padx=(0, 4), pady=14)
-        t_ck.Entry(top, textvariable=self._mb_sched_val,
+        _ck.Entry(top, textvariable=self._mb_sched_val,
                   width=5).pack(side="left", padx=(0, 2), pady=14)
         _lbl(top, "min / time:", fg=MUT, bg=SIDE,
              font=("Segoe UI", 8)).pack(side="left")
-        t_ck.Entry(top, textvariable=self._mb_sched_time,
+        _ck.Entry(top, textvariable=self._mb_sched_time,
                   width=7).pack(side="left", padx=(2, 8), pady=14)
 
         _ck.Button(top, text="Save Macro", bg=GRN, fg=BG,
@@ -3162,7 +3162,7 @@ class SynthexApp:
                               padx=12, pady=8, anchor="w", wraplength=370,
                               justify="left")
         result_lbl.pack(fill="x", padx=16, pady=(6, 0))
-        t_ck.Button(w, text="Close", command=w.destroy).pack(pady=10)
+        _ck.Button(w, text="Close", command=w.destroy).pack(pady=10)
 
         def _run():
             from modules.macro.smart_macro import SmartMacro
@@ -3279,11 +3279,11 @@ class SynthexApp:
 
         btn_row = _ck.Frame(conn_card, bg=CARD)
         btn_row.pack(fill="x", pady=(6, 0))
-        t_ck.Button(btn_row, text="Preview",
+        _ck.Button(btn_row, text="Preview",
                    command=self._sheet_btn_preview).pack(side="left", padx=(0, 4))
-        t_ck.Button(btn_row, text="Test",
+        _ck.Button(btn_row, text="Test",
                    command=self._sheet_test).pack(side="left", padx=(0, 4))
-        t_ck.Button(btn_row, text="Remove", style="Danger.TButton",
+        _ck.Button(btn_row, text="Remove",
                    command=self._sheet_remove).pack(side="left")
         _ck.Button(btn_row, text="+ Add Sheet",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
@@ -3316,7 +3316,7 @@ class SynthexApp:
         self._prev_sheet_cb.bind(
             "<<ComboboxSelected>>", self._on_prev_sheet_change)
 
-        t_ck.Button(prev_ctrl, text="Refresh",
+        _ck.Button(prev_ctrl, text="Refresh",
                    command=self._sheet_preview_refresh).pack(side="left")
 
         self._sheet_preview_frame = _ck.Frame(prev_card, bg=CARD)
@@ -3331,9 +3331,9 @@ class SynthexApp:
         _lbl(cell_row, "Read cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._prev_cell_var = tk.StringVar(value="A1")
-        t_ck.Entry(cell_row, textvariable=self._prev_cell_var,
+        _ck.Entry(cell_row, textvariable=self._prev_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
-        t_ck.Button(cell_row, text="Read",
+        _ck.Button(cell_row, text="Read",
                    command=self._sheet_read_cell).pack(side="left")
         self._cell_result_lbl = _lbl(cell_row, "", fg=GRN, bg=CARD,
                                      font=("Segoe UI", 9))
@@ -3357,9 +3357,9 @@ class SynthexApp:
         _lbl(rc_row, "Cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._rc_cell_var = tk.StringVar(value="A1")
-        t_ck.Entry(rc_row, textvariable=self._rc_cell_var,
+        _ck.Entry(rc_row, textvariable=self._rc_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
-        t_ck.Button(rc_row, text="Read",
+        _ck.Button(rc_row, text="Read",
                    command=self._sheet_qa_read).pack(side="left")
         self._rc_result_lbl = _lbl(rc_row, "", fg=GRN, bg=CARD,
                                    font=("Segoe UI", 9))
@@ -3379,14 +3379,14 @@ class SynthexApp:
         _lbl(wc_row1, "Cell:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._wc_cell_var = tk.StringVar(value="A1")
-        t_ck.Entry(wc_row1, textvariable=self._wc_cell_var,
+        _ck.Entry(wc_row1, textvariable=self._wc_cell_var,
                   width=6).pack(side="left", padx=(4, 0))
         wc_row2 = _ck.Frame(qa_card, bg=CARD)
         wc_row2.pack(fill="x", pady=(0, 10))
         _lbl(wc_row2, "Value:", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._wc_val_var = tk.StringVar()
-        t_ck.Entry(wc_row2, textvariable=self._wc_val_var,
+        _ck.Entry(wc_row2, textvariable=self._wc_val_var,
                   font=("Segoe UI", 9)).pack(
             side="left", fill="x", expand=True, padx=(4, 8))
         _ck.Button(wc_row2, text="Write Now",
@@ -3410,7 +3410,7 @@ class SynthexApp:
         _lbl(ar_row2, "Values (comma-separated):", fg=MUT, bg=CARD,
              font=("Segoe UI", 9)).pack(side="left")
         self._ar_vals_var = tk.StringVar()
-        t_ck.Entry(ar_row2, textvariable=self._ar_vals_var,
+        _ck.Entry(ar_row2, textvariable=self._ar_vals_var,
                   font=("Segoe UI", 9)).pack(
             side="left", fill="x", expand=True, padx=(8, 8))
         _ck.Button(ar_row2, text="Append",
@@ -3984,7 +3984,7 @@ class SynthexApp:
                   background=[("selected", CARD)],
                   foreground=[("selected", FG)])
 
-        nb = ttk.Notebook(f, style="Mon.TNotebook")
+        nb = ttk.Notebook(f)
         nb.pack(fill="both", expand=True, padx=0, pady=(4, 0))
 
         tab1 = _ck.Frame(nb, bg=BG)
@@ -8063,7 +8063,7 @@ class SynthexApp:
             self._ud.save()
             t.delete(*t.get_children())
 
-        t_ck.Button(c, text="Clear All", style="Danger.TButton",
+        _ck.Button(c, text="Clear All",
                    command=_clear_history).pack(anchor="e", pady=(8, 0))
         return f
 
@@ -8147,7 +8147,7 @@ class SynthexApp:
 
         btn_row = _ck.Frame(dlg, bg=BG)
         btn_row.pack(padx=20, pady=12, anchor="e")
-        t_ck.Button(btn_row, text="Cancel",
+        _ck.Button(btn_row, text="Cancel",
                    command=dlg.destroy).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Restore", bg=ACC, fg=BG,
                   font=("Segoe UI", 9, "bold"), relief="flat",
@@ -8242,7 +8242,7 @@ class SynthexApp:
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=lambda: self._backup_now(last_lbl)).pack(
                       side="left", padx=(0, 10))
-        t_ck.Button(btn_row_b, text="Restore from Backup",
+        _ck.Button(btn_row_b, text="Restore from Backup",
                    command=self._restore_backup_dialog).pack(side="left")
 
         # ---- Rekening API card ----------------------------------------
@@ -8504,7 +8504,7 @@ class SynthexApp:
             anchor="w")
         btn_row = _ck.Frame(ac, bg=CARD)
         btn_row.pack(anchor="w", pady=(8, 0))
-        t_ck.Button(btn_row, text="Logout", style="Danger.TButton",
+        _ck.Button(btn_row, text="Logout",
                    command=self._logout).pack(side="left", padx=(0, 10))
         _ck.Button(btn_row, text="Setup Guide",
                   bg=ACC, fg=BG, font=("Segoe UI", 9, "bold"),
@@ -10022,7 +10022,7 @@ class SynthexApp:
              bg=BG, font=("Segoe UI", 9), fg=MUT).pack(
             anchor="w", padx=16, pady=(10, 2))
         col_var = tk.StringVar()
-        t_ck.Entry(dlg, textvariable=col_var,
+        _ck.Entry(dlg, textvariable=col_var,
                   font=("Segoe UI", 10)).pack(fill="x", padx=16)
 
         def _do_scrape():
@@ -10050,9 +10050,9 @@ class SynthexApp:
 
         btn_row_dlg = _ck.Frame(dlg, bg=BG)
         btn_row_dlg.pack(anchor="e", padx=16, pady=(12, 0))
-        t_ck.Button(btn_row_dlg, text="Scrape", style="Accent.TButton",
+        _ck.Button(btn_row_dlg, text="Scrape",
                    command=_do_scrape).pack(side="left", padx=(0, 6))
-        t_ck.Button(btn_row_dlg, text="Batal",
+        _ck.Button(btn_row_dlg, text="Batal",
                    command=dlg.destroy).pack(side="left")
 
     def _copy_spy_selector(self):
@@ -11516,7 +11516,7 @@ class SynthexApp:
         r2.pack(fill="x")
         _lbl(r2, "Nilai / Target:", fg=MUT, bg=CARD, width=12, anchor="w").pack(
             side="left")
-        t_ck.Entry(r2, textvariable=val_var,
+        _ck.Entry(r2, textvariable=val_var,
                   font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True)
 
         def on_sel(event):
@@ -11623,7 +11623,7 @@ class SynthexApp:
                   font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=8, cursor="hand2",
                   command=save_rec).pack(side="left")
-        t_ck.Button(sr, text="Batal",
+        _ck.Button(sr, text="Batal",
                    command=_on_editor_close).pack(side="left", padx=(8, 0))
 
         # Centre on screen, force render, bring to front
@@ -12975,7 +12975,7 @@ class SynthexApp:
                     st.pack(fill="both", expand=True, padx=12, pady=12)
                     st.insert(tk.END, _det)
                     st.configure(state="disabled")
-                    t_ck.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
+                    _ck.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
                 det_row = _ck.Frame(inner, bg=card_col)
                 det_row.pack(fill="x", padx=12, pady=(0, 6))
                 _ck.Label(det_row, text="Lihat Detail →", bg=card_col,
@@ -14195,7 +14195,7 @@ class SynthexApp:
                   padx=14, pady=7, cursor="hand2",
                   command=lambda: [dlg.destroy(),
                                    self._mb_open_with_template(tpl)]).pack(side="left")
-        t_ck.Button(btn_f, text="Close", command=dlg.destroy).pack(
+        _ck.Button(btn_f, text="Close", command=dlg.destroy).pack(
             side="left", padx=(10, 0))
 
     # ================================================================
