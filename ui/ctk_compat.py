@@ -2,7 +2,8 @@
 """
 ui/ctk_compat.py — CustomTkinter compatibility wrappers.
 Drop-in replacements for tk/ttk widgets that accept old tkinter
-parameter names (bg, fg, relief, bd, …) and translate them to CTk.
+parameter names (bg, fg, relief, bd, padx, pady, …) and translate
+them to CustomTkinter equivalents.
 """
 import customtkinter as ctk
 import tkinter as tk
@@ -11,14 +12,15 @@ from tkinter import ttk
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
 
-# ── Parameter translation maps ────────────────────────────────────────────────
+# ── Parameter translation ─────────────────────────────────────────────────────
 
 _RENAME = {
-    "bg":              "fg_color",
-    "fg":              "text_color",
-    "activebackground":"hover_color",
+    "bg":               "fg_color",
+    "fg":               "text_color",
+    "activebackground": "hover_color",
 }
 
+# Params unsupported by CTk — silently dropped
 _DROP = {
     "relief", "bd", "borderwidth",
     "highlightthickness", "highlightcolor", "highlightbackground",
@@ -27,14 +29,23 @@ _DROP = {
     "disabledforeground", "activeforeground",
     "takefocus", "overrelief",
     "readonlybackground", "invalidbackground",
+    # geometry params in constructor (pass them to pack/grid instead)
+    "padx", "pady", "ipadx", "ipady",
 }
 
-def _tr(kw: dict) -> dict:
+# Per-widget extra renames
+_SCROLLBAR_RENAME = {"orient": "orientation"}
+_COMBOBOX_RENAME  = {"textvariable": "variable"}
+
+def _tr(kw: dict, extra: dict = None) -> dict:
     out = {}
+    renames = dict(_RENAME)
+    if extra:
+        renames.update(extra)
     for k, v in kw.items():
         if k in _DROP:
             continue
-        out[_RENAME.get(k, k)] = v
+        out[renames.get(k, k)] = v
     return out
 
 
@@ -46,7 +57,10 @@ class Frame(ctk.CTkFrame):
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
@@ -56,28 +70,15 @@ class Frame(ctk.CTkFrame):
 
 class Label(ctk.CTkLabel):
     def __init__(self, parent=None, **kw):
-        # CTkLabel needs text= always
         kw.setdefault("text", "")
-        # anchor → justify for CTkLabel
-        if "anchor" in kw:
-            anchor = kw.pop("anchor")
-            if anchor in ("w", "nw", "sw"):
-                kw.setdefault("justify", "left")
-            elif anchor in ("e", "ne", "se"):
-                kw.setdefault("justify", "right")
         kw.setdefault("fg_color", "transparent")
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        if "anchor" in kw:
-            anchor = kw.pop("anchor")
-            if anchor in ("w", "nw", "sw"):
-                kw.setdefault("justify", "left")
-            elif anchor in ("e", "ne", "se"):
-                kw.setdefault("justify", "right")
-        if "fg_color" not in kw and "bg" not in kw:
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
             pass
-        super().configure(**_tr(kw))
 
     def config(self, **kw):
         self.configure(**kw)
@@ -89,15 +90,13 @@ class Button(ctk.CTkButton):
     def __init__(self, parent=None, **kw):
         kw.setdefault("corner_radius", 4)
         kw.setdefault("border_width", 0)
-        # ipady → not supported, drop
-        kw.pop("ipady", None)
-        kw.pop("ipadx", None)
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        kw.pop("ipady", None)
-        kw.pop("ipadx", None)
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
@@ -112,7 +111,10 @@ class Entry(ctk.CTkEntry):
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
@@ -123,25 +125,25 @@ class Entry(ctk.CTkEntry):
 class Text(ctk.CTkTextbox):
     def __init__(self, parent=None, **kw):
         kw.setdefault("corner_radius", 4)
-        # CTkTextbox has built-in scrollbar — if caller adds external one, disable internal
-        if "yscrollcommand" in kw:
-            # keep yscrollcommand for internal textbox
-            pass
+        kw.pop("yscrollcommand", None)
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        super().configure(**_tr(kw))
+        kw.pop("yscrollcommand", None)
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
 
-    # Expose internal textbox scrollbar command for external ttk.Scrollbar
     @property
     def yview(self):
         return self._textbox.yview
 
 
-# ── ScrolledText (CTkTextbox already has scrollbar) ──────────────────────────
+# ── ScrolledText ──────────────────────────────────────────────────────────────
 
 class ScrolledText(ctk.CTkTextbox):
     def __init__(self, parent=None, **kw):
@@ -151,7 +153,10 @@ class ScrolledText(ctk.CTkTextbox):
 
     def configure(self, **kw):
         kw.pop("yscrollcommand", None)
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
@@ -170,7 +175,10 @@ class Checkbutton(ctk.CTkCheckBox):
     def configure(self, **kw):
         kw.pop("onvalue", None)
         kw.pop("offvalue", None)
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
@@ -183,51 +191,57 @@ class Radiobutton(ctk.CTkRadioButton):
         super().__init__(parent, **_tr(kw))
 
     def configure(self, **kw):
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
 
 
-# ── Scrollbar (ttk replacement) ───────────────────────────────────────────────
+# ── Scrollbar ─────────────────────────────────────────────────────────────────
 
 class Scrollbar(ctk.CTkScrollbar):
     def __init__(self, parent=None, **kw):
-        # CTkScrollbar: orient supported, command supported
         kw.pop("troughcolor", None)
-        super().__init__(parent, **_tr(kw))
+        super().__init__(parent, **_tr(kw, _SCROLLBAR_RENAME))
 
     def configure(self, **kw):
         kw.pop("troughcolor", None)
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw, _SCROLLBAR_RENAME))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
 
 
-# ── Combobox (ttk replacement) ────────────────────────────────────────────────
+# ── Combobox ──────────────────────────────────────────────────────────────────
 
 class Combobox(ctk.CTkComboBox):
     def __init__(self, parent=None, **kw):
-        # CTkComboBox uses 'values' list — same as ttk.Combobox
         kw.pop("postcommand", None)
         kw.pop("exportselection", None)
-        super().__init__(parent, **_tr(kw))
+        super().__init__(parent, **_tr(kw, _COMBOBOX_RENAME))
 
     def configure(self, **kw):
         kw.pop("postcommand", None)
         kw.pop("exportselection", None)
-        super().configure(**_tr(kw))
+        try:
+            super().configure(**_tr(kw, _COMBOBOX_RENAME))
+        except Exception:
+            pass
 
     def config(self, **kw):
         self.configure(**kw)
 
-    # ttk.Combobox compat: get() / set() / current()
     def current(self, idx=None):
         if idx is None:
             vals = self.cget("values")
             cur  = self.get()
-            return vals.index(cur) if cur in vals else -1
-        vals = self.cget("values")
+            return list(vals).index(cur) if cur in vals else -1
+        vals = list(self.cget("values"))
         if vals and idx < len(vals):
             self.set(vals[idx])
