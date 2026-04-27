@@ -598,21 +598,23 @@ class SynthexApp:
                 pass
         threading.Thread(target=_post_login_checks, daemon=True).start()
 
-        # Poll DM unread count every 90s
+        # Poll DM unread count every 90s — runs in background thread to avoid UI freeze
         def _dm_poll():
             if not self._root:
                 return
-            try:
-                from auth.firebase_auth import get_valid_token
-                from modules.master_config import count_unread_dm
-                tok = get_valid_token()
-                em  = self._email
-                if tok and em:
-                    n = count_unread_dm(em, tok)
-                    if self._root:
-                        self._root.after(0, lambda c=n: self._set_inbox_badge(c))
-            except Exception:
-                pass
+            def _bg():
+                try:
+                    from auth.firebase_auth import get_valid_token
+                    from modules.master_config import count_unread_dm
+                    tok = get_valid_token()
+                    em  = self._email
+                    if tok and em:
+                        n = count_unread_dm(em, tok)
+                        if self._root:
+                            self._root.after(0, lambda c=n: self._set_inbox_badge(c))
+                except Exception:
+                    pass
+            threading.Thread(target=_bg, daemon=True).start()
             if self._root:
                 self._dm_poll_id = self._root.after(90000, _dm_poll)
         if self._root:
@@ -14821,6 +14823,9 @@ class SynthexApp:
 
     def _quit(self):
         """Tampilkan konfirmasi close yang menarik, lalu keluar + logout."""
+        if getattr(self, "_quit_open", False):
+            return
+        self._quit_open = True
         dlg = ctk.CTkToplevel(self._root)
         dlg.withdraw()  # hide until fully built
         dlg.title("Tutup Synthex")
@@ -14911,11 +14916,16 @@ class SynthexApp:
         _ck.Button(btn_row, text="  Ya, Tutup  ", fg_color=RED, text_color="white", relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
                   command=_do_quit).pack(side="left", padx=(0, 10))
+        def _cancel():
+            self._quit_open = False
+            dlg.destroy()
+
         _ck.Button(btn_row, text="  Batal  ", fg_color=CARD2, text_color=FG,
                   relief="flat", font=("Segoe UI", 10),
                   cursor="hand2", padx=14, pady=7,
-                  command=dlg.destroy).pack(side="left")
+                  command=_cancel).pack(side="left")
 
+        dlg.protocol("WM_DELETE_WINDOW", _cancel)
         dlg.update()
         dlg.deiconify()
         dlg.grab_set()
