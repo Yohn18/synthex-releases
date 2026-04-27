@@ -164,26 +164,22 @@ class UserData:
 
 # -- Widget helpers --
 
-def _lbl(parent, text, text_color=FG, fg_color=BG, font=("Segoe UI", 11), **kw):
-    return _ck.Label(parent, text=text, text_color=fg, fg_color=bg, font=font, **kw)
+def _lbl(parent, text, text_color=FG, fg_color="transparent", font=("Segoe UI", 11), **kw):
+    return _ck.Label(parent, text=text, text_color=text_color, fg_color=fg_color, font=font, **kw)
 
 def _deep_bg(widget, color):
-    """Recursively set background color on a widget and all children."""
     try:
-        if isinstance(widget, ctk.CTkBaseClass):
-            widget.configure(fg_color=color)
-        else:
-            widget.configure(fg_color=color)
+        widget.configure(fg_color=color)
     except Exception:
         pass
     for child in widget.winfo_children():
         _deep_bg(child, color)
 
 def _card(parent, title=""):
-    f = _ck.Frame(parent, fg_color=CARD, padx=20, pady=16)
+    f = _ck.Frame(parent, fg_color=CARD)
     if title:
         _lbl(f, title, text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
+             font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(16, 10))
     return f
 
 def _fmt_duration(seconds: int) -> str:
