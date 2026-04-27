@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.45",
-  "min_version": "1.3.45",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.45/Synthex.exe",
-  "changelog": "v1.3.45: Fix semua CTkToplevel dialog blank (withdraw/deiconify pattern di seluruh app)",
+  "latest_version": "1.3.46",
+  "min_version": "1.3.46",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.46/Synthex.exe",
+  "changelog": "v1.3.46: Tambah fitur QRIS Dinamis \u2014 konversi QRIS statis ke dinamis dengan nominal & biaya layanan kustom",
   "maintenance": false,
   "maintenance_msg": ""
 }

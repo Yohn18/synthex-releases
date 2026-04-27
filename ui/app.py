@@ -371,6 +371,7 @@ class SynthexApp:
         ("Schedule",         "schedule"),
         ("Templates",        "templates"),
         ("DATA",             ""),
+        ("QRIS",             "qris"),
         ("Sheet",            "sheet"),
         ("Rekening",         "rekening"),
         ("Monitor",          "monitor"),
@@ -1099,6 +1100,7 @@ class SynthexApp:
             "record":    self._pg_record,
             "schedule":  self._pg_schedule,
             "templates": self._pg_templates,
+            "qris":      self._pg_qris,
             "sheet":     self._pg_sheet,
             "rekening":  self._pg_rekening,
             "monitor":   self._pg_monitor,
@@ -1751,6 +1753,7 @@ class SynthexApp:
                 ("templates", "\U0001f4da", "Templates",     "Library template siap pakai",        "#8B5CF6"),
             ]),
             ("\U0001f4ca DATA", [
+                ("qris",     "⚡",     "QRIS Dinamis",  "Konversi QRIS statis ke dinamis",    "#F59E0B"),
                 ("sheet",    "\U0001f4c8", "Google Sheet",  "Sinkronisasi & baca spreadsheet",    "#06B6D4"),
                 ("rekening", "\U0001f3e6", "Rekening",       "Validasi nomor rekening bank",       "#84CC16"),
                 ("monitor",  "\U0001f4b9", "Monitor",        "Dashboard angka auto-update",        "#F97316"),
@@ -3136,6 +3139,328 @@ class SynthexApp:
 
     # ================================================================
     #  SHEET PAGE  (Connected Sheets)
+    # ================================================================
+    #  QRIS PAGE  (Konversi QRIS Statis → Dinamis)
+    # ================================================================
+
+    def _pg_qris(self):
+        import threading as _thr
+        from io import BytesIO
+
+        f = _ck.Frame(self._content, fg_color=BG)
+        self._hdr(f, "QRIS Dinamis",
+                  "Ubah QRIS statis menjadi QRIS dinamis dengan nominal & biaya layanan")
+
+        # ── Layout utama: kiri (form) | kanan (preview QR) ────────────────
+        body = _ck.Frame(f, fg_color=BG)
+        body.pack(fill="both", expand=True, padx=20, pady=(0, 16))
+
+        # Kiri — form input
+        left = _ck.Frame(body, fg_color=BG)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 14))
+
+        # Kanan — preview QR
+        right = _ck.Frame(body, fg_color=CARD, width=280)
+        right.pack(side="right", fill="y")
+        right.pack_propagate(False)
+        _ck.Frame(right, fg_color=ACC, height=4).pack(fill="x")
+
+        # ── Preview QR area ───────────────────────────────────────────────
+        qr_lbl = _ck.Label(right, text="QR akan muncul di sini",
+                           fg_color=CARD, text_color=MUT,
+                           font=("Segoe UI", 10), wraplength=220, justify="center")
+        qr_lbl.pack(expand=True, pady=30)
+
+        qr_photo_ref = [None]   # simpan referensi agar tidak di-GC
+
+        merchant_lbl = _ck.Label(right, text="", fg_color=CARD, text_color=FG,
+                                 font=("Segoe UI", 9, "bold"), wraplength=240, justify="center")
+        merchant_lbl.pack(pady=(0, 4))
+
+        city_lbl = _ck.Label(right, text="", fg_color=CARD, text_color=MUT,
+                             font=("Segoe UI", 8), wraplength=240, justify="center")
+        city_lbl.pack()
+
+        nominal_preview = _ck.Label(right, text="", fg_color=CARD, text_color=GRN,
+                                    font=("Segoe UI", 11, "bold"))
+        nominal_preview.pack(pady=(4, 0))
+
+        # Tombol Copy & Save di bawah preview
+        btn_row_r = _ck.Frame(right, fg_color=CARD)
+        btn_row_r.pack(fill="x", padx=16, pady=12)
+
+        qris_result = [None]   # simpan string QRIS hasil konversi
+
+        def _copy_qris():
+            if not qris_result[0]:
+                return
+            self._root.clipboard_clear()
+            self._root.clipboard_append(qris_result[0])
+            self._sv.set("QRIS string disalin ke clipboard!")
+
+        def _save_qr():
+            if not qris_result[0]:
+                return
+            from tkinter import filedialog as _fd
+            from modules.qris.converter import generate_qr_image
+            path = _fd.asksaveasfilename(
+                parent=self._root, defaultextension=".png",
+                filetypes=[("PNG Image", "*.png")],
+                initialfile="qris_dinamis.png")
+            if not path:
+                return
+            try:
+                img = generate_qr_image(qris_result[0], box_size=8, border=4)
+                img.save(path)
+                self._sv.set("QR disimpan: {}".format(path))
+            except Exception as e:
+                self._show_alert("Gagal Simpan", str(e), "error")
+
+        copy_btn = _ck.Button(btn_row_r, text="📋 Salin QRIS", fg_color=ACC, text_color="white",
+                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                              padx=12, pady=6, cursor="hand2", state="disabled",
+                              command=_copy_qris)
+        copy_btn.pack(fill="x", pady=(0, 6))
+
+        save_btn = _ck.Button(btn_row_r, text="💾 Simpan Gambar QR", fg_color=CARD2, text_color=FG,
+                              font=("Segoe UI", 9), relief="flat", bd=0,
+                              padx=12, pady=6, cursor="hand2", state="disabled",
+                              command=_save_qr)
+        save_btn.pack(fill="x")
+
+        # ── Form kiri ─────────────────────────────────────────────────────
+        def _section(title):
+            _ck.Label(left, text=title, fg_color=BG, text_color=MUT,
+                     font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(12, 2))
+
+        # QRIS String input
+        _section("STRING QRIS STATIS")
+        qris_hint = _ck.Label(left,
+            text="Tempel string QRIS dari QR code statis (dimulai dengan 000201...)",
+            fg_color=BG, text_color="#4A4A6A", font=("Segoe UI", 8))
+        qris_hint.pack(anchor="w", pady=(0, 4))
+
+        qris_input = _ck.Text(left, fg_color=CARD2, text_color=FG,
+                              font=("Consolas", 8), height=60, wrap="word")
+        qris_input.pack(fill="x")
+
+        # Tombol Paste + Clear
+        paste_row = _ck.Frame(left, fg_color=BG)
+        paste_row.pack(anchor="e", pady=(4, 0))
+
+        def _paste_qris():
+            try:
+                txt = self._root.clipboard_get()
+                qris_input.delete("1.0", "end")
+                qris_input.insert("1.0", txt.strip())
+            except Exception:
+                pass
+
+        def _clear_form():
+            qris_input.delete("1.0", "end")
+            nominal_var.set("")
+            fee_amt_var.set("")
+            status_lbl.configure(text="", text_color=MUT)
+            qr_lbl.configure(image="", text="QR akan muncul di sini")
+            qr_photo_ref[0] = None
+            merchant_lbl.configure(text="")
+            city_lbl.configure(text="")
+            nominal_preview.configure(text="")
+            qris_result[0] = None
+            copy_btn.configure(state="disabled")
+            save_btn.configure(state="disabled")
+
+        _ck.Button(paste_row, text="📋 Paste", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   padx=10, pady=4, cursor="hand2",
+                   command=_paste_qris).pack(side="left", padx=(0, 6))
+        _ck.Button(paste_row, text="Bersihkan", fg_color=CARD2, text_color=MUT,
+                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   padx=10, pady=4, cursor="hand2",
+                   command=_clear_form).pack(side="left")
+
+        # Nominal
+        _section("NOMINAL TRANSAKSI (Rp)")
+        nominal_var = tk.StringVar()
+        nom_frame = _ck.Frame(left, fg_color=BG)
+        nom_frame.pack(fill="x")
+        _ck.Label(nom_frame, text="Rp", fg_color=BG, text_color=MUT,
+                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 6))
+        nom_entry = _ck.Entry(nom_frame, textvariable=nominal_var, fg_color=CARD2, text_color=FG,
+                              font=("Segoe UI", 13, "bold"), placeholder_text="Contoh: 50000")
+        nom_entry.pack(side="left", fill="x", expand=True)
+
+        # Format angka otomatis
+        def _fmt_nominal(*_):
+            raw = nominal_var.get().replace(".", "").replace(",", "")
+            digits = "".join(c for c in raw if c.isdigit())
+            if digits:
+                formatted = "{:,}".format(int(digits)).replace(",", ".")
+                nominal_var.set(formatted)
+            else:
+                nominal_var.set("")
+        nom_entry.bind("<FocusOut>", _fmt_nominal)
+
+        # Biaya layanan
+        _section("BIAYA LAYANAN (Opsional)")
+        fee_type_var = tk.StringVar(value="none")
+        fee_row = _ck.Frame(left, fg_color=BG)
+        fee_row.pack(fill="x")
+
+        for label, val in [("Tidak Ada", "none"), ("Nominal Tetap", "fixed"), ("Persentase (%)", "percent")]:
+            _ck.Radiobutton(fee_row, text=label, variable=fee_type_var, value=val,
+                            fg_color=BG, text_color=FG,
+                            font=("Segoe UI", 9)).pack(side="left", padx=(0, 16))
+
+        fee_amt_var = tk.StringVar()
+        fee_entry_frame = _ck.Frame(left, fg_color=BG)
+        fee_entry_frame.pack(fill="x", pady=(6, 0))
+        fee_prefix_lbl = _ck.Label(fee_entry_frame, text="Rp", fg_color=BG, text_color=MUT,
+                                   font=("Segoe UI", 9, "bold"))
+        fee_prefix_lbl.pack(side="left", padx=(0, 6))
+        fee_entry = _ck.Entry(fee_entry_frame, textvariable=fee_amt_var, fg_color=CARD2,
+                              text_color=FG, font=("Segoe UI", 10),
+                              placeholder_text="Kosongkan jika tidak pakai biaya")
+        fee_entry.pack(side="left", fill="x", expand=True)
+
+        def _on_fee_type(*_):
+            ft = fee_type_var.get()
+            if ft == "none":
+                fee_prefix_lbl.configure(text="")
+                fee_entry.configure(placeholder_text="—", state="disabled")
+                fee_amt_var.set("")
+            elif ft == "fixed":
+                fee_prefix_lbl.configure(text="Rp")
+                fee_entry.configure(placeholder_text="Contoh: 2500", state="normal")
+            else:
+                fee_prefix_lbl.configure(text="%")
+                fee_entry.configure(placeholder_text="Contoh: 2", state="normal")
+
+        fee_type_var.trace_add("write", _on_fee_type)
+        _on_fee_type()
+
+        # Status & tombol generate
+        _ck.Frame(left, fg_color=SIDE, height=1).pack(fill="x", pady=(16, 8))
+
+        status_lbl = _ck.Label(left, text="", fg_color=BG, text_color=MUT,
+                               font=("Segoe UI", 9), wraplength=380, justify="left")
+        status_lbl.pack(anchor="w", pady=(0, 8))
+
+        def _set_status(msg, color=MUT):
+            if self._root:
+                self._root.after(0, lambda: status_lbl.configure(text=msg, text_color=color))
+
+        def _do_generate():
+            from modules.qris.converter import QRISConverter, QRISError, generate_qr_image
+            from PIL import ImageTk
+
+            raw = qris_input.get("1.0", "end").strip()
+            if not raw:
+                _set_status("⚠ Masukkan string QRIS terlebih dahulu.", YEL)
+                return
+
+            # Validasi QRIS
+            conv = QRISConverter()
+            valid, err = conv.validate(raw)
+            if not valid:
+                _set_status("❌ " + err, RED)
+                return
+
+            # Parse nominal
+            nom_raw = nominal_var.get().replace(".", "").replace(",", "").strip()
+            if not nom_raw.isdigit() or int(nom_raw) <= 0:
+                _set_status("⚠ Masukkan nominal yang valid (angka > 0).", YEL)
+                return
+            amount = int(nom_raw)
+
+            # Parse biaya
+            ft = fee_type_var.get()
+            fee_type = None
+            fee_val = 0
+            if ft != "none":
+                fee_raw = fee_amt_var.get().replace(".", "").replace(",", "").strip()
+                if fee_raw and fee_raw.isdigit():
+                    fee_type = ft
+                    fee_val = int(fee_raw)
+
+            gen_btn.configure(state="disabled", text="Memproses...")
+            _set_status("Mengkonversi QRIS...", MUT)
+
+            def _bg():
+                try:
+                    result_str = conv.to_dynamic(raw, amount, fee_type, fee_val)
+                    info = conv.parse_info(result_str)
+
+                    # Generate QR image
+                    pil_img = generate_qr_image(result_str, box_size=6, border=3)
+
+                    # Scale ke 220x220
+                    pil_img = pil_img.resize((220, 220))
+                    photo = ImageTk.PhotoImage(pil_img)
+
+                    def _update_ui():
+                        qris_result[0] = result_str
+                        qr_photo_ref[0] = photo
+                        qr_lbl.configure(image=photo, text="")
+                        merchant_lbl.configure(text=info.get("merchant_name", ""))
+                        city_lbl.configure(text=info.get("merchant_city", ""))
+                        nominal_preview.configure(
+                            text="Rp {:,}".format(amount).replace(",", "."))
+                        copy_btn.configure(state="normal")
+                        save_btn.configure(state="normal")
+                        gen_btn.configure(state="normal", text="⚡ Generate QRIS Dinamis")
+                        _set_status(
+                            "✅ QRIS dinamis berhasil dibuat! Scan QR di kanan untuk bayar.",
+                            GRN)
+
+                    if self._root:
+                        self._root.after(0, _update_ui)
+
+                except QRISError as e:
+                    if self._root:
+                        self._root.after(0, lambda: [
+                            _set_status("❌ " + str(e), RED),
+                            gen_btn.configure(state="normal",
+                                              text="⚡ Generate QRIS Dinamis")
+                        ])
+                except Exception as e:
+                    if self._root:
+                        self._root.after(0, lambda: [
+                            _set_status("❌ Error: " + str(e), RED),
+                            gen_btn.configure(state="normal",
+                                              text="⚡ Generate QRIS Dinamis")
+                        ])
+
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        gen_btn = _ck.Button(left, text="⚡ Generate QRIS Dinamis",
+                             fg_color=ACC, text_color="white",
+                             font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
+                             padx=20, pady=10, cursor="hand2",
+                             command=_do_generate)
+        gen_btn.pack(fill="x")
+
+        # ── Panduan singkat ────────────────────────────────────────────────
+        guide = _ck.Frame(left, fg_color=CARD, padx=14, pady=10)
+        guide.pack(fill="x", pady=(16, 0))
+        _ck.Frame(guide, fg_color=ACC, width=3).pack(side="left", fill="y")
+        guide_inner = _ck.Frame(guide, fg_color=CARD, padx=10)
+        guide_inner.pack(side="left", fill="x", expand=True)
+        _ck.Label(guide_inner, text="Cara Pakai:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        for step in [
+            "1. Buka aplikasi QRIS/M-Banking kamu → tampilkan QR statis.",
+            "2. Scan/ambil string QRIS dari QR tersebut, tempel di kolom atas.",
+            "3. Masukkan nominal pembayaran.",
+            "4. (Opsional) tambahkan biaya layanan fixed atau persentase.",
+            "5. Klik Generate → QR baru muncul di kanan, scan untuk bayar.",
+        ]:
+            _ck.Label(guide_inner, text=step, fg_color=CARD, text_color=MUT,
+                     font=("Segoe UI", 8), wraplength=370, justify="left").pack(
+                anchor="w", pady=(2, 0))
+
+        return f
+
     # ================================================================
 
     def _pg_sheet(self):
@@ -14251,6 +14576,7 @@ class SynthexApp:
             "record":    "Rekam & putar ulang macro otomatis",
             "schedule":  "Jadwalkan task otomatis berkala",
             "templates": "Template macro siap pakai",
+            "qris":      "Konversi QRIS statis ke dinamis dengan nominal kustom",
             "sheet":     "Sinkronisasi data ke Google Sheets",
             "rekening":  "Monitor saldo & mutasi rekening",
             "monitor":   "Pantau harga & perubahan data",
