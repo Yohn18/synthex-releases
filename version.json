@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.32",
-  "min_version": "1.3.29",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.32/Synthex.exe",
-  "changelog": "v1.3.32: Fix bug kritis — AI Chat crash response malformed, SSL bypass dihapus, widget destroy TclError, version mismatch config.",
+  "latest_version": "1.3.39",
+  "min_version": "1.3.39",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.39/Synthex.exe",
+  "changelog": "v1.3.39: Web scraping + automation step + monitor perubahan.",
   "maintenance": false,
   "maintenance_msg": ""
 }
