@@ -179,7 +179,7 @@ def _card(parent, title=""):
     f = _ck.Frame(parent, fg_color=CARD)
     if title:
         _lbl(f, title, text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=20, pady=(16, 10))
+             font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 6))
     return f
 
 def _fmt_duration(seconds: int) -> str:
@@ -1002,45 +1002,45 @@ class SynthexApp:
             if key == "":
                 # Category separator
                 sep_f = _ck.Frame(_side_inner, fg_color=SIDE)
-                sep_f.pack(fill="x", padx=12, pady=(12, 2))
-                _ck.Frame(sep_f, fg_color="#1c1c2e", height=1).pack(fill="x", pady=(0, 6))
+                sep_f.pack(fill="x", padx=12, pady=(8, 2))
+                _ck.Frame(sep_f, fg_color="#1c1c2e", height=1).pack(fill="x", pady=(0, 4))
                 _sep_clr = ACC if label == "MASTER" else MUT
                 _ck.Label(sep_f, text=label.lower(), fg_color=SIDE, text_color=_sep_clr,
-                         font=("Segoe UI", 8, "bold"), anchor="w").pack(anchor="w")
+                         font=("Segoe UI", 7, "bold"), anchor="w", pady=0).pack(anchor="w")
                 continue
 
-            # Nav row
-            row = _ck.Frame(_side_inner, fg_color=SIDE)
+            # Nav row — fixed height for consistent compact look
+            row = _ck.Frame(_side_inner, fg_color=SIDE, height=36)
             row.pack(fill="x")
+            row.pack_propagate(False)
             row.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
-            # Active bar (left edge glow)
-            bar = _ck.Frame(row, fg_color=ACC, width=3)
+            # Active bar (left edge glow) — always packed, color changes instead of pack/forget
+            bar = _ck.Frame(row, fg_color=SIDE, width=3)
             bar.pack(side="left", fill="y")
-            bar.pack_forget()
             self._nav_bars[key] = bar
 
             # Row inner container (for hover bg)
             row_inner = _ck.Frame(row, fg_color=SIDE)
-            row_inner.pack(fill="x", side="left", expand=True)
+            row_inner.pack(fill="both", side="left", expand=True)
             row_inner.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
 
             # Icon label (PIL image)
             dim_photo = self._nav_photo_dim.get(key)
             icon_lbl = _ck.Label(row_inner, image=dim_photo, fg_color=SIDE,
-                                padx=10, pady=9, cursor="hand2")
-            icon_lbl.pack(side="left")
+                                padx=10, pady=0, cursor="hand2")
+            icon_lbl.pack(side="left", pady=0)
             icon_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
             self._nav_icons[key] = icon_lbl
 
-            # Text label — brighter default color so it's always readable
-            _NAV_FG = "#94a3b8"   # readable but not fully active
+            # Text label
+            _NAV_FG = "#94a3b8"
             text_lbl = _ck.Label(row_inner, text=label, fg_color=SIDE, text_color=_NAV_FG,
                                 font=("Segoe UI", 10), anchor="w", cursor="hand2",
-                                padx=0, pady=10)
+                                padx=4, pady=0)
             text_lbl.pack(side="left", fill="x", expand=True)
             text_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
                 int(-1*(e.delta/120)), "units"))
@@ -1063,9 +1063,8 @@ class SynthexApp:
                         il.configure(image=ph, fg_color=CARD2)
                     tl.configure(text_color=FG, fg_color=CARD2)
                     bar_w = self._nav_bars.get(k)
-                    if bar_w and not bar_w.winfo_ismapped():
+                    if bar_w:
                         bar_w.configure(fg_color=ACC2)
-                        bar_w.pack(side="left", fill="y")
 
             def _nav_leave(e, ri=row_inner, k=key, il=icon_lbl, tl=text_lbl):
                 if self._cur != k:
@@ -1079,7 +1078,7 @@ class SynthexApp:
                     tl.configure(text_color=_NAV_FG, fg_color=SIDE)
                     bar_w = self._nav_bars.get(k)
                     if bar_w and bar_w.cget("fg_color") != ACC:
-                        bar_w.pack_forget()
+                        bar_w.configure(fg_color=SIDE)
 
             for w in [row_inner, icon_lbl, text_lbl]:
                 w.bind("<Enter>", _nav_enter)
@@ -1185,7 +1184,7 @@ class SynthexApp:
                 pass
             bar_w = self._nav_bars.get(k)
             if bar_w:
-                bar_w.pack_forget()
+                bar_w.configure(fg_color=SIDE)
         if key in self._nav:
             lbl = self._nav[key]
             try:
@@ -1202,7 +1201,6 @@ class SynthexApp:
             bar_w = self._nav_bars.get(key)
             if bar_w:
                 bar_w.configure(fg_color=ACC)
-                bar_w.pack(side="left", fill="y")
                 self._animate_nav_bar(key)
         # AI Chat always rebuilds so provider/model/key reflect current settings
         if key == "ai_chat" and key in self._pages:
@@ -1419,8 +1417,8 @@ class SynthexApp:
 
         # ── Hero banner ──────────────────────────────────────────────────────
         hero_wrap = _ck.Frame(body, fg_color=BG)
-        hero_wrap.pack(fill="x", padx=20, pady=(16, 0))
-        hero = _ck.Frame(hero_wrap, fg_color="#0d0520", padx=28, pady=22)
+        hero_wrap.pack(fill="x", padx=16, pady=(12, 0))
+        hero = _ck.Frame(hero_wrap, fg_color="#0d0520")
         hero.pack(fill="x")
         # Animated bottom accent line
         hero_line = tk.Canvas(hero_wrap, height=2, bg=BG, highlightthickness=0)
@@ -1443,18 +1441,18 @@ class SynthexApp:
         hero_line.bind("<Configure>", _draw_hero_line)
         hero_wrap.after(80, _draw_hero_line)
 
-        _ck.Frame(hero, fg_color=ACC, width=4).pack(side="left", fill="y", padx=(0, 18))
+        _ck.Frame(hero, fg_color=ACC, width=4).pack(side="left", fill="y", padx=(0, 14))
         hero_text = _ck.Frame(hero, fg_color="#0d0520")
-        hero_text.pack(side="left", fill="both", expand=True)
+        hero_text.pack(side="left", fill="both", expand=True, pady=12)
         _ck.Label(hero_text,
                  text="{}, {}!".format(_greeting(), name), fg_color="#0d0520", text_color="#e2e8f0",
-                 font=("Segoe UI", 22, "bold")).pack(anchor="w")
+                 font=("Segoe UI", 18, "bold"), pady=0).pack(anchor="w")
         _ck.Label(hero_text, text=today, fg_color="#0d0520", text_color=MUT,
-                 font=("Segoe UI", 11)).pack(anchor="w", pady=(3, 0))
+                 font=("Segoe UI", 10), pady=0).pack(anchor="w", pady=(2, 0))
         ver = self.config.get("app.version", "")
         ver_lbl = _ck.Label(hero, text="v{}".format(ver), fg_color="#0d0520", text_color="#3a3a5a",
-                           font=("Segoe UI", 9))
-        ver_lbl.pack(side="right", anchor="ne")
+                           font=("Segoe UI", 8), pady=0)
+        ver_lbl.pack(side="right", anchor="ne", padx=10, pady=6)
 
         # ── Stat chips ───────────────────────────────────────────────────────
         browser_ok = bool(self.engine and self.engine.browser and
@@ -1482,7 +1480,7 @@ class SynthexApp:
                 self._home_chip_photos[_ckey] = ImageTk.PhotoImage(_raw[_icon_k])
 
         chips_row = _ck.Frame(body, fg_color=BG)
-        chips_row.pack(fill="x", padx=20, pady=(10, 0))
+        chips_row.pack(fill="x", padx=16, pady=(8, 0))
         for (lbl, val, clr), icon_key, icon_color in zip(
             [
                 ("Chrome",  "Connected" if browser_ok else "Standby",
@@ -1494,21 +1492,24 @@ class SynthexApp:
             _chip_icon_keys,
             _chip_icon_colors,
         ):
-            chip = _ck.Frame(chips_row, fg_color=CARD, padx=18, pady=14)
-            chip.pack(side="left", fill="both", expand=True, padx=(0, 8))
+            chip = _ck.Frame(chips_row, fg_color=CARD)
+            chip.pack(side="left", fill="both", expand=True, padx=(0, 6))
             # Top accent line
-            _ck.Frame(chip, fg_color=clr, height=3).pack(fill="x", pady=(0, 10))
+            _ck.Frame(chip, fg_color=clr, height=2).pack(fill="x")
+            # Inner padding frame
+            chip_inner = _ck.Frame(chip, fg_color=CARD)
+            chip_inner.pack(fill="both", padx=12, pady=8)
             # Icon + label row
-            icon_row = _ck.Frame(chip, fg_color=CARD)
-            icon_row.pack(anchor="w", pady=(0, 4))
+            icon_row = _ck.Frame(chip_inner, fg_color=CARD)
+            icon_row.pack(anchor="w", pady=(0, 2))
             _ckey = "{}_{}".format(icon_key, icon_color)
             _ph = self._home_chip_photos.get(_ckey)
             if _ph:
-                _ck.Label(icon_row, image=_ph, fg_color=CARD).pack(side="left", padx=(0, 8))
+                _ck.Label(icon_row, image=_ph, fg_color=CARD, pady=0).pack(side="left", padx=(0, 6))
             _ck.Label(icon_row, text=lbl, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 9, "bold")).pack(side="left", anchor="w")
-            _ck.Label(chip, text=val, fg_color=CARD, text_color=clr,
-                     font=("Segoe UI", 14, "bold")).pack(anchor="w")
+                     font=("Segoe UI", 8, "bold"), pady=0).pack(side="left", anchor="w")
+            _ck.Label(chip_inner, text=val, fg_color=CARD, text_color=clr,
+                     font=("Segoe UI", 12, "bold"), pady=0).pack(anchor="w")
             # Hover glow
             def _chip_enter(e, c=chip):
                 _deep_bg(c, CARD2)
@@ -1537,9 +1538,9 @@ class SynthexApp:
                 self._home_qa_photos[_ik] = ImageTk.PhotoImage(_raw[_ik])
 
         qa_wrap = _ck.Frame(body, fg_color=BG)
-        qa_wrap.pack(fill="x", padx=20, pady=(10, 0))
+        qa_wrap.pack(fill="x", padx=16, pady=(8, 0))
         _ck.Label(qa_wrap, text="aksi cepat", fg_color=BG, text_color=MUT,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(0, 8))
+                 font=("Segoe UI", 7, "bold"), pady=0).pack(anchor="w", pady=(0, 5))
         qa = _ck.Frame(qa_wrap, fg_color=BG)
         qa.pack(fill="x")
 
@@ -1550,8 +1551,8 @@ class SynthexApp:
             qf.pack(side="left", padx=(0, 8))
             qf.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
-            inner = _ck.Frame(qf, fg_color=qa_clr, padx=8, pady=5)
-            inner.pack()
+            inner = _ck.Frame(qf, fg_color=qa_clr)
+            inner.pack(padx=8, pady=4)
             inner.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
             if _ph:
@@ -1583,10 +1584,10 @@ class SynthexApp:
         my_tasks = list(enumerate(self._ud.tasks[:5]))
         if my_tasks:
             _ck.Label(body, text="my tasks", fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 9, "bold")).pack(
-                anchor="w", padx=22, pady=(16, 6))
+                     font=("Segoe UI", 8, "bold"), pady=0).pack(
+                anchor="w", padx=18, pady=(10, 4))
             mt_card = _ck.Frame(body, fg_color=CARD)
-            mt_card.pack(fill="x", padx=20, pady=(0, 4))
+            mt_card.pack(fill="x", padx=16, pady=(0, 4))
             for task_idx, t in my_tasks:
                 enabled = t.get("enabled", True)
                 status  = t.get("last_status", "—")

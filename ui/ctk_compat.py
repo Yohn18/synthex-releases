@@ -20,7 +20,7 @@ _RENAME = {
     "activebackground": "hover_color",
 }
 
-# Params unsupported by CTk — silently dropped
+# Params unsupported by CTk containers (Frame, Entry, etc.) — silently dropped
 _DROP = {
     "relief", "bd", "borderwidth",
     "highlightthickness", "highlightcolor", "highlightbackground",
@@ -29,21 +29,26 @@ _DROP = {
     "disabledforeground", "activeforeground",
     "takefocus", "overrelief",
     "readonlybackground", "invalidbackground",
-    # geometry params in constructor (pass them to pack/grid instead)
+    # geometry params invalid in Frame/Entry constructors
     "padx", "pady", "ipadx", "ipady",
 }
+
+# Label and Button DO support padx/pady internally — use lighter drop set
+_DROP_WIDGET = _DROP - {"padx", "pady"}
 
 # Per-widget extra renames
 _SCROLLBAR_RENAME = {"orient": "orientation"}
 _COMBOBOX_RENAME  = {"textvariable": "variable"}
 
-def _tr(kw: dict, extra: dict = None) -> dict:
+def _tr(kw: dict, extra: dict = None, drop: set = None) -> dict:
+    if drop is None:
+        drop = _DROP
     out = {}
     renames = dict(_RENAME)
     if extra:
         renames.update(extra)
     for k, v in kw.items():
-        if k in _DROP:
+        if k in drop:
             continue
         out[renames.get(k, k)] = v
     return out
@@ -72,11 +77,11 @@ class Label(ctk.CTkLabel):
     def __init__(self, parent=None, **kw):
         kw.setdefault("text", "")
         kw.setdefault("fg_color", "transparent")
-        super().__init__(parent, **_tr(kw))
+        super().__init__(parent, **_tr(kw, drop=_DROP_WIDGET))
 
     def configure(self, **kw):
         try:
-            super().configure(**_tr(kw))
+            super().configure(**_tr(kw, drop=_DROP_WIDGET))
         except Exception:
             pass
 
@@ -88,13 +93,13 @@ class Label(ctk.CTkLabel):
 
 class Button(ctk.CTkButton):
     def __init__(self, parent=None, **kw):
-        kw.setdefault("corner_radius", 4)
+        kw.setdefault("corner_radius", 6)
         kw.setdefault("border_width", 0)
-        super().__init__(parent, **_tr(kw))
+        super().__init__(parent, **_tr(kw, drop=_DROP_WIDGET))
 
     def configure(self, **kw):
         try:
-            super().configure(**_tr(kw))
+            super().configure(**_tr(kw, drop=_DROP_WIDGET))
         except Exception:
             pass
 
@@ -106,7 +111,7 @@ class Button(ctk.CTkButton):
 
 class Entry(ctk.CTkEntry):
     def __init__(self, parent=None, **kw):
-        kw.setdefault("corner_radius", 4)
+        kw.setdefault("corner_radius", 6)
         kw.setdefault("border_width", 1)
         super().__init__(parent, **_tr(kw))
 
@@ -124,7 +129,7 @@ class Entry(ctk.CTkEntry):
 
 class Text(ctk.CTkTextbox):
     def __init__(self, parent=None, **kw):
-        kw.setdefault("corner_radius", 4)
+        kw.setdefault("corner_radius", 6)
         kw.pop("yscrollcommand", None)
         super().__init__(parent, **_tr(kw))
 
@@ -147,7 +152,7 @@ class Text(ctk.CTkTextbox):
 
 class ScrolledText(ctk.CTkTextbox):
     def __init__(self, parent=None, **kw):
-        kw.setdefault("corner_radius", 4)
+        kw.setdefault("corner_radius", 6)
         kw.pop("yscrollcommand", None)
         super().__init__(parent, **_tr(kw))
 
