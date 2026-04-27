@@ -764,8 +764,7 @@ class SynthexApp:
         for w in self._root.winfo_children():
             w.destroy()
         r = self._root
-        r.title("Synthex v{}  -  by Yohn18".format(
-            self.config.get("app.version", "")))
+        r.title("SYNTHEX")
         r.geometry("1180x720")
         r.minsize(920, 600)
         r.resizable(True, True)
@@ -843,8 +842,6 @@ class SynthexApp:
                  font=("Segoe UI", 16)).pack(side="left", padx=(12, 4), pady=14)
         _ck.Label(top, text="SYNTHEX", fg_color=SIDE, text_color=ACC,
                  font=("Segoe UI", 16, "bold")).pack(side="left")
-        _ck.Label(top, text="by Yohn18", fg_color=SIDE, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(8, 0), pady=(20, 0))
 
         # Page name indicator (updates on nav)
         self._page_lbl = _ck.Label(top, text="", fg_color=SIDE, text_color="#64748b",
