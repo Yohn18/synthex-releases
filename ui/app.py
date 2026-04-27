@@ -2001,7 +2001,7 @@ class SynthexApp:
             "<<TreeviewSelect>>", lambda e: self._on_rec_tree_select())
 
         # Right-click context menu
-        _ctx = tk.Menu(self._recordings_tree, tearoff=0, fg_color=CARD2, text_color=FG, activebackground=ACC,
+        _ctx = tk.Menu(self._recordings_tree, tearoff=0, bg=CARD2, fg=FG, activebackground=ACC,
                        activeforeground="white", relief="flat", bd=0)
         _ctx.add_command(label="Play",        command=self._play_selected_recording)
         _ctx.add_command(label="Edit Steps",  command=self._edit_selected_recording)
@@ -3983,7 +3983,7 @@ class SynthexApp:
         _ck.Label(intv_row, text="Interval (menit) *", fg_color=CARD, text_color=MUT,
                  font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
         tk.Spinbox(intv_row, from_=1, to=1440, textvariable=v_interval,
-                   width=6, fg_color=CARD2, text_color=FG, buttonbackground=CARD2,
+                   width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
                    relief="flat", font=("Segoe UI", 9)).pack(side="left")
         _ck.Label(intv_row, text="menit", fg_color=CARD, text_color=MUT,
                  font=("Segoe UI", 9)).pack(side="left", padx=4)
@@ -4045,7 +4045,7 @@ class SynthexApp:
         log_txt = _ck.Text(log_frame, height=7, fg_color=CARD2, text_color=FG,
                           font=("Consolas", 8), relief="flat",
                           state="disabled", wrap="word")
-        log_scroll = tk.Scrollbar(log_frame, command=log_txt.yview, fg_color=CARD2, troughcolor=CARD2)
+        log_scroll = tk.Scrollbar(log_frame, command=log_txt.yview, bg=CARD2, troughcolor=CARD2)
         log_txt.configure(yscrollcommand=log_scroll.set)
         log_scroll.pack(side="right", fill="y")
         log_txt.pack(fill="both", expand=True, padx=4, pady=4)
@@ -4057,9 +4057,9 @@ class SynthexApp:
         prev_txt = _ck.Text(prev_card, height=6, fg_color=CARD2, text_color=GRN,
                            font=("Consolas", 8), relief="flat",
                            state="disabled", wrap="none")
-        prev_scroll_y = tk.Scrollbar(prev_card, command=prev_txt.yview, fg_color=CARD2, troughcolor=CARD2)
+        prev_scroll_y = tk.Scrollbar(prev_card, command=prev_txt.yview, bg=CARD2, troughcolor=CARD2)
         prev_scroll_x = tk.Scrollbar(prev_card, orient="horizontal",
-                                     command=prev_txt.xview, fg_color=CARD2, troughcolor=CARD2)
+                                     command=prev_txt.xview, bg=CARD2, troughcolor=CARD2)
         prev_txt.configure(yscrollcommand=prev_scroll_y.set,
                            xscrollcommand=prev_scroll_x.set)
         prev_scroll_y.pack(side="right", fill="y")
@@ -4269,7 +4269,7 @@ class SynthexApp:
         _ck.Label(intv_row2, text="Interval (menit)", fg_color=CARD, text_color=MUT,
                  font=("Segoe UI", 9), width=24, anchor="w").pack(side="left")
         tk.Spinbox(intv_row2, from_=1, to=1440, textvariable=v_wc_intv,
-                   width=6, fg_color=CARD2, text_color=FG, buttonbackground=CARD2,
+                   width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
                    relief="flat", font=("Segoe UI", 9)).pack(side="left")
         _ck.Label(intv_row2, text="menit", fg_color=CARD, text_color=MUT,
                  font=("Segoe UI", 9)).pack(side="left", padx=4)
@@ -4310,7 +4310,7 @@ class SynthexApp:
         wc_log_txt = _ck.Text(wc_log_f, height=6, fg_color=CARD2, text_color=FG,
                              font=("Consolas", 8), relief="flat",
                              state="disabled", wrap="word")
-        wc_log_sb = tk.Scrollbar(wc_log_f, command=wc_log_txt.yview, fg_color=CARD2, troughcolor=CARD2)
+        wc_log_sb = tk.Scrollbar(wc_log_f, command=wc_log_txt.yview, bg=CARD2, troughcolor=CARD2)
         wc_log_txt.configure(yscrollcommand=wc_log_sb.set)
         wc_log_sb.pack(side="right", fill="y")
         wc_log_txt.pack(fill="both", expand=True, padx=4, pady=4)
@@ -6925,11 +6925,11 @@ class SynthexApp:
         # Model switcher (OptionMenu styled dark)
         model_om = tk.OptionMenu(top_bar, _model_var, *_m_list,
                                  command=_on_model_change)
-        model_om.configure(fg_color=CARD2, text_color=FG, relief="flat", bd=0,
+        model_om.configure(bg=CARD2, fg=FG, relief="flat", bd=0,
                            activebackground=CARD, activeforeground=FG,
                            font=("Segoe UI", 8), highlightthickness=0,
                            indicatoron=True, padx=6, pady=2)
-        model_om["menu"].configure(fg_color=CARD2, text_color=FG, relief="flat",
+        model_om["menu"].configure(bg=CARD2, fg=FG, relief="flat",
                                    activebackground=ACC, activeforeground="white",
                                    font=("Segoe UI", 8))
         model_om.pack(side="left", padx=(6, 0))
@@ -7923,7 +7923,7 @@ class SynthexApp:
         lb_frame = _ck.Frame(dlg, fg_color=BG)
         lb_frame.pack(padx=20, fill="both", expand=True)
 
-        lb = tk.Listbox(lb_frame, fg_color=CARD, text_color=FG, selectbackground=ACC,
+        lb = tk.Listbox(lb_frame, bg=CARD, fg=FG, selectbackground=ACC,
                         font=("Segoe UI", 9), relief="flat",
                         width=36, height=min(len(backups), 8))
         lb.pack(side="left", fill="both", expand=True)
@@ -8780,7 +8780,7 @@ class SynthexApp:
         _ck.Label(ann_r2, text="Warna:", fg_color=CARD, text_color=FG,
                  font=("Segoe UI", 9)).pack(side="left")
         ann_clr_m = tk.OptionMenu(ann_r2, _ann_clr, *_clr_opts)
-        ann_clr_m.config(bg=CARD2, text_color=FG, relief="flat",
+        ann_clr_m.config(bg=CARD2, fg=FG, relief="flat",
                          highlightthickness=0, font=("Segoe UI", 9),
                          activebackground=ACC)
         ann_clr_m.pack(side="left", padx=4)
@@ -10342,7 +10342,7 @@ class SynthexApp:
                      font=("Segoe UI", 10)).pack(side="left", padx=4)
 
         # Add button with dropdown menu
-        add_menu = tk.Menu(dlg, tearoff=0, fg_color=CARD, text_color=FG,
+        add_menu = tk.Menu(dlg, tearoff=0, bg=CARD, fg=FG,
                            activebackground=ACC, activeforeground=BG,
                            relief="flat", bd=0)
 
@@ -10481,7 +10481,7 @@ class SynthexApp:
              font=("Segoe UI", 9)).pack(side="left", padx=(4, 2))
         bulk_delay_var = tk.IntVar(value=500)
         tk.Spinbox(toolbar, from_=0, to=30000, increment=50, width=6,
-                   textvariable=bulk_delay_var, fg_color=CARD, text_color=FG, insertbackground=FG,
+                   textvariable=bulk_delay_var, bg=CARD, fg=FG, insertbackground=FG,
                    relief="flat", font=("Segoe UI", 9)).pack(
             side="left", padx=(0, 4), ipady=2)
 
@@ -10605,7 +10605,7 @@ class SynthexApp:
             r1.pack(fill="x", pady=(6, 2))
             _ep_lbl(r1, "Delay (ms):").pack(anchor="w")
             delay_sp = tk.Spinbox(r1, from_=0, to=30000, increment=50,
-                                  textvariable=_ep_delay, width=10, fg_color=BG, text_color=FG, insertbackground=FG,
+                                  textvariable=_ep_delay, width=10, bg=BG, fg=FG, insertbackground=FG,
                                   relief="flat", font=("Segoe UI", 9))
             delay_sp.pack(fill="x", pady=(2, 0), ipady=3)
             _edit_widgets["delay_sp"] = delay_sp
@@ -10618,7 +10618,7 @@ class SynthexApp:
                     rf.pack(fill="x", pady=(4, 2))
                     _ep_lbl(rf, lbl_t).pack(anchor="w")
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
-                                    width=10, fg_color=BG, text_color=FG,
+                                    width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
                                     font=("Segoe UI", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
@@ -10648,7 +10648,7 @@ class SynthexApp:
                     rf.pack(fill="x", pady=(4, 2))
                     _ep_lbl(rf, lbl_t).pack(anchor="w")
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
-                                    width=10, fg_color=BG, text_color=FG,
+                                    width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
                                     font=("Segoe UI", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
@@ -10657,7 +10657,7 @@ class SynthexApp:
                 ra.pack(fill="x", pady=(4, 2))
                 _ep_lbl(ra, "Jumlah:").pack(anchor="w")
                 amt_sp = tk.Spinbox(ra, from_=-100, to=100, textvariable=_ep_amount,
-                                    width=10, fg_color=BG, text_color=FG,
+                                    width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
                                     font=("Segoe UI", 9))
                 amt_sp.pack(fill="x", pady=(2, 0), ipady=3)
@@ -10936,7 +10936,7 @@ class SynthexApp:
         repeat_var = tk.IntVar(
             value=int(existing.get("repeat", 1)) if existing else 1)
         repeat_sp = tk.Spinbox(left_bottom, from_=1, to=999999, width=6,
-                               textvariable=repeat_var, fg_color=CARD, text_color=FG, insertbackground=FG,
+                               textvariable=repeat_var, bg=CARD, fg=FG, insertbackground=FG,
                                relief="flat", font=("Segoe UI", 9))
         repeat_sp.pack(side="left", padx=(0, 14), ipady=2)
 
@@ -11968,7 +11968,7 @@ class SynthexApp:
         if not iid:
             return
         self._tasks_tree.selection_set(iid)
-        menu = tk.Menu(self._root, tearoff=0, fg_color=CARD, text_color=FG,
+        menu = tk.Menu(self._root, tearoff=0, bg=CARD, fg=FG,
                        activebackground=ACC, activeforeground=BG,
                        font=("Segoe UI", 10))
         menu.add_command(label="Run Now",      command=self._run_selected_task)

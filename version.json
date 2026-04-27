@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.40",
-  "min_version": "1.3.40",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.40/Synthex.exe",
-  "changelog": "v1.3.40: Hapus AI Team dari GUI — fitur pindah ke YOHN PowerShell CLI.",
+  "latest_version": "1.3.41",
+  "min_version": "1.3.41",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.41/Synthex.exe",
+  "changelog": "v1.3.41: Migrasi UI ke CustomTkinter (dark mode modern), fix semua bug CTK params pada tk.Menu/Spinbox/Scrollbar/OptionMenu/Listbox, perbaikan logo premium, hapus AI Team dari GUI.",
   "maintenance": false,
   "maintenance_msg": ""
 }
