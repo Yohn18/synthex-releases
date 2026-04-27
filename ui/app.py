@@ -663,7 +663,6 @@ class SynthexApp:
         # Show full-screen dark overlay — not dismissable
         dlg = ctk.CTkToplevel(self._root)
         dlg.title("")
-        dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
         dlg.configure(fg_color="#0A0A0F")
 
@@ -694,6 +693,8 @@ class SynthexApp:
                   relief="flat", font=("Segoe UI", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
                   command=_do_close).pack(pady=14)
+
+        dlg.update()
 
         dlg.grab_set()
         dlg.focus_force()
@@ -5028,7 +5029,6 @@ class SynthexApp:
 
         def _show_unplug_dialog(ip: str):
             dlg = ctk.CTkToplevel(self._root)
-            dlg.overrideredirect(True)
             dlg.attributes("-topmost", True)
             dlg.configure(fg_color="#0D0D14")
             dlg.resizable(False, False)
@@ -5102,6 +5102,7 @@ class SynthexApp:
             dlg.geometry("+{}+{}".format(
                 (sw - dlg.winfo_width()) // 2,
                 (sh - dlg.winfo_height()) // 2))
+            dlg.update()
             dlg.grab_set()
 
         # ══════════════════════════════════════════════════════════════
@@ -5817,6 +5818,7 @@ class SynthexApp:
             dlg.title("Tambah Macro Rule")
             dlg.configure(fg_color="#0D0D14")
             dlg.resizable(False, False)
+            dlg.update()
             dlg.grab_set()
             dlg.update_idletasks()
             dlg.geometry("+{}+{}".format(
@@ -6179,6 +6181,7 @@ class SynthexApp:
         dlg.configure(fg_color="#0A0A0F")
         dlg.resizable(False, False)
         dlg.attributes("-topmost", True)
+        dlg.update()
         dlg.grab_set()
         dlg.update_idletasks()
         dlg.geometry("+{}+{}".format(
@@ -6238,6 +6241,7 @@ class SynthexApp:
         dlg.configure(fg_color="#0A0A0F")
         dlg.resizable(False, False)
         dlg.attributes("-topmost", True)
+        dlg.update()
         dlg.grab_set()
         dlg.update_idletasks()
         _w, _h = 480, 520
@@ -6593,7 +6597,6 @@ class SynthexApp:
                 return
             _close_mention_popup()
             popup = ctk.CTkToplevel(self._root)
-            popup.overrideredirect(True)
             popup.configure(fg_color="#1c1c2e")
             _mention_popup[0] = popup
             x = inp_entry.winfo_rootx()
@@ -7742,6 +7745,7 @@ class SynthexApp:
                           relief="flat", bd=0, padx=12, pady=4,
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
+                url_dlg.update()
                 url_dlg.grab_set()
 
             def _add_image_file():
@@ -7790,6 +7794,7 @@ class SynthexApp:
                           relief="flat", bd=0, padx=12, pady=4,
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
+                url_dlg.update()
                 url_dlg.grab_set()
 
             btn_row_media = _ck.Frame(ed, fg_color="#0D0D14")
@@ -7842,6 +7847,7 @@ class SynthexApp:
                       font=("Segoe UI", 9), padx=12, pady=6,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
+            dlg.update()
             dlg.grab_set()
 
         _show_empty()
@@ -7912,6 +7918,7 @@ class SynthexApp:
         dlg.title("Restore from Backup")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
 
         _lbl(dlg, "Select a backup to restore:", fg_color=BG,
@@ -9759,6 +9766,7 @@ class SynthexApp:
         dlg.title("Scrape ke Sheet")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
         dlg.geometry("340x180+{}+{}".format(
             self._root.winfo_rootx() + 80,
@@ -9860,7 +9868,6 @@ class SynthexApp:
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.attributes("-topmost", True)
-        dlg.overrideredirect(True)
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
         dlg.geometry("200x120+{}+{}".format(sw // 2 - 100, sh // 2 - 60))
@@ -9894,7 +9901,6 @@ class SynthexApp:
         win.configure(fg_color="#0D0D14")
         win.resizable(False, False)
         win.attributes("-topmost", True)
-        win.overrideredirect(True)
 
         W, H = 292, 120
         sw = self._root.winfo_screenwidth()
@@ -10225,6 +10231,7 @@ class SynthexApp:
         dlg.geometry("980x700")
         dlg.configure(fg_color=BG)
         dlg.resizable(True, True)
+        dlg.update()
         dlg.grab_set()
         self._simple_step_editor_win = dlg
 
@@ -10847,7 +10854,6 @@ class SynthexApp:
             # Small popup entry
             x0, y0, x1, y1 = st.bbox(item, "#5")
             popup = ctk.CTkToplevel(dlg)
-            popup.overrideredirect(True)
             popup.geometry("{}x{}+{}+{}".format(
                 x1 - x0, y1 - y0,
                 st.winfo_rootx() + x0,
@@ -11360,6 +11366,7 @@ class SynthexApp:
         sh = dlg.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(
             w, h, (sw - w) // 2, (sh - h) // 2))
+        dlg.update()
         dlg.grab_set()
         dlg.lift()
         dlg.focus_force()
@@ -11664,6 +11671,7 @@ class SynthexApp:
         dlg.title("Hapus Rekaman")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
         dlg.attributes("-topmost", True)
         dlg.overrideredirect(False)
@@ -11759,6 +11767,7 @@ class SynthexApp:
         dlg.title("Nama Rekaman")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
         dlg.attributes("-topmost", True)
 
@@ -12049,6 +12058,7 @@ class SynthexApp:
         dlg.title("Confirm Run")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
         dlg.attributes("-topmost", True)
 
@@ -12634,7 +12644,6 @@ class SynthexApp:
             # ── window ───────────────────────────────────────────────────
             TOAST_W = 320
             w = ctk.CTkToplevel(self._root)
-            w.overrideredirect(True)
             w.attributes("-topmost", True)
             w.attributes("-alpha", 0.0)
             w.configure(fg_color=card_col)
@@ -12806,7 +12815,6 @@ class SynthexApp:
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
-        dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
 
         W, H = 380, 200
@@ -12837,6 +12845,8 @@ class SynthexApp:
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(side="left")
 
+        dlg.update()
+
         dlg.grab_set()
         dlg.focus_force()
         dlg.wait_window(dlg)
@@ -12850,6 +12860,7 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable X button
         dlg.attributes("-topmost", True)
+        dlg.update()
         dlg.grab_set()
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("480x300+{}+{}".format((sw - 480) // 2, (sh - 300) // 2))
@@ -12931,6 +12942,7 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable close
         dlg.attributes("-topmost", True)
+        dlg.update()
         dlg.grab_set()
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("440x260+{}+{}".format((sw-440)//2, (sh-260)//2))
@@ -12975,6 +12987,7 @@ class SynthexApp:
         _ck.Button(bd, text="Mengerti, Lanjutkan", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=dlg.destroy).pack(anchor="e", pady=(12,0))
+        dlg.update()
         dlg.grab_set()
 
     def _show_dm_popup(self, msgs: list, my_email: str, token: str):
@@ -13015,6 +13028,7 @@ class SynthexApp:
         _ck.Button(bd, text="Tandai Sudah Dibaca", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_close).pack(anchor="e", pady=(12,0))
+        dlg.update()
         dlg.grab_set()
 
     def _show_alert(self, title, message, kind="info"):
@@ -13028,7 +13042,6 @@ class SynthexApp:
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
-        dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
 
         W, H = 380, 180
@@ -13048,6 +13061,8 @@ class SynthexApp:
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(pady=14)
 
+        dlg.update()
+
         dlg.grab_set()
         dlg.focus_force()
         dlg.wait_window(dlg)
@@ -13060,7 +13075,6 @@ class SynthexApp:
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
-        dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
 
         W, H = 400, 210
@@ -13099,6 +13113,8 @@ class SynthexApp:
                   relief="flat", font=("Segoe UI", 10),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(side="left")
+
+        dlg.update()
 
         dlg.grab_set()
         dlg.wait_window(dlg)
@@ -13452,6 +13468,7 @@ class SynthexApp:
         dlg.geometry("560x500")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
+        dlg.update()
         dlg.grab_set()
 
         # ── Step definitions ──────────────────────────────────────────────
@@ -14180,7 +14197,6 @@ class SynthexApp:
         # ── Window ───────────────────────────────────────────────────────
         OW, PAD = 520, 12
         ov = ctk.CTkToplevel(self._root)
-        ov.overrideredirect(True)
         ov.attributes("-topmost", True)
         ov.attributes("-alpha", 0.0)
         ov.configure(fg_color="#0A0A14")
@@ -14336,6 +14352,7 @@ class SynthexApp:
         ov.after(10, _fade_in)
         entry.focus_set()
         try:
+            ov.update()
             ov.grab_set()
         except Exception:
             self._palette_open = False
@@ -14399,10 +14416,9 @@ class SynthexApp:
     def _quit(self):
         """Tampilkan konfirmasi close yang menarik, lalu keluar + logout."""
         dlg = ctk.CTkToplevel(self._root)
-        dlg.title("")
+        dlg.title("Tutup Synthex")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
-        dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
 
         W, H = 360, 210
@@ -14411,7 +14427,7 @@ class SynthexApp:
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
         # Border frame
-        border = _ck.Frame(dlg, fg_color=ACC, bd=0)
+        border = _ck.Frame(dlg, fg_color=ACC)
         border.place(x=0, y=0, width=W, height=3)
 
         # Icon + title
@@ -14493,5 +14509,7 @@ class SynthexApp:
                   cursor="hand2", padx=14, pady=7,
                   command=dlg.destroy).pack(side="left")
 
+        dlg.update()
+        dlg.update()
         dlg.grab_set()
         dlg.focus_force()
