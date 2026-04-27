@@ -8567,7 +8567,7 @@ class SynthexApp:
             defaults = dict(font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
                             padx=14, pady=6, cursor="hand2")
             defaults.update(kw)
-            return _ck.Button(parent, text=text, fg_color=bg, text_color=fg, command=cmd, **defaults)
+            return _ck.Button(parent, text=text, fg_color=bg, text_color=text_color, command=cmd, **defaults)
 
         # ══════════════════════════════════════════════════════════════════════
         # STATS BAR

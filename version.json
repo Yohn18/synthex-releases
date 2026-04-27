@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.42",
-  "min_version": "1.3.42",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.42/Synthex.exe",
-  "changelog": "v1.3.42: Visual overhaul \u2014 sidebar compact (36px rows, no glitch hover), home page layout lebih rapat, logo premium baru, CTK Label/Button padx/pady diperbaiki.",
+  "latest_version": "1.3.43",
+  "min_version": "1.3.43",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.43/Synthex.exe",
+  "changelog": "v1.3.43: Fix Settings/Master blank (tag_configure, fg typo), single-instance lock",
   "maintenance": false,
   "maintenance_msg": ""
 }

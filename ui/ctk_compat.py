@@ -33,8 +33,8 @@ _DROP = {
     "padx", "pady", "ipadx", "ipady",
 }
 
-# Label and Button DO support padx/pady internally — use lighter drop set
-_DROP_WIDGET = _DROP - {"padx", "pady"}
+# CTkLabel supports padx/pady internally — lighter drop set for Label only
+_DROP_LABEL = _DROP - {"padx", "pady"}
 
 # Per-widget extra renames
 _SCROLLBAR_RENAME = {"orient": "orientation"}
@@ -77,11 +77,11 @@ class Label(ctk.CTkLabel):
     def __init__(self, parent=None, **kw):
         kw.setdefault("text", "")
         kw.setdefault("fg_color", "transparent")
-        super().__init__(parent, **_tr(kw, drop=_DROP_WIDGET))
+        super().__init__(parent, **_tr(kw, drop=_DROP_LABEL))
 
     def configure(self, **kw):
         try:
-            super().configure(**_tr(kw, drop=_DROP_WIDGET))
+            super().configure(**_tr(kw, drop=_DROP_LABEL))
         except Exception:
             pass
 
@@ -95,11 +95,11 @@ class Button(ctk.CTkButton):
     def __init__(self, parent=None, **kw):
         kw.setdefault("corner_radius", 6)
         kw.setdefault("border_width", 0)
-        super().__init__(parent, **_tr(kw, drop=_DROP_WIDGET))
+        super().__init__(parent, **_tr(kw))  # padx/pady dropped (CTkButton unsupported)
 
     def configure(self, **kw):
         try:
-            super().configure(**_tr(kw, drop=_DROP_WIDGET))
+            super().configure(**_tr(kw))
         except Exception:
             pass
 
@@ -147,6 +147,15 @@ class Text(ctk.CTkTextbox):
     def yview(self):
         return self._textbox.yview
 
+    def tag_configure(self, *args, **kw):
+        self._textbox.tag_configure(*args, **kw)
+
+    def tag_add(self, *args, **kw):
+        self._textbox.tag_add(*args, **kw)
+
+    def tag_remove(self, *args, **kw):
+        self._textbox.tag_remove(*args, **kw)
+
 
 # ── ScrolledText ──────────────────────────────────────────────────────────────
 
@@ -165,6 +174,15 @@ class ScrolledText(ctk.CTkTextbox):
 
     def config(self, **kw):
         self.configure(**kw)
+
+    def tag_configure(self, *args, **kw):
+        self._textbox.tag_configure(*args, **kw)
+
+    def tag_add(self, *args, **kw):
+        self._textbox.tag_add(*args, **kw)
+
+    def tag_remove(self, *args, **kw):
+        self._textbox.tag_remove(*args, **kw)
 
 
 # ── Checkbutton ───────────────────────────────────────────────────────────────

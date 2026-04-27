@@ -68,6 +68,18 @@ def handle_shutdown(sig, frame):
 
 
 if __name__ == "__main__":
+    # ── Single-instance lock ──────────────────────────────────────────────────
+    import msvcrt as _msvcrt
+    _lock_path = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")), "synthex.lock")
+    try:
+        _lock_file = open(_lock_path, "w")
+        _msvcrt.locking(_lock_file.fileno(), _msvcrt.LK_NBLCK, 1)
+    except (IOError, OSError):
+        import ctypes as _ct
+        _ct.windll.user32.MessageBoxW(
+            0, "Synthex sudah berjalan!", "Synthex", 0x40)
+        sys.exit(0)
+
     logger.info("Starting Synthex Automation Platform...")
 
     config = Config("config.json")
