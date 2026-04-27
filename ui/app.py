@@ -376,7 +376,6 @@ class SynthexApp:
         ("KOMUNITAS",        ""),
         ("Chat",             "chat"),
         ("AI Chat",          "ai_chat"),
-        ("AI Team",          "ai_team"),
         ("Inbox",            "inbox"),
         ("Blog",             "blog"),
         ("DEVICE",           ""),
@@ -766,7 +765,8 @@ class SynthexApp:
         for w in self._root.winfo_children():
             w.destroy()
         r = self._root
-        r.title("Synthex  -  by Yohn18")
+        r.title("Synthex v{}  -  by Yohn18".format(
+            self.config.get("app.version", "")))
         r.geometry("1180x720")
         r.minsize(920, 600)
         r.resizable(True, True)
@@ -1110,7 +1110,6 @@ class SynthexApp:
             "remote":    self._pg_remote,
             "chat":      self._pg_chat,
             "ai_chat":   self._pg_ai_chat,
-            "ai_team":   self._pg_ai_team,
             "blog":      self._pg_blog,
             "inbox":     self._pg_inbox,
             "history":   self._pg_history,
@@ -7104,6 +7103,28 @@ class SynthexApp:
             self._ai_chat_history.clear()
             _rebuild_messages()
 
+        def _copy_all_chat():
+            if not _history:
+                return
+            lines = []
+            for m in _history:
+                who = "Kamu" if m["role"] == "user" else provider.upper()
+                ts  = m.get("ts", "")
+                lines.append("[{} {}]\n{}".format(who, ts, m["content"]))
+            try:
+                self._root.clipboard_clear()
+                self._root.clipboard_append("\n\n".join(lines))
+                _copy_all_btn.configure(text="📋 Tersalin!")
+                self._root.after(2000, lambda: _copy_all_btn.configure(text="📋 Salin Semua"))
+            except Exception:
+                pass
+
+        _copy_all_btn = tk.Button(top_bar, text="📋 Salin Semua",
+                  bg=CARD2, fg=MUT, relief="flat", bd=0,
+                  font=("Segoe UI", 8), padx=8, pady=3,
+                  cursor="hand2", command=_copy_all_chat)
+        _copy_all_btn.pack(side="right", padx=(0, 6))
+
         tk.Button(top_bar, text="🗑 Hapus",
                   bg=CARD2, fg=MUT, relief="flat", bd=0,
                   font=("Segoe UI", 8), padx=8, pady=3,
@@ -7314,7 +7335,7 @@ class SynthexApp:
         meta_row = tk.Frame(inp_frame, bg=CARD)
         meta_row.pack(fill="x", pady=(0, 5))
         tk.Label(meta_row,
-                 text="Shift+Enter untuk baris baru  •  @url https://... untuk scrape halaman web",
+                 text="Enter / Ctrl+Enter kirim  •  Shift+Enter baris baru  •  @url https://... scrape web",
                  bg=CARD, fg=MUT,
                  font=("Segoe UI", 7, "italic")).pack(side="left")
         char_var = tk.StringVar(value="0 karakter")
@@ -7450,169 +7471,13 @@ class SynthexApp:
 
         send_btn.configure(command=_send)
         inp_entry.bind("<Return>", _on_enter)
+        inp_entry.bind("<Control-Return>", lambda e: (_send(), "break")[1])
 
         _rebuild_messages()
         return f
 
     # ================================================================
     #  AI TEAM PAGE
-    # ================================================================
-
-    def _pg_ai_team(self):
-        import threading as _thr
-
-        f = tk.Frame(self._content, bg=BG)
-        self._hdr(f, "AI Team",
-                  "Multi-agent AI — Groq · Together.ai · OpenRouter")
-
-        # ── key check ───────────────────────────────────────────────────────
-        agents_cfg = self.config.get("agents", {}) or {}
-        keys = {
-            "groq":       agents_cfg.get("groq_key", ""),
-            "together":   agents_cfg.get("together_key", ""),
-            "openrouter": agents_cfg.get("openrouter_key", ""),
-        }
-        active_providers = [k for k, v in keys.items() if v]
-
-        # ── top bar ─────────────────────────────────────────────────────────
-        top_bar = tk.Frame(f, bg=CARD, padx=16, pady=8)
-        top_bar.pack(fill="x")
-
-        if active_providers:
-            status_txt = "✅  Provider aktif: {}".format(", ".join(active_providers))
-            status_fg  = GRN
-        else:
-            status_txt = "⚠  Belum ada API key — buka Settings → AI Team Keys"
-            status_fg  = YEL
-
-        tk.Label(top_bar, text=status_txt, bg=CARD, fg=status_fg,
-                 font=("Segoe UI", 9, "bold")).pack(side="left")
-
-        mode_var = tk.StringVar(value="full")
-        tk.Radiobutton(top_bar, text="Full Pipeline", variable=mode_var, value="full",
-                       bg=CARD, fg=FG, selectcolor=CARD2, activebackground=CARD,
-                       font=("Segoe UI", 8)).pack(side="right", padx=(0, 8))
-        tk.Radiobutton(top_bar, text="Quick", variable=mode_var, value="quick",
-                       bg=CARD, fg=FG, selectcolor=CARD2, activebackground=CARD,
-                       font=("Segoe UI", 8)).pack(side="right", padx=(0, 4))
-        tk.Label(top_bar, text="Mode:", bg=CARD, fg=MUT,
-                 font=("Segoe UI", 8)).pack(side="right", padx=(0, 4))
-
-        # ── output area ─────────────────────────────────────────────────────
-        out_outer = tk.Frame(f, bg=BG)
-        out_outer.pack(fill="both", expand=True, padx=0, pady=0)
-
-        out_sb = ttk.Scrollbar(out_outer, orient="vertical")
-        out_sb.pack(side="right", fill="y")
-        out_txt = tk.Text(out_outer, bg=BG2, fg=FG,
-                          font=("Cascadia Code", 9),
-                          wrap="word", relief="flat", bd=0,
-                          padx=16, pady=12,
-                          yscrollcommand=out_sb.set,
-                          state="disabled")
-        out_txt.pack(side="left", fill="both", expand=True)
-        out_sb.config(command=out_txt.yview)
-
-        # colour tags
-        out_txt.tag_config("log",   foreground=MUT)
-        out_txt.tag_config("label", foreground=ACC2, font=("Cascadia Code", 9, "bold"))
-        out_txt.tag_config("result",foreground=FG)
-        out_txt.tag_config("err",   foreground=RED)
-
-        def _append(text: str, tag: str = "result"):
-            out_txt.config(state="normal")
-            out_txt.insert("end", text, tag)
-            out_txt.see("end")
-            out_txt.config(state="disabled")
-
-        def _clear_out():
-            out_txt.config(state="normal")
-            out_txt.delete("1.0", "end")
-            out_txt.config(state="disabled")
-
-        # ── input bar ───────────────────────────────────────────────────────
-        inp_bar = tk.Frame(f, bg=CARD, padx=12, pady=10)
-        inp_bar.pack(fill="x", side="bottom")
-
-        inp_entry = tk.Entry(inp_bar, bg=CARD2, fg=FG, insertbackground=FG,
-                             relief="flat", bd=0,
-                             font=("Segoe UI", 10))
-        inp_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
-
-        _running = [False]
-
-        def _run():
-            task = inp_entry.get().strip()
-            if not task or _running[0]:
-                return
-            if not active_providers:
-                _append("⚠  Tambahkan API key di Settings → AI Team Keys\n", "err")
-                return
-
-            _running[0] = True
-            run_btn.config(state="disabled", text="⏳ Running…")
-            inp_entry.config(state="disabled")
-            _clear_out()
-            _append("Task: {}\n\n".format(task), "label")
-
-            def _worker():
-                try:
-                    from modules.agents.team import AgentTeam
-
-                    def log_cb(msg):
-                        f.after(0, lambda m=msg: _append("  {}\n".format(m), "log"))
-
-                    team  = AgentTeam(keys=keys, log_cb=log_cb)
-                    quick = mode_var.get() == "quick"
-                    if quick:
-                        result = team.quick(task, max_tokens=1024)
-                        agents_used = {}
-                    else:
-                        out = team.run(task, max_tokens=2048)
-                        result     = out["result"]
-                        agents_used = out["agents_used"]
-
-                    def _done():
-                        _append("\n── HASIL ──\n\n", "label")
-                        _append(result + "\n", "result")
-                        if agents_used:
-                            _append("\n── Models ──\n", "log")
-                            for name, info in agents_used.items():
-                                _append("  {} · {}\n".format(name, info.get("model", "")), "log")
-                        _running[0] = False
-                        run_btn.config(state="normal", text="▶  Kirim")
-                        inp_entry.config(state="normal")
-                        inp_entry.delete(0, "end")
-
-                    f.after(0, _done)
-
-                except Exception as e:
-                    def _err(msg=str(e)):
-                        _append("\n❌ Error: {}\n".format(msg), "err")
-                        _running[0] = False
-                        run_btn.config(state="normal", text="▶  Kirim")
-                        inp_entry.config(state="normal")
-                    f.after(0, _err)
-
-            _thr.Thread(target=_worker, daemon=True).start()
-
-        inp_entry.bind("<Return>", lambda e: _run())
-
-        run_btn = tk.Button(inp_bar, text="▶  Kirim",
-                            bg=ACC, fg="white", relief="flat", bd=0,
-                            font=("Segoe UI", 9, "bold"),
-                            padx=16, pady=6, cursor="hand2",
-                            command=_run)
-        run_btn.pack(side="right")
-
-        tk.Button(inp_bar, text="🗑",
-                  bg=CARD2, fg=MUT, relief="flat", bd=0,
-                  font=("Segoe UI", 9), padx=8, pady=6,
-                  cursor="hand2", command=_clear_out).pack(side="right", padx=(0, 4))
-
-        _append("AI Team siap. Ketik task dan tekan Enter atau klik Kirim.\n", "log")
-        return f
-
     # ================================================================
     #  BLOG PAGE
     # ================================================================
@@ -8524,54 +8389,6 @@ class SynthexApp:
                   bg=CARD2, fg=FG, font=("Segoe UI", 9),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_test_ai).pack(side="left")
-
-        # ── AI Team Keys card ──────────────────────────────────────────────────
-        atc = _card(_sbody, "🤖 AI Team Keys")
-        atc.pack(fill="x", padx=20, pady=(8, 0))
-
-        tk.Label(atc, text="Groq, Together.ai, OpenRouter untuk fitur AI Team.",
-                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
-
-        _at_groq_var  = tk.StringVar(value=self.config.get("agents.groq_key", "") or "")
-        _at_tog_var   = tk.StringVar(value=self.config.get("agents.together_key", "") or "")
-        _at_or_var    = tk.StringVar(value=self.config.get("agents.openrouter_key", "") or "")
-
-        def _key_row_at(parent, label: str, var: tk.StringVar):
-            row = tk.Frame(parent, bg=CARD)
-            row.pack(fill="x", pady=(0, 4))
-            tk.Label(row, text="{:14s}".format(label + ":"), bg=CARD, fg=MUT,
-                     font=("Segoe UI", 8)).pack(side="left")
-            ent = tk.Entry(row, textvariable=var, bg=CARD2, fg=FG,
-                           insertbackground=FG, relief="flat",
-                           font=("Segoe UI", 9), show="*", width=34)
-            ent.pack(side="left")
-            shown = [False]
-            def _tog(e=ent, s=shown):
-                s[0] = not s[0]
-                e.configure(show="" if s[0] else "*")
-            tk.Button(row, text="👁", bg=CARD2, fg=MUT, relief="flat", bd=0,
-                      font=("Segoe UI", 9), padx=4, cursor="hand2",
-                      command=_tog).pack(side="left", padx=(4, 0))
-
-        _key_row_at(atc, "Groq",       _at_groq_var)
-        _key_row_at(atc, "Together.ai", _at_tog_var)
-        _key_row_at(atc, "OpenRouter",  _at_or_var)
-
-        _at_status = tk.StringVar(value="")
-        tk.Label(atc, textvariable=_at_status, bg=CARD, fg=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w")
-
-        def _save_at():
-            self.config.set("agents.groq_key",       _at_groq_var.get().strip())
-            self.config.set("agents.together_key",   _at_tog_var.get().strip())
-            self.config.set("agents.openrouter_key", _at_or_var.get().strip())
-            self.config.save()
-            _at_status.set("✓ Tersimpan")
-
-        tk.Button(atc, text="💾 Simpan Keys",
-                  bg=ACC, fg="white", font=("Segoe UI", 9, "bold"),
-                  relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
-                  command=_save_at).pack(anchor="w", pady=(4, 0))
 
         # ---- Update card ----------------------------------------------
         upc = _card(_sbody, "Pembaruan Aplikasi")
