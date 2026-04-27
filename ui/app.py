@@ -658,6 +658,7 @@ class SynthexApp:
 
         # Show full-screen dark overlay — not dismissable
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("")
         dlg.attributes("-topmost", True)
         dlg.configure(fg_color="#0A0A0F")
@@ -691,6 +692,7 @@ class SynthexApp:
                   command=_do_close).pack(pady=14)
 
         dlg.update()
+        dlg.deiconify()
 
         dlg.grab_set()
         dlg.focus_force()
@@ -3092,6 +3094,7 @@ class SynthexApp:
 
         # Show result window
         w = ctk.CTkToplevel(self._root)
+        w.withdraw()
         w.title("Step Test: {}".format(_step_label(step)[:40]))
         w.configure(fg_color=BG)
         w.geometry("400x180")
@@ -3108,6 +3111,8 @@ class SynthexApp:
                               justify="left")
         result_lbl.pack(fill="x", padx=16, pady=(6, 0))
         _ck.Button(w, text="Close", command=w.destroy).pack(pady=10)
+        w.update()
+        w.deiconify()
 
         def _run():
             from modules.macro.smart_macro import SmartMacro
@@ -4771,6 +4776,7 @@ class SynthexApp:
                 _thr.Thread(target=_do, daemon=True).start()
 
             win = ctk.CTkToplevel(self._root)
+            win.withdraw()
             win.title("Synthex Control — {}".format(serial))
             win.configure(fg_color="#0D0D14")
             win.resizable(False, False)
@@ -4871,6 +4877,8 @@ class SynthexApp:
             ti_entry.bind("<Return>", lambda e: (_tap_input(ti_var.get()), ti_var.set("")))
 
             _ck.Frame(win, fg_color="#0D0D14", height=8).pack()
+            win.update()
+            win.deiconify()
 
         # ── Wireless Connect ─────────────────────────────────────────────────
         _ck.Frame(conn, fg_color=CARD2, height=1).pack(fill="x", pady=(4, 10))
@@ -5023,6 +5031,7 @@ class SynthexApp:
 
         def _show_unplug_dialog(ip: str):
             dlg = ctk.CTkToplevel(self._root)
+            dlg.withdraw()
             dlg.attributes("-topmost", True)
             dlg.configure(fg_color="#0D0D14")
             dlg.resizable(False, False)
@@ -5097,6 +5106,7 @@ class SynthexApp:
                 (sw - dlg.winfo_width()) // 2,
                 (sh - dlg.winfo_height()) // 2))
             dlg.update()
+            dlg.deiconify()
             dlg.grab_set()
 
         # ══════════════════════════════════════════════════════════════
@@ -5809,6 +5819,7 @@ class SynthexApp:
         # ── Add Rule dialog ──────────────────────────────────────────────────
         def _open_add_rule():
             dlg = ctk.CTkToplevel(self._root)
+            dlg.withdraw()
             dlg.title("Tambah Macro Rule")
             dlg.configure(fg_color="#0D0D14")
             dlg.resizable(False, False)
@@ -5939,6 +5950,8 @@ class SynthexApp:
                       font=("Segoe UI", 9), padx=12, pady=7,
                       relief="flat", bd=0, cursor="hand2",
                       command=dlg.destroy).pack(side="left")
+            dlg.update()
+            dlg.deiconify()
 
         mac_add_row = _ck.Frame(mac_sec, fg_color=CARD)
         mac_add_row.pack(anchor="w")
@@ -6171,6 +6184,7 @@ class SynthexApp:
         import webbrowser as _wb
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Synthex App diperlukan")
         dlg.configure(fg_color="#0A0A0F")
         dlg.resizable(False, False)
@@ -6220,6 +6234,8 @@ class SynthexApp:
                   font=("Segoe UI", 9), padx=12, pady=7,
                   relief="flat", bd=0, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
+        dlg.update()
+        dlg.deiconify()
 
     # ================================================================
     #  USB SETUP WIZARD
@@ -6231,6 +6247,7 @@ class SynthexApp:
         import time as _time
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Synthex USB Setup Wizard")
         dlg.configure(fg_color="#0A0A0F")
         dlg.resizable(False, False)
@@ -6317,6 +6334,8 @@ class SynthexApp:
                   font=("Segoe UI", 9), padx=12, pady=8,
                   relief="flat", bd=0, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
+        dlg.update()
+        dlg.deiconify()
 
         _ip_found   = [""]
         _serial_usb = [""]
@@ -6591,6 +6610,7 @@ class SynthexApp:
                 return
             _close_mention_popup()
             popup = ctk.CTkToplevel(self._root)
+            popup.withdraw()
             popup.configure(fg_color="#1c1c2e")
             _mention_popup[0] = popup
             x = inp_entry.winfo_rootx()
@@ -6609,6 +6629,8 @@ class SynthexApp:
                                 padx=10, pady=3, cursor="hand2",
                                 command=_pick)
                 btn.pack(fill="x")
+            popup.update()
+            popup.deiconify()
         inp_entry.bind("<KeyRelease>", _on_inp_key)
         inp_entry.bind("<Escape>", lambda e: _close_mention_popup())
 
@@ -7587,6 +7609,7 @@ class SynthexApp:
         # ── Editor ────────────────────────────────────────────────────────────
         def _open_editor(post=None):
             dlg = ctk.CTkToplevel(self._root)
+            dlg.withdraw()
             dlg.title("Tulis Post" if not post else "Edit Post")
             dlg.configure(fg_color="#0D0D14")
             dlg.geometry("720x640")
@@ -7716,6 +7739,7 @@ class SynthexApp:
 
             def _add_image_url():
                 url_dlg = ctk.CTkToplevel(dlg)
+                url_dlg.withdraw()
                 url_dlg.title("URL Gambar")
                 url_dlg.configure(fg_color="#0D0D14")
                 url_dlg.geometry("440x100")
@@ -7740,6 +7764,7 @@ class SynthexApp:
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
+                url_dlg.deiconify()
                 url_dlg.grab_set()
 
             def _add_image_file():
@@ -7765,6 +7790,7 @@ class SynthexApp:
 
             def _add_video_url():
                 url_dlg = ctk.CTkToplevel(dlg)
+                url_dlg.withdraw()
                 url_dlg.title("URL Video")
                 url_dlg.configure(fg_color="#0D0D14")
                 url_dlg.geometry("440x100")
@@ -7789,6 +7815,7 @@ class SynthexApp:
                           font=("Segoe UI", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
+                url_dlg.deiconify()
                 url_dlg.grab_set()
 
             btn_row_media = _ck.Frame(ed, fg_color="#0D0D14")
@@ -7842,6 +7869,7 @@ class SynthexApp:
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
             dlg.update()
+            dlg.deiconify()
             dlg.grab_set()
 
         _show_empty()
@@ -7909,10 +7937,12 @@ class SynthexApp:
             return
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Restore from Backup")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
 
         _lbl(dlg, "Select a backup to restore:", fg_color=BG,
@@ -9757,10 +9787,12 @@ class SynthexApp:
             return
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Scrape ke Sheet")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
         dlg.geometry("340x180+{}+{}".format(
             self._root.winfo_rootx() + 80,
@@ -9857,6 +9889,7 @@ class SynthexApp:
     def _do_countdown(self, count, callback):
         """Show a full-screen-style countdown overlay, then call callback."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("")
         dlg.geometry("200x120")
         dlg.configure(fg_color=BG)
@@ -9884,6 +9917,8 @@ class SynthexApp:
                 dlg.destroy()
                 callback()
 
+        dlg.update()
+        dlg.deiconify()
         dlg.after(1000, _tick)
 
     def _show_rec_toolbar(self):
@@ -9891,6 +9926,7 @@ class SynthexApp:
         import time as _time
 
         win = ctk.CTkToplevel(self._root)
+        win.withdraw()
         win.title("Synthex Recorder")
         win.configure(fg_color="#0D0D14")
         win.resizable(False, False)
@@ -10168,6 +10204,8 @@ class SynthexApp:
 
         win.protocol("WM_DELETE_WINDOW", lambda: _close_ref[0]())
         _update_state_idle()
+        win.update()
+        win.deiconify()
 
     def _toggle_rec_pause(self):
         # Legacy – pause logic now lives inside _show_rec_toolbar closure.
@@ -10221,11 +10259,13 @@ class SynthexApp:
         #  Window setup                                                        #
         # ------------------------------------------------------------------ #
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Macro Step Editor")
         dlg.geometry("980x700")
         dlg.configure(fg_color=BG)
         dlg.resizable(True, True)
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
         self._simple_step_editor_win = dlg
 
@@ -10848,6 +10888,7 @@ class SynthexApp:
             # Small popup entry
             x0, y0, x1, y1 = st.bbox(item, "#5")
             popup = ctk.CTkToplevel(dlg)
+            popup.withdraw()
             popup.geometry("{}x{}+{}+{}".format(
                 x1 - x0, y1 - y0,
                 st.winfo_rootx() + x0,
@@ -10876,6 +10917,8 @@ class SynthexApp:
             popup_e.bind("<Return>",  _commit)
             popup_e.bind("<Escape>",  lambda e: popup.destroy())
             popup_e.bind("<FocusOut>", lambda e: popup.destroy())
+            popup.update()
+            popup.deiconify()
 
         st.bind("<Double-ButtonPress-1>", _on_dbl_click)
 
@@ -11150,6 +11193,7 @@ class SynthexApp:
             return _TYPE_LABEL.get(t, t)
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Editor Langkah Rekaman")
         dlg.configure(fg_color=BG)
         dlg.resizable(True, True)
@@ -11361,6 +11405,7 @@ class SynthexApp:
         dlg.geometry("{}x{}+{}+{}".format(
             w, h, (sw - w) // 2, (sh - h) // 2))
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
         dlg.lift()
         dlg.focus_force()
@@ -11442,6 +11487,7 @@ class SynthexApp:
 
     def _show_playback_window(self, total, name=""):
         win = ctk.CTkToplevel(self._root)
+        win.withdraw()
         win.title("Playing...")
         win.geometry("220x195")
         win.configure(fg_color=CARD)
@@ -11494,6 +11540,8 @@ class SynthexApp:
         win._step_var = step_var
         win._desc_var = desc_var
         win._pb_canvas = pb
+        win.update()
+        win.deiconify()
         return win
 
     def _update_playback_window(self, win, step, total, desc):
@@ -11662,6 +11710,7 @@ class SynthexApp:
         name = self._ud.recordings[idx].get("name", "")
         # Custom styled confirm dialog
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Hapus Rekaman")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
@@ -11706,6 +11755,7 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         w, h = 380, 220
         dlg.geometry("{}x{}+{}+{}".format(w, h, (sw - w) // 2, (sh - h) // 2))
+        dlg.deiconify()
         self._root.wait_window(dlg)
 
         if result[0]:
@@ -11758,6 +11808,7 @@ class SynthexApp:
         Returns the entered name string, or "" if cancelled.
         """
         dlg = ctk.CTkToplevel(parent)
+        dlg.withdraw()
         dlg.title("Nama Rekaman")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
@@ -11828,6 +11879,7 @@ class SynthexApp:
         sh = parent.winfo_screenheight()
         w, h = 400, 230
         dlg.geometry("{}x{}+{}+{}".format(w, h, (sw - w) // 2, (sh - h) // 2))
+        dlg.deiconify()
         name_entry.focus_set()
         parent.wait_window(dlg)
         return result[0]
@@ -12049,6 +12101,7 @@ class SynthexApp:
         )
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Confirm Run")
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
@@ -12089,6 +12142,7 @@ class SynthexApp:
         dlg.geometry("{}x{}+{}+{}".format(
             max(w, 400), max(h, 200),
             (sw - max(w, 400)) // 2, (sh - max(h, 200)) // 2))
+        dlg.deiconify()
         self._root.wait_window(dlg)
         return result[0]
 
@@ -12098,6 +12152,7 @@ class SynthexApp:
         total = len(steps)
 
         w = ctk.CTkToplevel(self._root)
+        w.withdraw()
         w.title("Running: {}".format(task.get("name", "")))
         w.configure(fg_color=BG)
         w.resizable(False, False)
@@ -12146,6 +12201,8 @@ class SynthexApp:
             "stop_btn":     stop_btn,
             "total":        total,
         }
+        w.update()
+        w.deiconify()
         return panel
 
     def _run_task_thread(self, task, idx, stop_flag=None, panel=None):
@@ -12298,6 +12355,7 @@ class SynthexApp:
     def _show_continuous_progress_panel(self, task: dict, stop_flag) -> dict:
         """Floating progress window for continuous bulk-order confirmation mode."""
         w = ctk.CTkToplevel(self._root)
+        w.withdraw()
         w.title("Bulk Order Confirmation")
         w.configure(fg_color=BG)
         w.resizable(False, False)
@@ -12401,6 +12459,8 @@ class SynthexApp:
                   padx=12, pady=5, cursor="hand2",
                   command=_export).pack(side="left")
 
+        w.update()
+        w.deiconify()
         return {
             "window":        w,
             "loop_lbl":      loop_lbl,
@@ -12678,6 +12738,7 @@ class SynthexApp:
                 _det = details
                 def _show_det():
                     dw = ctk.CTkToplevel(self._root)
+                    dw.withdraw()
                     dw.title("Error Details")
                     dw.configure(fg_color=BG)
                     dw.geometry("600x320")
@@ -12687,6 +12748,8 @@ class SynthexApp:
                     st.insert(tk.END, _det)
                     st.configure(state="disabled")
                     _ck.Button(dw, text="Close", command=dw.destroy).pack(pady=(0, 10))
+                    dw.update()
+                    dw.deiconify()
                 det_row = _ck.Frame(inner, fg_color=card_col)
                 det_row.pack(fill="x", padx=12, pady=(0, 6))
                 _ck.Label(det_row, text="Lihat Detail →", fg_color=card_col, text_color=stripe_col, font=("Segoe UI", 8), cursor="hand2").pack(
@@ -12806,6 +12869,7 @@ class SynthexApp:
         result = tk.BooleanVar(value=False)
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()  # hide until fully built
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
@@ -12831,16 +12895,15 @@ class SynthexApp:
             result.set(True)
             dlg.destroy()
 
-        _ck.Button(btn_row, text="  {}  ".format(confirm_text), fg_color=accent, text_color="white", relief="flat", font=("Segoe UI", 10, "bold"),
-                  cursor="hand2", padx=12, pady=6,
-                  command=_yes).pack(side="left", padx=(0, 8))
+        _ck.Button(btn_row, text="  {}  ".format(confirm_text), fg_color=accent, text_color="white",
+                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  cursor="hand2", command=_yes).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="  {}  ".format(cancel_text), fg_color=CARD2, text_color=FG,
                   relief="flat", font=("Segoe UI", 10),
-                  cursor="hand2", padx=12, pady=6,
-                  command=dlg.destroy).pack(side="left")
+                  cursor="hand2", command=dlg.destroy).pack(side="left")
 
         dlg.update()
-
+        dlg.deiconify()
         dlg.grab_set()
         dlg.focus_force()
         dlg.wait_window(dlg)
@@ -12849,6 +12912,7 @@ class SynthexApp:
     def _show_force_download_dialog(self, tag: str, url: str):
         """Paksa update seperti game — tidak bisa di-close, download in-app, restart otomatis."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Synthex — Update Tersedia")
         dlg.configure(fg_color="#0D0D14")
         dlg.resizable(False, False)
@@ -12926,11 +12990,14 @@ class SynthexApp:
             threading.Thread(target=_bg, daemon=True).start()
 
         btn.configure(command=_start_download)
+        dlg.update()
+        dlg.deiconify()
         dlg.focus_force()
 
     def _show_force_update_dialog(self, min_ver: str):
         """Blocking dialog: user must update, cannot dismiss."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Update Diperlukan")
         dlg.configure(fg_color="#0D0D14")
         dlg.resizable(False, False)
@@ -12955,10 +13022,13 @@ class SynthexApp:
         _ck.Button(bd, text="⬇ Download Update", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_open_gh).pack(anchor="w")
+        dlg.update()
+        dlg.deiconify()
 
     def _show_changelog_popup(self, cl: dict):
         """Show release notes popup (dismissable)."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Yang Baru di v{}".format(cl.get("version","")))
         dlg.configure(fg_color="#0D0D14")
         dlg.resizable(True, False)
@@ -12982,11 +13052,13 @@ class SynthexApp:
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=dlg.destroy).pack(anchor="e", pady=(12,0))
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
 
     def _show_dm_popup(self, msgs: list, my_email: str, token: str):
         """Show unread DM messages from master."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Pesan dari Master")
         dlg.configure(fg_color="#0D0D14")
         dlg.resizable(True, False)
@@ -13023,6 +13095,7 @@ class SynthexApp:
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_close).pack(anchor="e", pady=(12,0))
         dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
 
     def _show_alert(self, title, message, kind="info"):
@@ -13033,6 +13106,7 @@ class SynthexApp:
         }.get(kind, ACC)
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
@@ -13056,6 +13130,7 @@ class SynthexApp:
                   command=dlg.destroy).pack(pady=14)
 
         dlg.update()
+        dlg.deiconify()
 
         dlg.grab_set()
         dlg.focus_force()
@@ -13066,6 +13141,7 @@ class SynthexApp:
         result = [None]
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
@@ -13109,6 +13185,7 @@ class SynthexApp:
                   command=dlg.destroy).pack(side="left")
 
         dlg.update()
+        dlg.deiconify()
 
         dlg.grab_set()
         dlg.wait_window(dlg)
@@ -13458,6 +13535,7 @@ class SynthexApp:
         from modules.sheets import connector as _sc
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Setup Google Sheets — Panduan Langkah demi Langkah")
         dlg.geometry("560x500")
         dlg.configure(fg_color=BG)
@@ -13735,6 +13813,8 @@ class SynthexApp:
         btn_prev.configure(command=lambda: _go(-1))
         btn_next.configure(command=lambda: _go(+1))
         _render(0)
+        dlg.update()
+        dlg.deiconify()
     # ================================================================
     #  TEMPLATES PAGE
     # ================================================================
@@ -13847,6 +13927,7 @@ class SynthexApp:
     def _template_preview(self, tpl):
         """Show a popup with all steps of a template."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Preview: {}".format(tpl.get("name", "")))
         dlg.geometry("560x480")
         dlg.configure(fg_color=BG)
@@ -13885,6 +13966,8 @@ class SynthexApp:
                                    self._mb_open_with_template(tpl)]).pack(side="left")
         _ck.Button(btn_f, text="Close", command=dlg.destroy).pack(
             side="left", padx=(10, 0))
+        dlg.update()
+        dlg.deiconify()
 
     # ================================================================
     #  LOGS PAGE  (Live log viewer)
@@ -14366,6 +14449,7 @@ class SynthexApp:
         ))
 
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()
         dlg.title("Panduan - {}".format(page.capitalize()))
         dlg.geometry("480x400")
         dlg.configure(fg_color=BG)
@@ -14406,10 +14490,13 @@ class SynthexApp:
                               d.destroy(), self._show("{}".format(p)),
                               self._root.after(50, self._show_help)
                           ]).pack(side="left", padx=(0, 3))
+        dlg.update()
+        dlg.deiconify()
 
     def _quit(self):
         """Tampilkan konfirmasi close yang menarik, lalu keluar + logout."""
         dlg = ctk.CTkToplevel(self._root)
+        dlg.withdraw()  # hide until fully built
         dlg.title("Tutup Synthex")
         dlg.resizable(False, False)
         dlg.configure(fg_color="#0D0D14")
@@ -14504,6 +14591,6 @@ class SynthexApp:
                   command=dlg.destroy).pack(side="left")
 
         dlg.update()
-        dlg.update()
+        dlg.deiconify()
         dlg.grab_set()
         dlg.focus_force()

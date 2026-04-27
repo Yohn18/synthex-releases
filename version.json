@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.44",
-  "min_version": "1.3.44",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.44/Synthex.exe",
-  "changelog": "v1.3.44: Hapus versi dan by Yohn18 dari header window \u2014 cukup tampil di home page.",
+  "latest_version": "1.3.45",
+  "min_version": "1.3.45",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.45/Synthex.exe",
+  "changelog": "v1.3.45: Fix semua CTkToplevel dialog blank (withdraw/deiconify pattern di seluruh app)",
   "maintenance": false,
   "maintenance_msg": ""
 }
