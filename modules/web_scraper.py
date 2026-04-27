@@ -41,13 +41,13 @@ class _TextExtractor(HTMLParser):
             self._skip = max(0, self._skip - 1)
 
     def handle_data(self, data):
-        if self._skip:
-            return
         s = data.strip()
         if not s:
             return
         if self._in_title:
             self.title = s
+            return
+        if self._skip:
             return
         self._parts.append(s)
 
