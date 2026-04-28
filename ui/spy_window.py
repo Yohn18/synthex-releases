@@ -560,13 +560,11 @@ class FloatingSpyWindow:
         self._v_eid    = tk.StringVar(value="-")
         self._v_eclass = tk.StringVar(value="-")
         self._v_ecss   = tk.StringVar(value="-")
-        self._v_expath = tk.StringVar(value="-")
         _row(ef, "Tag",   self._v_etag,   GRN)
         _row(ef, "Text",  self._v_etext)
         _row(ef, "ID",    self._v_eid)
         _row(ef, "Class", self._v_eclass, MUT)
         _row(ef, "CSS",   self._v_ecss,   ACC2)
-        _row(ef, "XPath", self._v_expath)
 
         # Tombol copy cepat untuk elemen
         eq = tk.Frame(ef, bg=CARD)
@@ -904,7 +902,7 @@ class FloatingSpyWindow:
 
     def _clear_element(self):
         for v in (self._v_etag, self._v_etext, self._v_eid,
-                  self._v_eclass, self._v_ecss, self._v_expath):
+                  self._v_eclass, self._v_ecss):
             v.set("-")
         self._v_status.set("Element info cleared")
 

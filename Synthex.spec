@@ -4,7 +4,10 @@
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=[
+        (r'C:\Users\Admin\AppData\Local\Programs\Python\Python314\Lib\site-packages\pyzbar\libzbar-64.dll', 'pyzbar'),
+        (r'C:\Users\Admin\AppData\Local\Programs\Python\Python314\Lib\site-packages\pyzbar\libiconv.dll', 'pyzbar'),
+    ],
     datas=[
         ('ui', 'ui'), ('core', 'core'), ('modules', 'modules'), ('auth', 'auth'),
         ('assets', 'assets'), ('data', 'data'), ('config.json', '.'), ('synthex.ico', '.'),
@@ -23,6 +26,7 @@ a = Analysis(
         'http.server',
         'openpyxl', 'openpyxl.styles', 'openpyxl.utils',
         'csv',
+        'pyzbar', 'pyzbar.pyzbar', 'pyzbar.libzbar',
         'customtkinter',
         'customtkinter.windows',
         'customtkinter.windows.widgets',

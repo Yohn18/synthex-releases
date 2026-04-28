@@ -3243,7 +3243,7 @@ class SynthexApp:
         qris_hint.pack(anchor="w", pady=(0, 4))
 
         qris_input = _ck.Text(left, fg_color=CARD2, text_color=FG,
-                              font=("Consolas", 8), height=60, wrap="word")
+                              font=("Consolas", 8), height=100, wrap="word")
         qris_input.pack(fill="x")
 
         # Tombol Paste + Clear
@@ -3272,10 +3272,46 @@ class SynthexApp:
             copy_btn.configure(state="disabled")
             save_btn.configure(state="disabled")
 
+        def _upload_qr_image():
+            from tkinter import filedialog as _fd
+            path = _fd.askopenfilename(
+                parent=self._root,
+                title="Pilih Gambar QR Code",
+                filetypes=[
+                    ("Gambar", "*.png *.jpg *.jpeg *.bmp *.gif *.webp"),
+                    ("Semua file", "*.*"),
+                ])
+            if not path:
+                return
+            try:
+                from PIL import Image as _PILImage
+                try:
+                    from pyzbar.pyzbar import decode as _pyzbar_decode
+                except ImportError:
+                    _set_status(
+                        "⚠ Library pyzbar belum terinstall. "
+                        "Jalankan: pip install pyzbar", YEL)
+                    return
+                img = _PILImage.open(path).convert("RGB")
+                decoded = _pyzbar_decode(img)
+                if not decoded:
+                    _set_status("❌ QR code tidak terdeteksi di gambar ini.", RED)
+                    return
+                qris_str = decoded[0].data.decode("utf-8", errors="replace").strip()
+                qris_input.delete("1.0", "end")
+                qris_input.insert("1.0", qris_str)
+                _set_status("✅ QR berhasil dibaca dari gambar.", GRN)
+            except Exception as _e:
+                _set_status("❌ Gagal baca gambar: {}".format(str(_e)[:60]), RED)
+
         _ck.Button(paste_row, text="📋 Paste", fg_color=CARD2, text_color=FG,
                    font=("Segoe UI", 8), relief="flat", bd=0,
                    padx=10, pady=4, cursor="hand2",
                    command=_paste_qris).pack(side="left", padx=(0, 6))
+        _ck.Button(paste_row, text="📷 Upload Gambar QR", fg_color=CARD2, text_color=ACC2,
+                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   padx=10, pady=4, cursor="hand2",
+                   command=_upload_qr_image).pack(side="left", padx=(0, 6))
         _ck.Button(paste_row, text="Bersihkan", fg_color=CARD2, text_color=MUT,
                    font=("Segoe UI", 8), relief="flat", bd=0,
                    padx=10, pady=4, cursor="hand2",
@@ -3380,10 +3416,21 @@ class SynthexApp:
             fee_type = None
             fee_val = 0
             if ft != "none":
-                fee_raw = fee_amt_var.get().replace(".", "").replace(",", "").strip()
-                if fee_raw and fee_raw.isdigit():
-                    fee_type = ft
-                    fee_val = int(fee_raw)
+                fee_raw = fee_amt_var.get().replace(",", ".").strip()
+                if fee_raw:
+                    try:
+                        fee_parsed = float(fee_raw)
+                        if fee_parsed <= 0:
+                            raise ValueError
+                        if ft == "fixed":
+                            fee_val = int(fee_parsed)
+                        else:
+                            fee_val = fee_parsed
+                        fee_type = ft
+                    except ValueError:
+                        _set_status("⚠ Biaya layanan tidak valid. Masukkan angka seperti 2500 atau 1.5", YEL)
+                        gen_btn.configure(state="normal", text="⚡ Generate QRIS Dinamis")
+                        return
 
             gen_btn.configure(state="disabled", text="Memproses...")
             _set_status("Mengkonversi QRIS...", MUT)
@@ -3451,11 +3498,11 @@ class SynthexApp:
         _ck.Label(guide_inner, text="Cara Pakai:", fg_color=CARD, text_color=FG,
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         for step in [
-            "1. Buka aplikasi QRIS/M-Banking kamu → tampilkan QR statis.",
-            "2. Scan/ambil string QRIS dari QR tersebut, tempel di kolom atas.",
-            "3. Masukkan nominal pembayaran.",
-            "4. (Opsional) tambahkan biaya layanan fixed atau persentase.",
-            "5. Klik Generate → QR baru muncul di kanan, scan untuk bayar.",
+            "1. Cara A: Paste string QRIS langsung ke kolom atas.",
+            "   Cara B: Klik 📷 Upload Gambar QR → pilih foto/screenshot QR.",
+            "2. Masukkan nominal pembayaran.",
+            "3. (Opsional) tambahkan biaya layanan fixed atau persentase (bisa desimal, misal 1.5%).",
+            "4. Klik Generate → QR baru muncul di kanan, scan untuk bayar.",
         ]:
             _ck.Label(guide_inner, text=step, fg_color=CARD, text_color=MUT,
                      font=("Segoe UI", 8), wraplength=370, justify="left").pack(

@@ -29,7 +29,10 @@ class TLV:
 
     def encode(self) -> str:
         body = "".join(c.encode() for c in self.children) if self.children else self.value
-        return self.tag + str(len(body)).zfill(2) + body
+        length = len(body)
+        if length > 99:
+            raise QRISError(f"TLV tag {self.tag} terlalu panjang ({length} char, maks 99).")
+        return self.tag + str(length).zfill(2) + body
 
 
 # ── TLV field names (informatif) ─────────────────────────────────────────────
@@ -102,10 +105,10 @@ class QRISConverter:
             return False, "QRIS harus diawali '000201'."
         if len(qris) < 10:
             return False, "QRIS terlalu pendek."
-        # Cek CRC
-        body = qris[:-4]
+        # Cek CRC — body adalah semua data sebelum field CRC (strip 8 char: "6304XXXX")
+        body  = qris[:-8]
         tag63 = qris[-8:-4]
-        crc  = qris[-4:]
+        crc   = qris[-4:]
         if tag63 != "6304":
             return False, "Field CRC (6304) tidak ditemukan di akhir string."
         expected = _crc16(body + "6304")
@@ -125,7 +128,7 @@ class QRISConverter:
         qris: str,
         amount: int,
         fee_type: Optional[str] = None,   # "fixed" | "percent"
-        fee_value: int = 0,
+        fee_value: float = 0,
     ) -> str:
         """
         Konversi QRIS statis ke dinamis.
@@ -187,10 +190,7 @@ class QRISConverter:
 
     def parse_info(self, qris: str) -> dict:
         """Ekstrak info merchant dari QRIS string (nama, kota, jumlah, dll)."""
-        body = qris.strip()[:-8] if qris.strip().endswith(qris[-4:]) else qris.strip()
-        # Buang CRC
-        if len(qris) >= 8 and qris[-8:-4] == "6304":
-            body = qris[:-8]
+        body = qris[:-8] if len(qris) >= 8 and qris[-8:-4] == "6304" else qris.strip()
         elements = _parse_tlv(body)
         info: dict = {}
         for el in elements:
