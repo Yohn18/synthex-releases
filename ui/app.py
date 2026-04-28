@@ -5537,7 +5537,7 @@ class SynthexApp:
                 (sh - dlg.winfo_height()) // 2))
             dlg.update()
             dlg.deiconify()
-            dlg.grab_set()
+            dlg.after(120, dlg.grab_set)
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — Beda Jaringan? Solusi Koneksi
@@ -6254,7 +6254,8 @@ class SynthexApp:
             dlg.configure(fg_color="#0D0D14")
             dlg.resizable(False, False)
             dlg.update()
-            dlg.grab_set()
+            dlg.deiconify()
+            dlg.after(120, dlg.grab_set)
             dlg.update_idletasks()
             dlg.geometry("+{}+{}".format(
                 (dlg.winfo_screenwidth() - 380) // 2,
@@ -6620,7 +6621,8 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.attributes("-topmost", True)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         dlg.update_idletasks()
         dlg.geometry("+{}+{}".format(
             (dlg.winfo_screenwidth()  - 460) // 2,
@@ -6683,7 +6685,8 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.attributes("-topmost", True)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         dlg.update_idletasks()
         _w, _h = 480, 520
         dlg.geometry("{}x{}+{}+{}".format(
@@ -8195,7 +8198,7 @@ class SynthexApp:
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
                 url_dlg.deiconify()
-                url_dlg.grab_set()
+                url_dlg.after(120, url_dlg.grab_set)
 
             def _add_image_file():
                 path = _fd.askopenfilename(
@@ -8246,7 +8249,7 @@ class SynthexApp:
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
                 url_dlg.deiconify()
-                url_dlg.grab_set()
+                url_dlg.after(120, url_dlg.grab_set)
 
             btn_row_media = _ck.Frame(ed, fg_color="#0D0D14")
             btn_row_media.pack(fill="x", pady=(6, 8))
@@ -8300,7 +8303,7 @@ class SynthexApp:
                       command=dlg.destroy).pack(side="left")
             dlg.update()
             dlg.deiconify()
-            dlg.grab_set()
+            dlg.after(120, dlg.grab_set)
 
         _show_empty()
         _thr.Thread(target=_load_posts, daemon=True).start()
@@ -8373,7 +8376,7 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
 
         _lbl(dlg, "Select a backup to restore:", fg_color=BG,
              font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 8))
@@ -10228,7 +10231,7 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
         dlg.geometry("340x180+{}+{}".format(
             self._root.winfo_rootx() + 80,
             self._root.winfo_rooty() + 80))
@@ -10701,7 +10704,7 @@ class SynthexApp:
         dlg.resizable(True, True)
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
         self._simple_step_editor_win = dlg
 
         def _on_editor_close():
@@ -11841,7 +11844,7 @@ class SynthexApp:
             w, h, (sw - w) // 2, (sh - h) // 2))
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
         dlg.lift()
         dlg.focus_force()
 
@@ -12150,7 +12153,8 @@ class SynthexApp:
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         dlg.attributes("-topmost", True)
         dlg.overrideredirect(False)
 
@@ -12248,7 +12252,8 @@ class SynthexApp:
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         dlg.attributes("-topmost", True)
 
         # ── Header ────────────────────────────────────────────────────
@@ -12541,7 +12546,8 @@ class SynthexApp:
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         dlg.attributes("-topmost", True)
 
         _ck.Label(dlg, text='Run: "{}"'.format(task.get("name", "")), fg_color=BG, text_color=FG, font=("Segoe UI", 12, "bold"),
@@ -13339,8 +13345,8 @@ class SynthexApp:
 
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
         dlg.focus_force()
+        dlg.after(120, dlg.grab_set)
         dlg.wait_window(dlg)
         return result.get()
 
@@ -13353,8 +13359,6 @@ class SynthexApp:
         dlg.resizable(False, False)
         dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable X button
         dlg.attributes("-topmost", True)
-        dlg.update()
-        dlg.grab_set()
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("480x300+{}+{}".format((sw - 480) // 2, (sh - 300) // 2))
 
@@ -13439,7 +13443,8 @@ class SynthexApp:
         dlg.protocol("WM_DELETE_WINDOW", lambda: None)  # disable close
         dlg.attributes("-topmost", True)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
         sw, sh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
         dlg.geometry("440x260+{}+{}".format((sw-440)//2, (sh-260)//2))
         _ck.Frame(dlg, fg_color=RED, height=4).pack(fill="x")
@@ -13488,7 +13493,7 @@ class SynthexApp:
                   command=dlg.destroy).pack(anchor="e", pady=(12,0))
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
 
     def _show_dm_popup(self, msgs: list, my_email: str, token: str):
         """Show unread DM messages from master."""
@@ -13531,7 +13536,7 @@ class SynthexApp:
                   command=_close).pack(anchor="e", pady=(12,0))
         dlg.update()
         dlg.deiconify()
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
 
     def _show_alert(self, title, message, kind="info"):
         """Custom dark-theme alert dialog (info / warning). kind='info'|'warning'|'error'."""
@@ -13567,7 +13572,7 @@ class SynthexApp:
         dlg.update()
         dlg.deiconify()
 
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
         dlg.focus_force()
         dlg.wait_window(dlg)
 
@@ -13622,7 +13627,7 @@ class SynthexApp:
         dlg.update()
         dlg.deiconify()
 
-        dlg.grab_set()
+        dlg.after(120, dlg.grab_set)
         dlg.wait_window(dlg)
         return result[0]
 
@@ -13976,7 +13981,8 @@ class SynthexApp:
         dlg.configure(fg_color=BG)
         dlg.resizable(False, False)
         dlg.update()
-        dlg.grab_set()
+        dlg.deiconify()
+        dlg.after(120, dlg.grab_set)
 
         # ── Step definitions ──────────────────────────────────────────────
         accs_now = _sc.list_accounts()
