@@ -4093,14 +4093,16 @@ class SynthexApp:
                  font=("Segoe UI Variable", 16, "bold"), anchor="w").pack(anchor="w")
         _ck.Label(hdr_frame, text="Cek informasi pemilik rekening bank", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 9), anchor="w").pack(anchor="w")
 
-        # ── BODY: split layout ────────────────────────────────────────────────
+        # ── BODY: split layout 40/60 ─────────────────────────────────────────
         body = _ck.Frame(f, fg_color=BG)
         body.pack(fill="both", expand=True, padx=16, pady=(0, 16))
+        body.grid_columnconfigure(0, weight=2)   # 40% kiri
+        body.grid_columnconfigure(1, weight=3)   # 60% kanan
+        body.grid_rowconfigure(0, weight=1)
 
-        # ── LEFT: input (~420px) ──────────────────────────────────────────────
-        left = _ck.Frame(body, fg_color=CARD, width=420, padx=16, pady=14)
-        left.pack(side="left", fill="y", padx=(0, 10))
-        left.pack_propagate(False)
+        # ── LEFT: input (40%) ────────────────────────────────────────────────
+        left = _ck.Frame(body, fg_color=CARD, padx=16, pady=14)
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
 
         # Top accent
         _ck.Frame(left, fg_color=ACC, height=3).pack(fill="x", pady=(0, 10))
@@ -4110,10 +4112,10 @@ class SynthexApp:
 
         txt = _ck.ScrolledText(
             left, fg_color=BG, text_color=FG, insertbackground=FG,
-            font=("Consolas", 10), relief="flat", bd=0,
-            height=12, wrap="none",
+            font=("Consolas", 13), relief="flat", bd=0,
+            height=18, wrap="none",
             selectbackground=ACC, selectforeground=BG)
-        txt.pack(fill="x")
+        txt.pack(fill="both", expand=True, pady=(0, 4))
         txt.insert("1.0", "BCA 1234567890\nBNI 0987654321\nMANDIRI 1122334455")
 
         # Button row
@@ -4157,18 +4159,18 @@ class SynthexApp:
             _threading.Thread(target=_worker, daemon=True).start()
 
         run_btn = _ck.Button(btn_row, text="Cek Semua", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
-                            relief="flat", bd=0, padx=12, pady=6,
+                            relief="flat", bd=0, padx=16, pady=12,
                             cursor="hand2", command=_do_check)
         run_btn.pack(side="left", padx=(0, 6))
 
         stop_btn = _ck.Button(btn_row, text="Stop", fg_color=CARD, text_color=RED, font=("Segoe UI Variable", 9),
-                             relief="flat", bd=0, padx=12, pady=6,
+                             relief="flat", bd=0, padx=14, pady=12,
                              cursor="hand2", command=_do_stop,
                              state="disabled")
         stop_btn.pack(side="left", padx=(0, 6))
 
         _ck.Button(btn_row, text="Clear", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
-                  relief="flat", bd=0, padx=12, pady=6,
+                  relief="flat", bd=0, padx=14, pady=12,
                   cursor="hand2", command=_do_clear).pack(side="left")
 
         # Import row
@@ -4263,9 +4265,9 @@ class SynthexApp:
         _ck.Label(left, text="Double-klik baris untuk menyalin nama", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 7),
                  anchor="w").pack(anchor="w", pady=(4, 0))
 
-        # ── RIGHT: results ────────────────────────────────────────────────────
+        # ── RIGHT: results (60%) ─────────────────────────────────────────────
         right = _ck.Frame(body, fg_color=BG)
-        right.pack(side="left", fill="both", expand=True)
+        right.grid(row=0, column=1, sticky="nsew")
 
         res_hdr = _ck.Frame(right, fg_color=BG)
         res_hdr.pack(fill="x", pady=(0, 6))
