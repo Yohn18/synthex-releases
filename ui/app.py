@@ -39,6 +39,23 @@ def _get_theme_name() -> str:
 _pal = _LIGHT_PALETTE if _get_theme_name() == "light" else _DARK_PALETTE
 (BG, CARD, CARD2, SIDE, ACC, ACC2, FG, MUT, GRN, RED, YEL, PRP, BLUE) = _pal
 
+
+class _DarkToplevel(tk.Toplevel):
+    """tk.Toplevel dengan dark styling, menggantikan ctk.CTkToplevel.
+    Menghindari CTkToplevel Windows internal timer yang memanggil withdraw()
+    setelah deiconify() sehingga dialog langsung hilang."""
+    def __init__(self, parent, fg_color=None, **kwargs):
+        bg = fg_color or BG
+        super().__init__(parent, bg=bg, **kwargs)
+
+    def configure(self, fg_color=None, **kwargs):
+        if fg_color is not None:
+            kwargs["bg"] = fg_color
+        if kwargs:
+            super().configure(**kwargs)
+
+    config = configure  # alias tkinter uses internally
+
 # Step type icons (ASCII, no emoji)
 _STEP_ICONS = {
     "go_to_url":        "->",
@@ -164,7 +181,7 @@ class UserData:
 
 # -- Widget helpers --
 
-def _lbl(parent, text, text_color=FG, fg_color="transparent", font=("Segoe UI", 11), **kw):
+def _lbl(parent, text, text_color=FG, fg_color="transparent", font=("Segoe UI Variable", 11), **kw):
     return _ck.Label(parent, text=text, text_color=text_color, fg_color=fg_color, font=font, **kw)
 
 _bg_pending:  dict = {}
@@ -230,7 +247,7 @@ def _card(parent, title=""):
     f = _ck.Frame(parent, fg_color=CARD)
     if title:
         _lbl(f, title, text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 6))
+             font=("Segoe UI Variable", 10, "bold")).pack(anchor="w", padx=14, pady=(10, 6))
     return f
 
 def _fmt_duration(seconds: int) -> str:
@@ -257,7 +274,7 @@ def _tree(parent, cols):
 def _apply_styles(root):
     s = ttk.Style(root)
     s.theme_use("clam")
-    s.configure(".", background=BG, foreground=FG, font=("Segoe UI", 11))
+    s.configure(".", background=BG, foreground=FG, font=("Segoe UI Variable", 11))
     s.configure("TFrame",  background=BG)
     s.configure("TLabel",  background=BG, foreground=FG)
     s.configure("TButton", background=CARD, foreground=FG,
@@ -266,7 +283,7 @@ def _apply_styles(root):
     s.map("TButton",
           background=[("active", ACC)], foreground=[("active", "#ffffff")])
     s.configure("Accent.TButton", background=ACC, foreground="#ffffff",
-                font=("Segoe UI", 11, "bold"), padding=[16, 8])
+                font=("Segoe UI Variable", 11, "bold"), padding=[16, 8])
     s.map("Accent.TButton", background=[("active", "#9d5cf6")])
     s.configure("Danger.TButton", background=CARD, foreground=RED,
                 padding=[12, 7])
@@ -280,7 +297,7 @@ def _apply_styles(root):
     s.map("Treeview",
           background=[("selected", ACC)], foreground=[("selected", "#ffffff")])
     s.configure("Treeview.Heading", background=SIDE, foreground=MUT,
-                font=("Segoe UI", 10, "bold"), borderwidth=0)
+                font=("Segoe UI Variable", 10, "bold"), borderwidth=0)
     s.configure("TScrollbar", background="#1c1c2e", troughcolor=BG,
                 borderwidth=0, arrowcolor=MUT, width=4)
     s.configure("TCombobox", fieldbackground=CARD, foreground=FG,
@@ -538,6 +555,10 @@ class SynthexApp:
         self._bridge        = None   # SynthexBridge instance
         self._bridge_serial = ""     # serial that bridge tracks
 
+        # Tasker webhook + trigger engine
+        self._webhook_server  = None  # WebhookServer instance
+        self._trigger_engine  = None  # TriggerEngine instance
+
     def set_auth(self, email, token, session_id=None):
         self._email      = email
         self._token      = token
@@ -711,7 +732,7 @@ class SynthexApp:
             pass
 
         # Show full-screen dark overlay — not dismissable
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("")
         dlg.attributes("-topmost", True)
@@ -724,11 +745,11 @@ class SynthexApp:
 
         _ck.Frame(dlg, fg_color=YEL, height=4).place(x=0, y=0, width=W)
         _ck.Label(dlg, text="Sesi Diakhiri", fg_color="#0A0A0F", text_color=YEL,
-                 font=("Segoe UI", 15, "bold")).pack(pady=(28, 0))
+                 font=("Segoe UI Variable", 15, "bold")).pack(pady=(28, 0))
         _ck.Label(dlg,
-                 text="Akun ini login dari perangkat lain.\nKamu telah otomatis logout.", fg_color="#0A0A0F", text_color=FG, font=("Segoe UI", 10),
+                 text="Akun ini login dari perangkat lain.\nKamu telah otomatis logout.", fg_color="#0A0A0F", text_color=FG, font=("Segoe UI Variable", 10),
                  justify="center").pack(pady=(10, 0))
-        _ck.Label(dlg, text="Jika bukan kamu, segera ganti password.", fg_color="#0A0A0F", text_color=MUT, font=("Segoe UI", 8)).pack(pady=(6, 0))
+        _ck.Label(dlg, text="Jika bukan kamu, segera ganti password.", fg_color="#0A0A0F", text_color=MUT, font=("Segoe UI Variable", 8)).pack(pady=(6, 0))
         _ck.Frame(dlg, fg_color=CARD, height=1).pack(fill="x", padx=28, pady=(16, 0))
         def _do_close():
             for _attr in ("_dm_poll_id", "_chat_poll_id", "_broadcast_poll_id",
@@ -741,7 +762,7 @@ class SynthexApp:
             try: self._root.destroy()
             except Exception: pass
         _ck.Button(dlg, text="  OK, Tutup  ", fg_color=YEL, text_color="#0A0A0F",
-                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  relief="flat", font=("Segoe UI Variable", 10, "bold"),
                   cursor="hand2", padx=14, pady=7,
                   command=_do_close).pack(pady=14)
 
@@ -770,8 +791,8 @@ class SynthexApp:
         sw, sh = r.winfo_screenwidth(), r.winfo_screenheight()
         r.geometry("460x280+{}+{}".format((sw-460)//2, (sh-280)//2))
         _lbl(r, "SYNTHEX", text_color=ACC,
-             font=("Segoe UI", 30, "bold")).pack(pady=(46, 2))
-        _lbl(r, "Automation Platform  by Yohn18", text_color=MUT, font=("Segoe UI", 9)).pack()
+             font=("Segoe UI Variable", 30, "bold")).pack(pady=(46, 2))
+        _lbl(r, "Automation Platform  by Yohn18", text_color=MUT, font=("Segoe UI Variable", 9)).pack()
         _ck.Frame(r, fg_color=CARD, height=1).pack(fill="x", padx=48, pady=(24, 0))
         self._pc = tk.Canvas(r, width=364, height=4, bg=CARD,
                              highlightthickness=0, bd=0)
@@ -779,7 +800,7 @@ class SynthexApp:
         _ck.Frame(r, fg_color=CARD, height=1).pack(fill="x", padx=48, pady=(0, 10))
         self._pv = tk.StringVar(value="Preparing...")
         _ck.Label(r, textvariable=self._pv, text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack()
+                 font=("Segoe UI Variable", 9)).pack()
         r.after(200, self._init_mods)
 
     def _init_mods(self):
@@ -894,19 +915,19 @@ class SynthexApp:
 
         # Logo
         _ck.Label(top, text="⚡", fg_color=SIDE, text_color=ACC,
-                 font=("Segoe UI", 16)).pack(side="left", padx=(12, 4), pady=14)
+                 font=("Segoe UI Variable", 16)).pack(side="left", padx=(12, 4), pady=14)
         _ck.Label(top, text="SYNTHEX", fg_color=SIDE, text_color=ACC,
-                 font=("Segoe UI", 16, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 16, "bold")).pack(side="left")
 
         # Page name indicator (updates on nav)
         self._page_lbl = _ck.Label(top, text="", fg_color=SIDE, text_color="#64748b",
-                                   font=("Segoe UI", 8))
+                                   font=("Segoe UI Variable", 8))
         self._page_lbl.pack(side="left", padx=(18, 0), pady=(18, 0))
 
         # Right side
         _exit_btn = _ck.Button(top, text=" ⏻  Exit ", fg_color="#1E0A0A", text_color=RED,
                                activebackground=RED, activeforeground="white",
-                               font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                               font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                                padx=12, pady=5, cursor="hand2",
                                command=self._logout)
         _exit_btn.pack(side="right", padx=12, pady=13)
@@ -915,7 +936,7 @@ class SynthexApp:
 
         _help_btn = _ck.Button(top, text=" ? ", fg_color=CARD, text_color=ACC,
                                activebackground=ACC, activeforeground=BG,
-                               font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                               font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                                padx=8, pady=5, cursor="hand2",
                                command=self._show_help)
         _help_btn.pack(side="right", pady=13)
@@ -924,7 +945,7 @@ class SynthexApp:
 
         # Search hint button → command palette
         _srch_btn = _ck.Button(top, text="  🔍  Cari fitur...  Ctrl+K ", fg_color=CARD2, text_color=MUT, relief="flat", bd=0,
-                               font=("Segoe UI", 8), padx=10, pady=5,
+                               font=("Segoe UI Variable", 8), padx=10, pady=5,
                                cursor="hand2", anchor="w",
                                command=self._show_command_palette)
         _srch_btn.pack(side="right", padx=(0, 8), pady=13)
@@ -933,15 +954,15 @@ class SynthexApp:
 
         if self._email:
             _ck.Label(top, text="● " + self._email, fg_color=SIDE, text_color=GRN,
-                     font=("Segoe UI", 8)).pack(side="right", padx=10)
+                     font=("Segoe UI Variable", 8)).pack(side="right", padx=10)
 
         # ── ANNOUNCEMENT BAR (hidden by default, shown when active) ──────────
         self._ann_bar = _ck.Frame(r, fg_color="#B45309", padx=12, pady=5)
-        self._ann_lbl = _ck.Label(self._ann_bar, text="", fg_color="#B45309", text_color="white", font=("Segoe UI", 9, "bold"),
+        self._ann_lbl = _ck.Label(self._ann_bar, text="", fg_color="#B45309", text_color="white", font=("Segoe UI Variable", 9, "bold"),
                                  wraplength=900, justify="left")
         self._ann_lbl.pack(side="left", fill="x", expand=True)
         _ck.Button(self._ann_bar, text="✕", fg_color="#B45309", text_color="white",
-                  relief="flat", bd=0, font=("Segoe UI", 9), cursor="hand2",
+                  relief="flat", bd=0, font=("Segoe UI Variable", 9), cursor="hand2",
                   command=lambda: self._ann_bar.pack_forget()).pack(side="right")
 
         def _check_announcement():
@@ -1013,7 +1034,7 @@ class SynthexApp:
         _sb_top.pack_propagate(False)
         _ck.Frame(_sb_top, fg_color=ACC, width=3).pack(side="left", fill="y")
         _ck.Label(_sb_top, text="⚡ Menu", fg_color="#0a0a0f", text_color="#64748b",
-                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=10)
+                 font=("Segoe UI Variable", 8, "bold")).pack(side="left", padx=10)
         _ck.Frame(side, fg_color="#1c1c2e", height=1).pack(fill="x")
 
         # Bottom status bar
@@ -1022,7 +1043,7 @@ class SynthexApp:
         _sb_bottom.pack(side="bottom", fill="x")
         _ck.Frame(_sb_bottom, fg_color="#1c1c2e", height=1).pack(fill="x")
         _ck.Label(_sb_bottom, textvariable=self._sv, fg_color=SIDE, text_color=MUT,
-                 font=("Segoe UI", 8), wraplength=SIDE_W - 20,
+                 font=("Segoe UI Variable", 8), wraplength=SIDE_W - 20,
                  justify="left").pack(anchor="w", padx=14, pady=(6, 8))
 
         # Scrollable nav area
@@ -1058,7 +1079,7 @@ class SynthexApp:
                 _ck.Frame(sep_f, fg_color="#1c1c2e", height=1).pack(fill="x", pady=(0, 4))
                 _sep_clr = ACC if label == "MASTER" else MUT
                 _ck.Label(sep_f, text=label.lower(), fg_color=SIDE, text_color=_sep_clr,
-                         font=("Segoe UI", 7, "bold"), anchor="w", pady=0).pack(anchor="w")
+                         font=("Segoe UI Variable", 7, "bold"), anchor="w", pady=0).pack(anchor="w")
                 continue
 
             # Nav row — fixed height for consistent compact look
@@ -1091,7 +1112,7 @@ class SynthexApp:
             # Text label
             _NAV_FG = "#94a3b8"
             text_lbl = _ck.Label(row_inner, text=label, fg_color=SIDE, text_color=_NAV_FG,
-                                font=("Segoe UI", 10), anchor="w", cursor="hand2",
+                                font=("Segoe UI Variable", 10), anchor="w", cursor="hand2",
                                 padx=4, pady=0)
             text_lbl.pack(side="left", fill="x", expand=True)
             text_lbl.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
@@ -1141,7 +1162,7 @@ class SynthexApp:
         self._content.pack(side="left", fill="both", expand=True)
 
         # ── CLOCK (right side of header) ──────────────────────────────────────
-        self._cl = _ck.Label(top, text="", text_color=MUT, fg_color=SIDE, font=("Segoe UI", 8))
+        self._cl = _ck.Label(top, text="", text_color=MUT, fg_color=SIDE, font=("Segoe UI Variable", 8))
         self._cl.pack(side="right", padx=6)
         self._tick()
 
@@ -1266,7 +1287,7 @@ class SynthexApp:
             _skel = _ck.Frame(self._content, fg_color=BG)
             _skel.pack(fill="both", expand=True)
             _skel_lbl = _ck.Label(_skel, text="", fg_color=BG, text_color=MUT,
-                                  font=("Segoe UI", 9))
+                                  font=("Segoe UI Variable", 9))
             _skel_lbl.pack(pady=60)
             _shimmer_colors = [CARD, CARD2, CARD]
             _skel_bars = []
@@ -1419,9 +1440,9 @@ class SynthexApp:
         _ck.Frame(hdr_f, fg_color=ACC, width=3, height=22).pack(side="left", padx=(0, 12))
         hdr_inner = _ck.Frame(hdr_f, fg_color=BG)
         hdr_inner.pack(side="left")
-        _lbl(hdr_inner, title, font=("Segoe UI", 15, "bold")).pack(anchor="w")
+        _lbl(hdr_inner, title, font=("Segoe UI Variable", 15, "bold")).pack(anchor="w")
         if sub:
-            _lbl(hdr_inner, sub, text_color=MUT, font=("Segoe UI", 10)).pack(
+            _lbl(hdr_inner, sub, text_color=MUT, font=("Segoe UI Variable", 10)).pack(
                 anchor="w", pady=(2, 0))
         _ck.Frame(f, fg_color="#1c1c2e", height=1).pack(fill="x", padx=24, pady=(10, 12))
 
@@ -1505,12 +1526,12 @@ class SynthexApp:
         hero_text.pack(side="left", fill="both", expand=True, pady=12)
         _ck.Label(hero_text,
                  text="{}, {}!".format(_greeting(), name), fg_color="#0d0520", text_color="#e2e8f0",
-                 font=("Segoe UI", 18, "bold"), pady=0).pack(anchor="w")
+                 font=("Segoe UI Variable", 18, "bold"), pady=0).pack(anchor="w")
         _ck.Label(hero_text, text=today, fg_color="#0d0520", text_color=MUT,
-                 font=("Segoe UI", 10), pady=0).pack(anchor="w", pady=(2, 0))
+                 font=("Segoe UI Variable", 10), pady=0).pack(anchor="w", pady=(2, 0))
         ver = self.config.get("app.version", "")
         ver_lbl = _ck.Label(hero, text="v{}".format(ver), fg_color="#0d0520", text_color="#3a3a5a",
-                           font=("Segoe UI", 8), pady=0)
+                           font=("Segoe UI Variable", 8), pady=0)
         ver_lbl.pack(side="right", anchor="ne", padx=10, pady=6)
 
         # ── Stat chips ───────────────────────────────────────────────────────
@@ -1566,9 +1587,9 @@ class SynthexApp:
             if _ph:
                 _ck.Label(icon_row, image=_ph, fg_color=CARD, pady=0).pack(side="left", padx=(0, 6))
             _ck.Label(icon_row, text=lbl, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 8, "bold"), pady=0).pack(side="left", anchor="w")
+                     font=("Segoe UI Variable", 8, "bold"), pady=0).pack(side="left", anchor="w")
             _ck.Label(chip_inner, text=val, fg_color=CARD, text_color=clr,
-                     font=("Segoe UI", 12, "bold"), pady=0).pack(anchor="w")
+                     font=("Segoe UI Variable", 12, "bold"), pady=0).pack(anchor="w")
             # Hover glow
             def _chip_enter(e, c=chip):
                 _deep_bg(c, CARD2)
@@ -1599,7 +1620,7 @@ class SynthexApp:
         qa_wrap = _ck.Frame(body, fg_color=BG)
         qa_wrap.pack(fill="x", padx=16, pady=(8, 0))
         _ck.Label(qa_wrap, text="aksi cepat", fg_color=BG, text_color=MUT,
-                 font=("Segoe UI", 7, "bold"), pady=0).pack(anchor="w", pady=(0, 5))
+                 font=("Segoe UI Variable", 7, "bold"), pady=0).pack(anchor="w", pady=(0, 5))
         qa = _ck.Frame(qa_wrap, fg_color=BG)
         qa.pack(fill="x")
 
@@ -1620,7 +1641,7 @@ class SynthexApp:
                 il.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
             tl = _ck.Label(inner, text=qa_lbl, fg_color=qa_clr, text_color=BG,
-                          font=("Segoe UI", 8, "bold"))
+                          font=("Segoe UI Variable", 8, "bold"))
             tl.pack(side="left")
             tl.bind("<Button-1>", lambda e, c=qa_cmd: c())
 
@@ -1643,7 +1664,7 @@ class SynthexApp:
         my_tasks = list(enumerate(self._ud.tasks[:5]))
         if my_tasks:
             _ck.Label(body, text="my tasks", fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 8, "bold"), pady=0).pack(
+                     font=("Segoe UI Variable", 8, "bold"), pady=0).pack(
                 anchor="w", padx=18, pady=(10, 4))
             mt_card = _ck.Frame(body, fg_color=CARD)
             mt_card.pack(fill="x", padx=16, pady=(0, 4))
@@ -1668,15 +1689,15 @@ class SynthexApp:
 
                 # Status dot
                 _ck.Label(row, text="●", fg_color=CARD, text_color=GRN if enabled else "#64748b",
-                         font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 8))
                 _ck.Label(row, text=t.get("name", "Tanpa Nama")[:32], fg_color=CARD, text_color=FG,
-                         font=("Segoe UI", 9, "bold")).pack(side="left")
+                         font=("Segoe UI Variable", 9, "bold")).pack(side="left")
                 _ck.Label(row, text=sc_label, fg_color=CARD, text_color=MUT,
-                         font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 0))
                 _ck.Label(row, text=str(status).upper(), fg_color=CARD, text_color=status_clr,
-                         font=("Segoe UI", 8, "bold")).pack(side="right", padx=(0, 8))
+                         font=("Segoe UI Variable", 8, "bold")).pack(side="right", padx=(0, 8))
                 _ck.Button(row, text="▶ Run", fg_color=ACC, text_color="white",
-                          font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 8, "bold"), relief="flat", bd=0,
                           padx=8, pady=2, cursor="hand2",
                           command=lambda idx=task_idx: (
                               self._show("schedule"),
@@ -1685,7 +1706,7 @@ class SynthexApp:
             if len(self._ud.tasks) > len(my_tasks):
                 _ck.Label(mt_card,
                          text="+ {} task lainnya — buka Schedule".format(
-                             len(self._ud.tasks) - len(my_tasks)), fg_color=CARD, text_color=MUT, font=("Segoe UI", 8),
+                             len(self._ud.tasks) - len(my_tasks)), fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8),
                          padx=14, pady=6).pack(anchor="w")
 
         # ── Feature grid (Tailwind-inspired cards) ─────────────────────────
@@ -1702,7 +1723,7 @@ class SynthexApp:
             row.pack(fill="x", padx=20, pady=(24, 12))
             _ck.Frame(row, fg_color=ACC, width=3, height=20).pack(side="left", padx=(0, 12))
             _ck.Label(row, text=title, fg_color=BG, text_color=FG,
-                     font=("Segoe UI", 12, "bold")).pack(side="left")
+                     font=("Segoe UI Variable", 12, "bold")).pack(side="left")
 
         def _feat_card(parent, key, icon, title, desc, accent):
             badge_bg  = _hex_blend(_CARD_HEX, accent, 0.22)
@@ -1742,17 +1763,17 @@ class SynthexApp:
             badge = _ck.Frame(inner, fg_color=badge_bg, padx=12, pady=10)
             badge.pack(anchor="w", pady=(0, 12))
             badge_icon = _ck.Label(badge, text=icon, fg_color=badge_bg,
-                                  font=("Segoe UI", 22))
+                                  font=("Segoe UI Variable", 22))
             badge_icon.pack()
 
             # Title
             title_lbl = _ck.Label(inner, text=title, fg_color=_CARD_HEX, text_color="#e2e8f0",
-                                  font=("Segoe UI", 12, "bold"))
+                                  font=("Segoe UI Variable", 12, "bold"))
             title_lbl.pack(anchor="w", pady=(0, 5))
 
             # Description
             desc_lbl = _ck.Label(inner, text=desc, fg_color=_CARD_HEX, text_color=MUT,
-                                 font=("Segoe UI", 10), wraplength=180,
+                                 font=("Segoe UI Variable", 10), wraplength=180,
                                  justify="left")
             desc_lbl.pack(anchor="w", pady=(0, 14))
 
@@ -1766,7 +1787,7 @@ class SynthexApp:
                 W = cv.winfo_width() or 200
                 cv.create_rectangle(0, 0, W, 36, fill=ac, outline="")
                 cv.create_text(W//2, 18, text="Buka  →",
-                               fill="white", font=("Segoe UI", 10, "bold"))
+                               fill="white", font=("Segoe UI Variable", 10, "bold"))
 
             btn_cv.bind("<Configure>", _draw_btn)
             inner.after(80, _draw_btn)
@@ -1851,17 +1872,17 @@ class SynthexApp:
                 arow = _ck.Frame(ac, fg_color=CARD, padx=14, pady=6)
                 arow.pack(fill="x")
                 _ck.Frame(ac, fg_color="#1c1c2e", height=1).pack(fill="x", padx=14)
-                _ck.Label(arow, text="●", text_color=GRN if ok else RED, fg_color=CARD, font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+                _ck.Label(arow, text="●", text_color=GRN if ok else RED, fg_color=CARD, font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 6))
                 _ck.Label(arow, text=act.get("time", ""), text_color=MUT, fg_color=CARD,
-                         font=("Segoe UI", 8), width=18, anchor="w").pack(side="left")
+                         font=("Segoe UI Variable", 8), width=18, anchor="w").pack(side="left")
                 _ck.Label(arow, text=act.get("task", "")[:36], fg_color=CARD, text_color=FG,
-                         font=("Segoe UI", 9)).pack(side="left", padx=8)
-                _ck.Label(arow, text="✓ OK" if ok else "✗ FAIL", text_color=GRN if ok else RED, fg_color=CARD, font=("Segoe UI", 8, "bold")).pack(side="right")
+                         font=("Segoe UI Variable", 9)).pack(side="left", padx=8)
+                _ck.Label(arow, text="✓ OK" if ok else "✗ FAIL", text_color=GRN if ok else RED, fg_color=CARD, font=("Segoe UI Variable", 8, "bold")).pack(side="right")
                 arow.bind("<Enter>", lambda e, rw=arow: _deep_bg(rw, "#16162a"))
                 arow.bind("<Leave>", lambda e, rw=arow: _deep_bg(rw, CARD))
         else:
             _ck.Label(ac, text="Belum ada aktivitas.", text_color=MUT, fg_color=CARD,
-                     font=("Segoe UI", 9), padx=14, pady=12).pack(anchor="w")
+                     font=("Segoe UI Variable", 9), padx=14, pady=12).pack(anchor="w")
 
         return f
 
@@ -1878,7 +1899,7 @@ class SynthexApp:
         row.pack(fill="x")
         self._url = tk.StringVar()
         _ck.Entry(row, textvariable=self._url,
-                  font=("Segoe UI", 10)).pack(
+                  font=("Segoe UI Variable", 10)).pack(
             side="left", fill="x", expand=True, padx=(0, 8))
         _ck.Button(row, text="Open",
                    command=self._open_url).pack(side="left")
@@ -1908,14 +1929,14 @@ class SynthexApp:
         ctrl.pack(fill="x", pady=(0, 8))
         self._spy_btn = _ck.Button(
             ctrl, text="ENABLE SPY", fg_color=ACC, text_color=BG,
-            font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
+            font=("Segoe UI Variable", 11, "bold"), relief="flat", bd=0,
             padx=16, pady=8, cursor="hand2", command=self._toggle_spy)
         self._spy_btn.pack(side="left", padx=(0, 8))
         _ck.Button(ctrl, text="Open Floating Spy",
                    command=self._open_floating_spy).pack(side="left",
                                                           padx=(0, 8))
         self._spy_status_lbl = _lbl(
-            ctrl, "Inactive", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9))
+            ctrl, "Inactive", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9))
         self._spy_status_lbl.pack(side="left")
 
         guide = _card(left, "Usage Guide")
@@ -1928,7 +1949,7 @@ class SynthexApp:
             "Step 5: Click USE IN MACRO to send selector to builder",
         ]:
             _lbl(guide, line, text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=1)
+                 font=("Segoe UI Variable", 9), justify="left").pack(anchor="w", pady=1)
 
         info = _card(left, "Element Info")
         info.pack(fill="x", pady=(0, 8))
@@ -1945,10 +1966,10 @@ class SynthexApp:
             row = _ck.Frame(info, fg_color=CARD)
             row.pack(fill="x", pady=2)
             _lbl(row, "{}:".format(label), text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 9), width=14, anchor="w").pack(side="left")
+                 font=("Segoe UI Variable", 9), width=14, anchor="w").pack(side="left")
             var = tk.StringVar(value="-")
             _ck.Label(row, textvariable=var, text_color=FG, fg_color=CARD,
-                     font=("Segoe UI", 9), anchor="w").pack(
+                     font=("Segoe UI Variable", 9), anchor="w").pack(
                 side="left", fill="x", expand=True)
             self._spy_fields[key] = var
         _ck.Button(info, text="Save Element",
@@ -1990,11 +2011,11 @@ class SynthexApp:
         # How-to strip
         how = _ck.Frame(f, fg_color="#0D1A0D", padx=14, pady=8)
         how.pack(fill="x", padx=20, pady=(0, 10))
-        _ck.Label(how, text="Cara pakai:", fg_color="#0D1A0D", text_color=GRN, font=("Segoe UI", 8, "bold")).pack(
+        _ck.Label(how, text="Cara pakai:", fg_color="#0D1A0D", text_color=GRN, font=("Segoe UI Variable", 8, "bold")).pack(
             side="left", padx=(0, 6))
         _ck.Label(how,
                  text="Simple Record = rekam gerakan mouse & ketikan  |  "
-                      "Smart Record = buat langkah otomasi manual (URL, klik, ketik, dll)", fg_color="#0D1A0D", text_color=FG, font=("Segoe UI", 8)).pack(
+                      "Smart Record = buat langkah otomasi manual (URL, klik, ketik, dll)", fg_color="#0D1A0D", text_color=FG, font=("Segoe UI Variable", 8)).pack(
             side="left", fill="x", expand=True)
 
         # Two mode cards
@@ -2005,13 +2026,13 @@ class SynthexApp:
         sc = _ck.Frame(cards, fg_color=CARD, padx=16, pady=14)
         sc.pack(side="left", fill="both", expand=True, padx=(0, 8))
         _lbl(sc, "SIMPLE RECORD", fg_color=CARD, text_color=ACC,
-             font=("Segoe UI", 11, "bold")).pack(anchor="w")
+             font=("Segoe UI Variable", 11, "bold")).pack(anchor="w")
         _lbl(sc,
              "Rekam semua klik mouse\ndan ketikan keyboard\nsecara otomatis.\n\n"
              "Cocok untuk tugas\nberulang di aplikasi\nmanapun (desktop/game).\n\n"
              "Shortcut: Ctrl+3", fg_color=CARD, text_color=MUT,
-             font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        _ck.Button(sc, text="Buka Recorder", fg_color=ACC, text_color=BG, font=("Segoe UI", 10, "bold"),
+             font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(6, 10))
+        _ck.Button(sc, text="Buka Recorder", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_simple_rec).pack(fill="x")
 
@@ -2019,13 +2040,13 @@ class SynthexApp:
         ac = _ck.Frame(cards, fg_color=CARD, padx=16, pady=14)
         ac.pack(side="left", fill="both", expand=True)
         _lbl(ac, "SMART RECORD", fg_color=CARD, text_color=GRN,
-             font=("Segoe UI", 11, "bold")).pack(anchor="w")
+             font=("Segoe UI Variable", 11, "bold")).pack(anchor="w")
         _lbl(ac,
              "Buat langkah otomasi\nsatu per satu secara\nmanual: buka URL,\n"
              "klik elemen, ketik\nteks, tunggu, ambil\nteks, screenshot, dll.\n\n"
              "Hasil bisa dijalankan\nberkali-kali.", fg_color=CARD, text_color=MUT,
-             font=("Segoe UI", 9)).pack(anchor="w", pady=(6, 10))
-        _ck.Button(ac, text="Buat Langkah Baru", fg_color=GRN, text_color=BG, font=("Segoe UI", 10, "bold"),
+             font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(6, 10))
+        _ck.Button(ac, text="Buat Langkah Baru", fg_color=GRN, text_color=BG, font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=12, pady=8, cursor="hand2",
                   command=self._start_smart_rec).pack(fill="x")
 
@@ -2037,9 +2058,9 @@ class SynthexApp:
         lc_hdr = _ck.Frame(lc, fg_color=CARD, padx=14, pady=10)
         lc_hdr.pack(fill="x")
         _ck.Label(lc_hdr, text="Daftar Rekaman Tersimpan", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 10, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 10, "bold")).pack(side="left")
         self._rec_count_lbl = _ck.Label(lc_hdr, text="", fg_color=ACC, text_color="white",
-                 font=("Segoe UI", 8, "bold"),
+                 font=("Segoe UI Variable", 8, "bold"),
                  padx=7, pady=1)
         self._rec_count_lbl.pack(side="left", padx=(8, 0))
 
@@ -2087,7 +2108,7 @@ class SynthexApp:
         act_row = _ck.Frame(lc, fg_color="#14141E", padx=14, pady=8)
         act_row.pack(fill="x")
 
-        _BTN = dict(font=("Segoe UI", 9), relief="flat", bd=0,
+        _BTN = dict(font=("Segoe UI Variable", 9), relief="flat", bd=0,
                     padx=14, pady=6, cursor="hand2")
         _ck.Button(act_row, text="  Play", fg_color=GRN, text_color="white",
                   command=self._play_selected_recording, **_BTN).pack(
@@ -2128,7 +2149,7 @@ class SynthexApp:
 
         top_bar = _card(self._mb_list_view)
         top_bar.pack(fill="x", padx=20, pady=(0, 8))
-        _ck.Button(top_bar, text="+ Create New Macro", fg_color=ACC, text_color=BG, font=("Segoe UI", 11, "bold"),
+        _ck.Button(top_bar, text="+ Create New Macro", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 11, "bold"),
                   relief="flat", bd=0, padx=18, pady=9, cursor="hand2",
                   command=lambda: self._mb_open(parent=f)).pack(side="left")
         _ck.Button(top_bar, text="Run Now",
@@ -2249,17 +2270,17 @@ class SynthexApp:
         top.pack(fill="x")
         top.pack_propagate(False)
         _ck.Button(top, text="< Back", fg_color=SIDE, text_color=MUT,
-                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10), relief="flat", bd=0,
                   padx=12, pady=8, cursor="hand2",
                   command=self._mb_back).pack(side="left", padx=4, pady=8)
         _ck.Frame(top, fg_color=MUT, width=1).pack(side="left", fill="y",
                                               padx=4, pady=8)
         _lbl(top, "Macro Name:", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 9)).pack(side="left", padx=(8, 4), pady=14)
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(8, 4), pady=14)
         self._mb_name_var = tk.StringVar(
             value=existing.get("name","") if existing else "")
         name_entry = _ck.Entry(top, textvariable=self._mb_name_var, fg_color=CARD, text_color=FG, insertbackground=FG,
-                              font=("Segoe UI", 11), relief="flat",
+                              font=("Segoe UI Variable", 11), relief="flat",
                               bd=0, width=28)
         name_entry.pack(side="left", padx=(0, 12), ipady=6)
 
@@ -2278,16 +2299,16 @@ class SynthexApp:
         _ck.Entry(top, textvariable=self._mb_sched_val,
                   width=5).pack(side="left", padx=(0, 2), pady=14)
         _lbl(top, "min / time:", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 8)).pack(side="left")
+             font=("Segoe UI Variable", 8)).pack(side="left")
         _ck.Entry(top, textvariable=self._mb_sched_time,
                   width=7).pack(side="left", padx=(2, 8), pady=14)
 
         _ck.Button(top, text="Save Macro", fg_color=GRN, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=self._mb_save).pack(side="right", padx=12, pady=8)
         _ck.Button(top, text="Test Run", fg_color=YEL, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=self._mb_dry_run).pack(side="right", padx=(0, 2), pady=8)
 
@@ -2301,7 +2322,7 @@ class SynthexApp:
         left_outer.pack_propagate(False)
 
         _lbl(left_outer, "STEPS", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 8, "bold")).pack(
+             font=("Segoe UI Variable", 8, "bold")).pack(
             anchor="w", padx=12, pady=(10, 4))
 
         # Scrollable step list
@@ -2329,7 +2350,7 @@ class SynthexApp:
         # Add Step button at bottom
         add_btn_frame = _ck.Frame(left_outer, fg_color=SIDE, pady=6)
         add_btn_frame.pack(fill="x", side="bottom")
-        _ck.Button(add_btn_frame, text="+ Add Step", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(add_btn_frame, text="+ Add Step", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=6, cursor="hand2",
                   command=lambda: self._mb_add_step()).pack(fill="x",
                                                              padx=10)
@@ -2374,7 +2395,7 @@ class SynthexApp:
             _ck.Label(row, text=icon, fg_color=bg_row, text_color=YEL if is_sel else YEL,
                      font=("Consolas", 9), width=4).pack(side="left")
             _ck.Label(row, text=desc, fg_color=bg_row, text_color=fg_row,
-                     font=("Segoe UI", 9), anchor="w").pack(
+                     font=("Segoe UI Variable", 9), anchor="w").pack(
                 side="left", fill="x", expand=True, padx=(0, 4))
 
             # Test button
@@ -2383,7 +2404,7 @@ class SynthexApp:
                     self._mb_test_single_step(idx)
                 return _do
             _ck.Button(row, text="Test", fg_color=YEL, text_color=BG,
-                      font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                      font=("Segoe UI Variable", 7, "bold"), relief="flat", bd=0,
                       padx=4, cursor="hand2",
                       command=_make_test()).pack(side="right", padx=1, pady=3)
 
@@ -2393,7 +2414,7 @@ class SynthexApp:
                     self._mb_delete_step(idx)
                 return _do
             _ck.Button(row, text="x", fg_color=bg_row, text_color=RED if not is_sel else BG,
-                      font=("Segoe UI", 8), relief="flat", bd=0,
+                      font=("Segoe UI Variable", 8), relief="flat", bd=0,
                       padx=4, cursor="hand2",
                       command=_make_del()).pack(side="right", padx=2, pady=3)
 
@@ -2417,11 +2438,11 @@ class SynthexApp:
                         self._mb_select_step(idx + 1, rebuild=False)
                 return _do
             _ck.Button(row, text="^", fg_color=bg_row, text_color=MUT if not is_sel else BG,
-                      font=("Segoe UI", 7), relief="flat", bd=0, padx=3,
+                      font=("Segoe UI Variable", 7), relief="flat", bd=0, padx=3,
                       cursor="hand2",
                       command=_make_up()).pack(side="right", pady=3)
             _ck.Button(row, text="v", fg_color=bg_row, text_color=MUT if not is_sel else BG,
-                      font=("Segoe UI", 7), relief="flat", bd=0, padx=3,
+                      font=("Segoe UI Variable", 7), relief="flat", bd=0, padx=3,
                       cursor="hand2",
                       command=_make_dn()).pack(side="right", pady=3)
 
@@ -2477,7 +2498,7 @@ class SynthexApp:
             w.destroy()
 
         _lbl(self._mb_editor_frame,
-             "Choose a template to get started quickly:", text_color=MUT, fg_color=BG, font=("Segoe UI", 10)).pack(
+             "Choose a template to get started quickly:", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 10)).pack(
             anchor="w", padx=24, pady=(20, 12))
 
         templates = _load_templates()
@@ -2512,10 +2533,10 @@ class SynthexApp:
                      font=("Consolas", 14, "bold")).pack(side="left",
                                                           padx=(0, 10))
             _lbl(hrow, tmpl["name"], text_color=clr, fg_color=CARD,
-                 font=("Segoe UI", 10, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 10, "bold")).pack(side="left")
 
             _lbl(tc, tmpl.get("description",""), text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 8), wraplength=220,
+                 font=("Segoe UI Variable", 8), wraplength=220,
                  justify="left").pack(anchor="w", pady=(0, 8))
 
             steps = tmpl.get("steps", [])
@@ -2524,10 +2545,10 @@ class SynthexApp:
                 _lbl(tc, "{}  {}".format(step_ic, _step_label(s)[:28]), text_color=MUT, fg_color=CARD,
                      font=("Consolas", 8)).pack(anchor="w")
             if len(steps) > 4:
-                _lbl(tc, "  ... +{} more steps".format(len(steps)-4), text_color=MUT, fg_color=CARD, font=("Segoe UI", 8)).pack(anchor="w")
+                _lbl(tc, "  ... +{} more steps".format(len(steps)-4), text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 8)).pack(anchor="w")
 
             _ck.Button(tc, text="Use This Template", fg_color=clr, text_color=BG,
-                      font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                      font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                       padx=10, pady=5, cursor="hand2",
                       command=_use_tmpl).pack(anchor="w", pady=(10, 0))
 
@@ -2541,11 +2562,11 @@ class SynthexApp:
                  font=("Consolas", 14, "bold")).pack(side="left",
                                                       padx=(0, 10))
         _lbl(brow, "Start from scratch", text_color=FG, fg_color=CARD,
-             font=("Segoe UI", 10, "bold")).pack(side="left")
+             font=("Segoe UI Variable", 10, "bold")).pack(side="left")
         _lbl(blank, "Build your own macro step by step with any combination "
-             "of actions.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 8),
+             "of actions.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 8),
              wraplength=400, justify="left").pack(anchor="w", pady=(0, 8))
-        _ck.Button(blank, text="+ Add First Step", fg_color=FG, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(blank, text="+ Add First Step", fg_color=FG, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=10, pady=5, cursor="hand2",
                   command=self._mb_add_step).pack(anchor="w")
 
@@ -2560,7 +2581,7 @@ class SynthexApp:
         type_frame = _ck.Frame(self._mb_editor_frame, fg_color=BG)
         type_frame.pack(fill="x", padx=20, pady=(16, 8))
         _lbl(type_frame, "Step Type:", text_color=MUT, fg_color=BG,
-             font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 4))
 
         TYPE_OPTIONS = [
             ("go_to_url",        "Go to URL"),
@@ -2586,7 +2607,7 @@ class SynthexApp:
 
         type_cb = _ck.Combobox(type_frame, textvariable=disp_var,
                                values=display_names, state="readonly",
-                               width=28, font=("Segoe UI", 10))
+                               width=28, font=("Segoe UI Variable", 10))
         type_cb.pack(anchor="w")
 
         # -- Fields area --
@@ -2635,24 +2656,24 @@ class SynthexApp:
             f = _ck.Frame(parent, fg_color=BG)
             f.pack(fill="x", pady=(0, 10))
             _lbl(f, label, text_color=FG, fg_color=BG,
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 2))
+                 font=("Segoe UI Variable", 10, "bold")).pack(anchor="w", pady=(0, 2))
             val = tk.StringVar(value=existing.get(key, default))
             if multiline:
                 txt = _ck.Text(f, fg_color=CARD, text_color=FG, insertbackground=FG,
-                              font=("Segoe UI", 10), relief="flat",
+                              font=("Segoe UI Variable", 10), relief="flat",
                               height=height, wrap="word")
                 txt.insert("1.0", existing.get(key, default))
                 txt.pack(fill="x")
                 self._mb_field_vars[key] = txt
             else:
                 entry = _ck.Entry(f, textvariable=val, fg_color=CARD, text_color=FG,
-                                 insertbackground=FG, font=("Segoe UI", 10),
+                                 insertbackground=FG, font=("Segoe UI Variable", 10),
                                  relief="flat")
                 entry.pack(fill="x", ipady=6)
                 self._mb_field_vars[key] = val
             if helper:
                 _lbl(f, helper, text_color=MUT, fg_color=BG,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
             return val
 
         def _spy_button(selector_key):
@@ -2672,11 +2693,11 @@ class SynthexApp:
                 self._sv.set(
                     "Spy open. Hover over element, click USE IN MACRO.")
 
-            _ck.Button(row, text="USE SPY TO PICK", fg_color=PRP, text_color=BG, font=("Segoe UI", 9, "bold"),
+            _ck.Button(row, text="USE SPY TO PICK", fg_color=PRP, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                       relief="flat", bd=0, padx=12, pady=6,
                       cursor="hand2", command=_do_spy_pick).pack(
                 side="left")
-            _lbl(row, "Hover over element in Chrome, click USE IN MACRO", text_color=MUT, fg_color=BG, font=("Segoe UI", 8)).pack(
+            _lbl(row, "Hover over element in Chrome, click USE IN MACRO", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(
                 side="left", padx=8)
 
         # -- Per step type fields --
@@ -2694,7 +2715,7 @@ class SynthexApp:
                         if not u.startswith(("http://", "https://")):
                             u = "https://" + u
                         _wb.open(u)
-            _ck.Button(row, text="Open in Browser", fg_color=CARD, text_color=FG, font=("Segoe UI", 9),
+            _ck.Button(row, text="Open in Browser", fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 9),
                       relief="flat", bd=0, padx=10, pady=5,
                       cursor="hand2", command=_open_test).pack(side="left")
 
@@ -2707,7 +2728,7 @@ class SynthexApp:
                 def _upd_prev(*_):
                     pass  # label updated dynamically
                 prev_var.trace_add("write", _upd_prev)
-            _lbl(parent, "Will click: [selector shown above]", text_color=MUT, fg_color=BG, font=("Segoe UI", 8)).pack(anchor="w",
+            _lbl(parent, "Will click: [selector shown above]", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(anchor="w",
                                                              pady=(0, 8))
 
         elif step_type == "type":
@@ -2755,7 +2776,7 @@ class SynthexApp:
                    helper="Examples: B2, Sheet1!C5, D{row}")
             _field("Value to write", "value", "",
                    helper="Supports {variables} and {current_time} {current_date}")
-            _lbl(parent, 'Example: Write {price} to cell B2', text_color=MUT, fg_color=BG, font=("Segoe UI", 8)).pack(
+            _lbl(parent, 'Example: Write {price} to cell B2', text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(
                 anchor="w", pady=(0, 8))
 
         elif step_type == "if_equals":
@@ -2766,7 +2787,7 @@ class SynthexApp:
             f_cond = _ck.Frame(parent, fg_color=BG)
             f_cond.pack(fill="x", pady=(0, 10))
             _lbl(f_cond, "If FALSE, then:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+                 font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 2))
             act_var = tk.StringVar(
                 value=existing.get("action_false", "stop"))
             self._mb_field_vars["action_false"] = act_var
@@ -2777,7 +2798,7 @@ class SynthexApp:
                                value=val, fg_color=BG, text_color=FG,
                                selectcolor=CARD, activebackground=BG,
                                activeforeground=ACC,
-                               font=("Segoe UI", 9)).pack(anchor="w")
+                               font=("Segoe UI Variable", 9)).pack(anchor="w")
 
         elif step_type == "if_contains":
             _field("Text or variable", "text", "",
@@ -2787,7 +2808,7 @@ class SynthexApp:
             f_true = _ck.Frame(parent, fg_color=BG)
             f_true.pack(fill="x", pady=(0, 6))
             _lbl(f_true, "If TRUE, then:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+                 font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 2))
             act_true = tk.StringVar(
                 value=existing.get("action_true", "notify"))
             self._mb_field_vars["action_true"] = act_true
@@ -2797,7 +2818,7 @@ class SynthexApp:
                 _ck.Radiobutton(f_true, text=lbl, variable=act_true,
                                value=val, fg_color=BG, text_color=FG, selectcolor=CARD,
                                activebackground=BG, activeforeground=ACC,
-                               font=("Segoe UI", 9)).pack(anchor="w")
+                               font=("Segoe UI Variable", 9)).pack(anchor="w")
             _field("Notification message", "notify_message", "",
                    helper="Shown when condition is true. Supports {variables}")
 
@@ -2807,7 +2828,7 @@ class SynthexApp:
             f_type = _ck.Frame(parent, fg_color=BG)
             f_type.pack(fill="x", pady=(0, 10))
             _lbl(f_type, "Notification type:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+                 font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 2))
             ntype = tk.StringVar(value=existing.get("notify_type", "popup"))
             self._mb_field_vars["notify_type"] = ntype
             for val, lbl in [("popup", "Popup message"),
@@ -2816,7 +2837,7 @@ class SynthexApp:
                 _ck.Radiobutton(f_type, text=lbl, variable=ntype,
                                value=val, fg_color=BG, text_color=FG, selectcolor=CARD,
                                activebackground=BG, activeforeground=ACC,
-                               font=("Segoe UI", 9)).pack(anchor="w")
+                               font=("Segoe UI Variable", 9)).pack(anchor="w")
 
         elif step_type == "ai_prompt":
             # Info strip
@@ -2831,7 +2852,7 @@ class SynthexApp:
                 if _ai_has_key else
                 "⚠ API key belum diset. Buka Settings → AI Integration dulu.")
             _ck.Label(info_fr, text=status_txt, fg_color=info_fr["bg"], text_color=GRN if _ai_has_key else YEL,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
 
             # Prompt (user message)
             _field("Prompt untuk AI", "prompt", existing.get("prompt", ""),
@@ -2842,9 +2863,9 @@ class SynthexApp:
             # System prompt override (optional)
             f_sys = _ck.Frame(parent, fg_color=BG)
             f_sys.pack(fill="x", pady=(0, 10))
-            _lbl(f_sys, "System Prompt (opsional — override default):", text_color=MUT, fg_color=BG, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+            _lbl(f_sys, "System Prompt (opsional — override default):", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 2))
             sys_txt_w = _ck.Text(f_sys, fg_color=CARD, text_color=FG, insertbackground=FG,
-                                font=("Segoe UI", 9), relief="flat",
+                                font=("Segoe UI Variable", 9), relief="flat",
                                 height=2, wrap="word")
             sys_txt_w.insert("1.0", existing.get("system", ""))
             sys_txt_w.pack(fill="x")
@@ -2854,32 +2875,32 @@ class SynthexApp:
             sv_row = _ck.Frame(parent, fg_color=BG)
             sv_row.pack(fill="x", pady=(0, 10))
             _lbl(sv_row, "Simpan hasil sebagai:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 8))
             sv_var = tk.StringVar(value=existing.get("var", "ai_result"))
             sv_entry = _ck.Entry(sv_row, textvariable=sv_var, fg_color=CARD, text_color=FG,
                                 insertbackground=FG, relief="flat",
-                                font=("Segoe UI", 9), width=16)
+                                font=("Segoe UI Variable", 9), width=16)
             sv_entry.pack(side="left")
             self._mb_field_vars["var"] = sv_var
             _lbl(sv_row, "  Max tokens:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(12, 4))
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(12, 4))
             mt_var = tk.StringVar(value=str(existing.get("max_tokens",
                                             self.config.get("ai.max_tokens", 800))))
             _ck.Entry(sv_row, textvariable=mt_var, fg_color=CARD, text_color=FG,
                      insertbackground=FG, relief="flat",
-                     font=("Segoe UI", 9), width=6).pack(side="left")
+                     font=("Segoe UI Variable", 9), width=6).pack(side="left")
             self._mb_field_vars["max_tokens"] = mt_var
 
             _lbl(parent,
                  "Hasil AI tersimpan di {ai_result} (atau nama variabel di atas) "
-                 "dan bisa dipakai di step berikutnya.", text_color=MUT, fg_color=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+                 "dan bisa dipakai di step berikutnya.", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
 
         elif step_type == "scrape_url":
             info_fr = _ck.Frame(parent, fg_color="#0A100A", padx=10, pady=6)
             info_fr.pack(fill="x", pady=(0, 10))
             _ck.Label(info_fr,
                      text="Ambil teks dari halaman web — tidak butuh browser/Playwright.", fg_color="#0A100A", text_color=GRN,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
 
             _field("URL halaman", "url", existing.get("url", "https://"),
                    helper="Dukung {variabel} dari step sebelumnya")
@@ -2892,16 +2913,16 @@ class SynthexApp:
             sv_row = _ck.Frame(parent, fg_color=BG)
             sv_row.pack(fill="x", pady=(0, 10))
             _lbl(sv_row, "Simpan sebagai variabel:", text_color=MUT, fg_color=BG,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 8))
             sv_var = tk.StringVar(value=existing.get("var", "scraped_text"))
             _ck.Entry(sv_row, textvariable=sv_var, fg_color=CARD, text_color=FG,
                      insertbackground=FG, relief="flat",
-                     font=("Segoe UI", 9), width=18).pack(side="left")
+                     font=("Segoe UI Variable", 9), width=18).pack(side="left")
             self._mb_field_vars["var"] = sv_var
 
             _lbl(parent,
                  "Hasil tersimpan di {scraped_text} — bisa dipakai di step AI Prompt, "
-                 "Write Sheet, atau If Contains berikutnya.", text_color=MUT, fg_color=BG, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+                 "Write Sheet, atau If Contains berikutnya.", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
 
         else:
             _field("Value / Selector", "value", existing.get("value",""))
@@ -2930,10 +2951,10 @@ class SynthexApp:
             self._mb_add_step(after_idx=step_idx)
 
         _ck.Button(row, text="Apply Changes", fg_color=GRN, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=_apply).pack(side="left", padx=(0, 8))
-        _ck.Button(row, text="+ Insert Step Below", fg_color=CARD, text_color=FG, font=("Segoe UI", 9),
+        _ck.Button(row, text="+ Insert Step Below", fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 9),
                   relief="flat", bd=0, padx=10, pady=7, cursor="hand2",
                   command=_insert_below).pack(side="left")
 
@@ -2998,7 +3019,7 @@ class SynthexApp:
         w.title("Dry Run: {}".format(task["name"]))
 
         # Extra info banner
-        info = _ck.Label(w, text="DRY RUN  -  Sheet writes are simulated", fg_color=YEL, text_color=BG, font=("Segoe UI", 9, "bold"),
+        info = _ck.Label(w, text="DRY RUN  -  Sheet writes are simulated", fg_color=YEL, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                         padx=10, pady=4)
         info.pack(fill="x", before=panel["step_lbl"])
 
@@ -3008,13 +3029,13 @@ class SynthexApp:
         confirm_var = tk.StringVar(value="waiting")
 
         next_btn = _ck.Button(ctrl, text="Execute Step", fg_color=GRN, text_color=BG,
-                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                              padx=10, pady=4, cursor="hand2",
                              command=lambda: confirm_var.set("yes"),
                              state="disabled")
         next_btn.pack(side="left", padx=(0, 6))
         skip_btn = _ck.Button(ctrl, text="Skip", fg_color=CARD, text_color=FG,
-                             font=("Segoe UI", 9), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9), relief="flat", bd=0,
                              padx=10, pady=4, cursor="hand2",
                              command=lambda: confirm_var.set("skip"),
                              state="disabled")
@@ -3154,7 +3175,7 @@ class SynthexApp:
         step = self._mb_steps[step_idx]
 
         # Show result window
-        w = ctk.CTkToplevel(self._root)
+        w = _DarkToplevel(self._root)
         w.withdraw()
         w.title("Step Test: {}".format(_step_label(step)[:40]))
         w.configure(fg_color=BG)
@@ -3162,9 +3183,9 @@ class SynthexApp:
         w.attributes("-topmost", True)
         w.resizable(False, False)
 
-        _ck.Label(w, text="Testing: {}".format(_step_label(step)[:50]), fg_color=BG, text_color=FG, font=("Segoe UI", 10, "bold"),
+        _ck.Label(w, text="Testing: {}".format(_step_label(step)[:50]), fg_color=BG, text_color=FG, font=("Segoe UI Variable", 10, "bold"),
                  padx=16, pady=10, anchor="w").pack(fill="x")
-        status_lbl = _ck.Label(w, text="Running...", fg_color=BG, text_color=MUT, font=("Segoe UI", 9),
+        status_lbl = _ck.Label(w, text="Running...", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 9),
                               padx=16, anchor="w")
         status_lbl.pack(fill="x")
         result_lbl = _ck.Label(w, text="", fg_color=CARD, text_color=FG, font=("Consolas", 9),
@@ -3187,7 +3208,7 @@ class SynthexApp:
                 try:
                     status_lbl.configure(
                         text="OK" if ok else "FAILED", text_color=GRN if ok else RED,
-                        font=("Segoe UI", 10, "bold"))
+                        font=("Segoe UI Variable", 10, "bold"))
                     result_lbl.configure(text=result_text)
                 except Exception:
                     pass
@@ -3226,21 +3247,21 @@ class SynthexApp:
         # ── Preview QR area ───────────────────────────────────────────────
         qr_lbl = _ck.Label(right, text="QR akan muncul di sini",
                            fg_color=CARD, text_color=MUT,
-                           font=("Segoe UI", 10), wraplength=220, justify="center")
+                           font=("Segoe UI Variable", 10), wraplength=220, justify="center")
         qr_lbl.pack(expand=True, pady=30)
 
         qr_photo_ref = [None]   # simpan referensi agar tidak di-GC
 
         merchant_lbl = _ck.Label(right, text="", fg_color=CARD, text_color=FG,
-                                 font=("Segoe UI", 9, "bold"), wraplength=240, justify="center")
+                                 font=("Segoe UI Variable", 9, "bold"), wraplength=240, justify="center")
         merchant_lbl.pack(pady=(0, 4))
 
         city_lbl = _ck.Label(right, text="", fg_color=CARD, text_color=MUT,
-                             font=("Segoe UI", 8), wraplength=240, justify="center")
+                             font=("Segoe UI Variable", 8), wraplength=240, justify="center")
         city_lbl.pack()
 
         nominal_preview = _ck.Label(right, text="", fg_color=CARD, text_color=GRN,
-                                    font=("Segoe UI", 11, "bold"))
+                                    font=("Segoe UI Variable", 11, "bold"))
         nominal_preview.pack(pady=(4, 0))
 
         # Tombol Copy & Save di bawah preview
@@ -3275,13 +3296,13 @@ class SynthexApp:
                 self._show_alert("Gagal Simpan", str(e), "error")
 
         copy_btn = _ck.Button(btn_row_r, text="📋 Salin QRIS", fg_color=ACC, text_color="white",
-                              font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                               padx=12, pady=6, cursor="hand2", state="disabled",
                               command=_copy_qris)
         copy_btn.pack(fill="x", pady=(0, 6))
 
         save_btn = _ck.Button(btn_row_r, text="💾 Simpan Gambar QR", fg_color=CARD2, text_color=FG,
-                              font=("Segoe UI", 9), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 9), relief="flat", bd=0,
                               padx=12, pady=6, cursor="hand2", state="disabled",
                               command=_save_qr)
         save_btn.pack(fill="x")
@@ -3289,13 +3310,13 @@ class SynthexApp:
         # ── Form kiri ─────────────────────────────────────────────────────
         def _section(title):
             _ck.Label(left, text=title, fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(12, 2))
+                     font=("Segoe UI Variable", 8, "bold")).pack(anchor="w", pady=(12, 2))
 
         # QRIS String input
         _section("STRING QRIS STATIS")
         qris_hint = _ck.Label(left,
             text="Tempel string QRIS dari QR code statis (dimulai dengan 000201...)",
-            fg_color=BG, text_color="#4A4A6A", font=("Segoe UI", 8))
+            fg_color=BG, text_color="#4A4A6A", font=("Segoe UI Variable", 8))
         qris_hint.pack(anchor="w", pady=(0, 4))
 
         qris_input = _ck.Text(left, fg_color=CARD2, text_color=FG,
@@ -3361,15 +3382,15 @@ class SynthexApp:
                 _set_status("❌ Gagal baca gambar: {}".format(str(_e)[:60]), RED)
 
         _ck.Button(paste_row, text="📋 Paste", fg_color=CARD2, text_color=FG,
-                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   font=("Segoe UI Variable", 8), relief="flat", bd=0,
                    padx=10, pady=4, cursor="hand2",
                    command=_paste_qris).pack(side="left", padx=(0, 6))
         _ck.Button(paste_row, text="📷 Upload Gambar QR", fg_color=CARD2, text_color=ACC2,
-                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   font=("Segoe UI Variable", 8), relief="flat", bd=0,
                    padx=10, pady=4, cursor="hand2",
                    command=_upload_qr_image).pack(side="left", padx=(0, 6))
         _ck.Button(paste_row, text="Bersihkan", fg_color=CARD2, text_color=MUT,
-                   font=("Segoe UI", 8), relief="flat", bd=0,
+                   font=("Segoe UI Variable", 8), relief="flat", bd=0,
                    padx=10, pady=4, cursor="hand2",
                    command=_clear_form).pack(side="left")
 
@@ -3379,9 +3400,9 @@ class SynthexApp:
         nom_frame = _ck.Frame(left, fg_color=BG)
         nom_frame.pack(fill="x")
         _ck.Label(nom_frame, text="Rp", fg_color=BG, text_color=MUT,
-                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 6))
+                 font=("Segoe UI Variable", 11, "bold")).pack(side="left", padx=(0, 6))
         nom_entry = _ck.Entry(nom_frame, textvariable=nominal_var, fg_color=CARD2, text_color=FG,
-                              font=("Segoe UI", 13, "bold"), placeholder_text="Contoh: 50000")
+                              font=("Segoe UI Variable", 13, "bold"), placeholder_text="Contoh: 50000")
         nom_entry.pack(side="left", fill="x", expand=True)
 
         # Format angka otomatis
@@ -3404,16 +3425,16 @@ class SynthexApp:
         for label, val in [("Tidak Ada", "none"), ("Nominal Tetap", "fixed"), ("Persentase (%)", "percent")]:
             _ck.Radiobutton(fee_row, text=label, variable=fee_type_var, value=val,
                             fg_color=BG, text_color=FG,
-                            font=("Segoe UI", 9)).pack(side="left", padx=(0, 16))
+                            font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 16))
 
         fee_amt_var = tk.StringVar()
         fee_entry_frame = _ck.Frame(left, fg_color=BG)
         fee_entry_frame.pack(fill="x", pady=(6, 0))
         fee_prefix_lbl = _ck.Label(fee_entry_frame, text="Rp", fg_color=BG, text_color=MUT,
-                                   font=("Segoe UI", 9, "bold"))
+                                   font=("Segoe UI Variable", 9, "bold"))
         fee_prefix_lbl.pack(side="left", padx=(0, 6))
         fee_entry = _ck.Entry(fee_entry_frame, textvariable=fee_amt_var, fg_color=CARD2,
-                              text_color=FG, font=("Segoe UI", 10),
+                              text_color=FG, font=("Segoe UI Variable", 10),
                               placeholder_text="Kosongkan jika tidak pakai biaya")
         fee_entry.pack(side="left", fill="x", expand=True)
 
@@ -3437,7 +3458,7 @@ class SynthexApp:
         _ck.Frame(left, fg_color=SIDE, height=1).pack(fill="x", pady=(16, 8))
 
         status_lbl = _ck.Label(left, text="", fg_color=BG, text_color=MUT,
-                               font=("Segoe UI", 9), wraplength=380, justify="left")
+                               font=("Segoe UI Variable", 9), wraplength=380, justify="left")
         status_lbl.pack(anchor="w", pady=(0, 8))
 
         def _set_status(msg, color=MUT):
@@ -3540,7 +3561,7 @@ class SynthexApp:
 
         gen_btn = _ck.Button(left, text="⚡ Generate QRIS Dinamis",
                              fg_color=ACC, text_color="white",
-                             font=("Segoe UI", 11, "bold"), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 11, "bold"), relief="flat", bd=0,
                              padx=20, pady=10, cursor="hand2",
                              command=_do_generate)
         gen_btn.pack(fill="x")
@@ -3552,7 +3573,7 @@ class SynthexApp:
         guide_inner = _ck.Frame(guide, fg_color=CARD, padx=10)
         guide_inner.pack(side="left", fill="x", expand=True)
         _ck.Label(guide_inner, text="Cara Pakai:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
         for step in [
             "1. Cara A: Paste string QRIS langsung ke kolom atas.",
             "   Cara B: Klik 📷 Upload Gambar QR → pilih foto/screenshot QR.",
@@ -3561,7 +3582,7 @@ class SynthexApp:
             "4. Klik Generate → QR baru muncul di kanan, scan untuk bayar.",
         ]:
             _ck.Label(guide_inner, text=step, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 8), wraplength=370, justify="left").pack(
+                     font=("Segoe UI Variable", 8), wraplength=370, justify="left").pack(
                 anchor="w", pady=(2, 0))
 
         return f
@@ -3613,7 +3634,7 @@ class SynthexApp:
         warn_card.pack(fill="x", padx=20, pady=(0, 8))
         _lbl(warn_card,
              "To connect Google Sheets, Synthex needs a service account key file\n"
-             "(credentials.json). Follow the steps below to get one for free.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9), justify="left").pack(
+             "(credentials.json). Follow the steps below to get one for free.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9), justify="left").pack(
             anchor="w", pady=(0, 12))
 
         def _on_creds_done():
@@ -3630,10 +3651,10 @@ class SynthexApp:
         empty_card.pack(fill="x", padx=20, pady=(0, 8))
         _lbl(empty_card,
              "Click the button below to connect your first Google Sheet.\n"
-             "The wizard will guide you through every step.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9), justify="left").pack(
+             "The wizard will guide you through every step.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9), justify="left").pack(
             anchor="w", pady=(0, 16))
         _ck.Button(
-            empty_card, text="+ Connect First Sheet", fg_color=ACC, text_color=BG, font=("Segoe UI", 11, "bold"),
+            empty_card, text="+ Connect First Sheet", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 11, "bold"),
             relief="flat", bd=0, padx=20, pady=10, cursor="hand2",
             command=self._sheet_launch_wizard,
         ).pack(anchor="w")
@@ -3661,7 +3682,7 @@ class SynthexApp:
                    command=self._sheet_test).pack(side="left", padx=(0, 4))
         _ck.Button(btn_row, text="Remove",
                    command=self._sheet_remove).pack(side="left")
-        _ck.Button(btn_row, text="+ Add Sheet", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(btn_row, text="+ Add Sheet", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_launch_wizard).pack(side="right")
         self._refresh_sheets_tree()
@@ -3673,7 +3694,7 @@ class SynthexApp:
         prev_ctrl = _ck.Frame(prev_card, fg_color=CARD)
         prev_ctrl.pack(fill="x", pady=(0, 8))
         _lbl(prev_ctrl, "Sheet:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._prev_sheet_var = tk.StringVar()
         self._prev_sheet_cb  = _ck.Combobox(
             prev_ctrl, textvariable=self._prev_sheet_var,
@@ -3682,7 +3703,7 @@ class SynthexApp:
         self._prev_sheet_cb.pack(side="left", padx=(4, 16))
 
         _lbl(prev_ctrl, "Tab:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._prev_ws_var = tk.StringVar()
         self._prev_ws_cb  = _ck.Combobox(
             prev_ctrl, textvariable=self._prev_ws_var,
@@ -3697,20 +3718,20 @@ class SynthexApp:
         self._sheet_preview_frame = _ck.Frame(prev_card, fg_color=CARD)
         self._sheet_preview_frame.pack(fill="x")
         _lbl(self._sheet_preview_frame,
-             "Select a connected sheet and click Refresh to preview data.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+             "Select a connected sheet and click Refresh to preview data.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9)).pack(anchor="w")
 
         # Cell reader row
         cell_row = _ck.Frame(prev_card, fg_color=CARD)
         cell_row.pack(fill="x", pady=(10, 0))
         _lbl(cell_row, "Read cell:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._prev_cell_var = tk.StringVar(value="A1")
         _ck.Entry(cell_row, textvariable=self._prev_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
         _ck.Button(cell_row, text="Read",
                    command=self._sheet_read_cell).pack(side="left")
         self._cell_result_lbl = _lbl(cell_row, "", text_color=GRN, fg_color=CARD,
-                                     font=("Segoe UI", 9))
+                                     font=("Segoe UI Variable", 9))
         self._cell_result_lbl.pack(side="left", padx=(10, 0))
 
         # -- Quick Actions --
@@ -3719,61 +3740,61 @@ class SynthexApp:
 
         # Read cell row
         _lbl(qa_card, "Read Cell", text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+             font=("Segoe UI Variable", 9, "bold")).pack(anchor="w", pady=(0, 4))
         rc_row = _ck.Frame(qa_card, fg_color=CARD)
         rc_row.pack(fill="x", pady=(0, 10))
         _lbl(rc_row, "Sheet:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._rc_sheet_var = tk.StringVar()
         _ck.Combobox(rc_row, textvariable=self._rc_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
                      state="readonly", width=16).pack(side="left", padx=(4, 10))
         _lbl(rc_row, "Cell:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._rc_cell_var = tk.StringVar(value="A1")
         _ck.Entry(rc_row, textvariable=self._rc_cell_var,
                   width=6).pack(side="left", padx=(4, 8))
         _ck.Button(rc_row, text="Read",
                    command=self._sheet_qa_read).pack(side="left")
         self._rc_result_lbl = _lbl(rc_row, "", text_color=GRN, fg_color=CARD,
-                                   font=("Segoe UI", 9))
+                                   font=("Segoe UI Variable", 9))
         self._rc_result_lbl.pack(side="left", padx=(10, 0))
 
         # Write cell row
         _lbl(qa_card, "Write Cell", text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+             font=("Segoe UI Variable", 9, "bold")).pack(anchor="w", pady=(0, 4))
         wc_row1 = _ck.Frame(qa_card, fg_color=CARD)
         wc_row1.pack(fill="x", pady=(0, 4))
         _lbl(wc_row1, "Sheet:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._wc_sheet_var = tk.StringVar()
         _ck.Combobox(wc_row1, textvariable=self._wc_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
                      state="readonly", width=16).pack(side="left", padx=(4, 10))
         _lbl(wc_row1, "Cell:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._wc_cell_var = tk.StringVar(value="A1")
         _ck.Entry(wc_row1, textvariable=self._wc_cell_var,
                   width=6).pack(side="left", padx=(4, 0))
         wc_row2 = _ck.Frame(qa_card, fg_color=CARD)
         wc_row2.pack(fill="x", pady=(0, 10))
         _lbl(wc_row2, "Value:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._wc_val_var = tk.StringVar()
         _ck.Entry(wc_row2, textvariable=self._wc_val_var,
-                  font=("Segoe UI", 9)).pack(
+                  font=("Segoe UI Variable", 9)).pack(
             side="left", fill="x", expand=True, padx=(4, 8))
-        _ck.Button(wc_row2, text="Write Now", fg_color=GRN, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(wc_row2, text="Write Now", fg_color=GRN, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_qa_write).pack(side="left")
 
         # Append row
         _lbl(qa_card, "Append Row", text_color=ACC, fg_color=CARD,
-             font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+             font=("Segoe UI Variable", 9, "bold")).pack(anchor="w", pady=(0, 4))
         ar_row1 = _ck.Frame(qa_card, fg_color=CARD)
         ar_row1.pack(fill="x", pady=(0, 4))
         _lbl(ar_row1, "Sheet:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._ar_sheet_var = tk.StringVar()
         _ck.Combobox(ar_row1, textvariable=self._ar_sheet_var,
                      values=[s.get("name","") for s in self._ud.sheets],
@@ -3781,12 +3802,12 @@ class SynthexApp:
         ar_row2 = _ck.Frame(qa_card, fg_color=CARD)
         ar_row2.pack(fill="x", pady=(0, 4))
         _lbl(ar_row2, "Values (comma-separated):", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left")
+             font=("Segoe UI Variable", 9)).pack(side="left")
         self._ar_vals_var = tk.StringVar()
         _ck.Entry(ar_row2, textvariable=self._ar_vals_var,
-                  font=("Segoe UI", 9)).pack(
+                  font=("Segoe UI Variable", 9)).pack(
             side="left", fill="x", expand=True, padx=(8, 8))
-        _ck.Button(ar_row2, text="Append", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(ar_row2, text="Append", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=4, cursor="hand2",
                   command=self._sheet_qa_append).pack(side="left")
 
@@ -3946,7 +3967,7 @@ class SynthexApp:
 
         for w in self._sheet_preview_frame.winfo_children():
             w.destroy()
-        _lbl(self._sheet_preview_frame, "Loading...", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+        _lbl(self._sheet_preview_frame, "Loading...", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9)).pack(anchor="w")
 
         def _do():
             from modules.sheets import connector as _sc
@@ -3962,7 +3983,7 @@ class SynthexApp:
             w.destroy()
         if err:
             _lbl(self._sheet_preview_frame, err, text_color=RED, fg_color=CARD,
-                 font=("Segoe UI", 9), justify="left",
+                 font=("Segoe UI Variable", 9), justify="left",
                  wraplength=560).pack(anchor="w")
             return
         if rows:
@@ -3974,12 +3995,12 @@ class SynthexApp:
                     val = row[ci] if ci < len(row) else ""
                     bg  = SIDE if ri == 0 else CARD
                     _ck.Label(tbl, text=str(val)[:20], fg_color=bg, text_color=ACC if ri == 0 else FG,
-                             font=("Segoe UI", 8),
+                             font=("Segoe UI Variable", 8),
                              relief="flat", padx=6, pady=3,
                              borderwidth=1).grid(row=ri, column=ci, sticky="w")
         else:
             _lbl(self._sheet_preview_frame,
-                 "No data available. Make sure the sheet has data and access is correct.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+                 "No data available. Make sure the sheet has data and access is correct.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9)).pack(anchor="w")
 
     # -- Quick Action handlers --
 
@@ -4069,8 +4090,8 @@ class SynthexApp:
         hdr_frame = _ck.Frame(f, fg_color=BG)
         hdr_frame.pack(fill="x", padx=24, pady=(18, 6))
         _ck.Label(hdr_frame, text="\U0001f3e6 Cek Rekening", fg_color=BG, text_color=ACC,
-                 font=("Segoe UI", 16, "bold"), anchor="w").pack(anchor="w")
-        _ck.Label(hdr_frame, text="Cek informasi pemilik rekening bank", fg_color=BG, text_color=MUT, font=("Segoe UI", 9), anchor="w").pack(anchor="w")
+                 font=("Segoe UI Variable", 16, "bold"), anchor="w").pack(anchor="w")
+        _ck.Label(hdr_frame, text="Cek informasi pemilik rekening bank", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 9), anchor="w").pack(anchor="w")
 
         # ── BODY: split layout ────────────────────────────────────────────────
         body = _ck.Frame(f, fg_color=BG)
@@ -4084,7 +4105,7 @@ class SynthexApp:
         # Top accent
         _ck.Frame(left, fg_color=ACC, height=3).pack(fill="x", pady=(0, 10))
 
-        _ck.Label(left, text="Nomor Rekening (satu per baris):", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8, "bold"),
+        _ck.Label(left, text="Nomor Rekening (satu per baris):", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8, "bold"),
                  anchor="w").pack(anchor="w", pady=(0, 4))
 
         txt = _ck.ScrolledText(
@@ -4135,18 +4156,18 @@ class SynthexApp:
 
             _threading.Thread(target=_worker, daemon=True).start()
 
-        run_btn = _ck.Button(btn_row, text="Cek Semua", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        run_btn = _ck.Button(btn_row, text="Cek Semua", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                             relief="flat", bd=0, padx=12, pady=6,
                             cursor="hand2", command=_do_check)
         run_btn.pack(side="left", padx=(0, 6))
 
-        stop_btn = _ck.Button(btn_row, text="Stop", fg_color=CARD, text_color=RED, font=("Segoe UI", 9),
+        stop_btn = _ck.Button(btn_row, text="Stop", fg_color=CARD, text_color=RED, font=("Segoe UI Variable", 9),
                              relief="flat", bd=0, padx=12, pady=6,
                              cursor="hand2", command=_do_stop,
                              state="disabled")
         stop_btn.pack(side="left", padx=(0, 6))
 
-        _ck.Button(btn_row, text="Clear", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9),
+        _ck.Button(btn_row, text="Clear", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
                   relief="flat", bd=0, padx=12, pady=6,
                   cursor="hand2", command=_do_clear).pack(side="left")
 
@@ -4227,19 +4248,19 @@ class SynthexApp:
                 w.writerows(rows)
             import_status.configure(text="Hasil disimpan ke: {}".format(path.split("/")[-1]))
 
-        _ck.Button(import_row, text="📂 Import CSV/Excel", fg_color="#1A3A1A", text_color=GRN, font=("Segoe UI", 8, "bold"),
+        _ck.Button(import_row, text="📂 Import CSV/Excel", fg_color="#1A3A1A", text_color=GRN, font=("Segoe UI Variable", 8, "bold"),
                   relief="flat", bd=0, padx=10, pady=4,
                   cursor="hand2", command=_import_file).pack(side="left", padx=(0, 6))
-        _ck.Button(import_row, text="💾 Export Hasil", fg_color="#1A1A3A", text_color="#4A9EFF", font=("Segoe UI", 8, "bold"),
+        _ck.Button(import_row, text="💾 Export Hasil", fg_color="#1A1A3A", text_color="#4A9EFF", font=("Segoe UI Variable", 8, "bold"),
                   relief="flat", bd=0, padx=10, pady=4,
                   cursor="hand2", command=_export_results).pack(side="left")
 
         import_status = _ck.Label(left, text="", fg_color=CARD, text_color=MUT,
-                                 font=("Segoe UI", 7), anchor="w", wraplength=380)
+                                 font=("Segoe UI Variable", 7), anchor="w", wraplength=380)
         import_status.pack(anchor="w", pady=(4, 0))
 
         # Hint
-        _ck.Label(left, text="Double-klik baris untuk menyalin nama", fg_color=CARD, text_color=MUT, font=("Segoe UI", 7),
+        _ck.Label(left, text="Double-klik baris untuk menyalin nama", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 7),
                  anchor="w").pack(anchor="w", pady=(4, 0))
 
         # ── RIGHT: results ────────────────────────────────────────────────────
@@ -4249,22 +4270,22 @@ class SynthexApp:
         res_hdr = _ck.Frame(right, fg_color=BG)
         res_hdr.pack(fill="x", pady=(0, 6))
         _ck.Label(res_hdr, text="Hasil Pengecekan", fg_color=BG, text_color=FG,
-                 font=("Segoe UI", 11, "bold"), anchor="w").pack(anchor="w")
+                 font=("Segoe UI Variable", 11, "bold"), anchor="w").pack(anchor="w")
 
         tree_frame = _ck.Frame(right, fg_color=CARD)
         tree_frame.pack(fill="both", expand=True)
 
         cols = [
-            ("provider", "Provider",     90),
-            ("nomor",    "Nomor",       130),
-            ("nama",     "Nama Pemilik",200),
-            ("status",   "Status",       90),
+            ("provider", "Provider",     120, False),
+            ("nomor",    "Nomor",        180, False),
+            ("nama",     "Nama Pemilik", 260, True),
+            ("status",   "Status",       120, False),
         ]
         tree = ttk.Treeview(tree_frame, columns=[c[0] for c in cols],
                             show="headings", selectmode="browse")
-        for cid, head, w in cols:
+        for cid, head, w, stretch in cols:
             tree.heading(cid, text=head)
-            tree.column(cid, width=w, anchor="w")
+            tree.column(cid, width=w, minwidth=w, anchor="w", stretch=stretch)
 
         vsb = _ck.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
         tree.configure(yscrollcommand=vsb.set)
@@ -4340,7 +4361,7 @@ class SynthexApp:
         style = ttk.Style()
         style.configure("Mon.TNotebook",        background=BG, borderwidth=0)
         style.configure("Mon.TNotebook.Tab",    background=CARD2, foreground=MUT,
-                        padding=[14, 6], font=("Segoe UI", 9))
+                        padding=[14, 6], font=("Segoe UI Variable", 9))
         style.map("Mon.TNotebook.Tab",
                   background=[("selected", CARD)],
                   foreground=[("selected", FG)])
@@ -4367,7 +4388,7 @@ class SynthexApp:
             row = _ck.Frame(parent, fg_color=CARD)
             row.pack(fill="x", padx=10, pady=3)
             _ck.Label(row, text=label, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 9), width=22, anchor="w").pack(
+                     font=("Segoe UI Variable", 9), width=22, anchor="w").pack(
                          side="left", padx=(0, 6))
             w = widget_fn(row)
             w.pack(side="left", fill="x", expand=True)
@@ -4377,49 +4398,49 @@ class SynthexApp:
         v_url = tk.StringVar()
         _row(cfg_card, "URL Halaman *",
              lambda p: _ck.Entry(p, textvariable=v_url, fg_color=CARD2, text_color=FG,
-                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+                                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)))
 
         # Tombol refresh selector
         v_btn = tk.StringVar()
         btn_entry = _row(cfg_card, "Selector Tombol Refresh",
                          lambda p: _ck.Entry(p, textvariable=v_btn, fg_color=CARD2, text_color=FG,
                                             insertbackground=FG, relief="flat",
-                                            font=("Segoe UI", 9)))
-        _ck.Label(cfg_card, text="   (kosongkan jika tidak ada tombol refresh)", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", padx=10)
+                                            font=("Segoe UI Variable", 9)))
+        _ck.Label(cfg_card, text="   (kosongkan jika tidak ada tombol refresh)", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", padx=10)
 
         # Selector tabel
         v_tbl = tk.StringVar(value="table")
         _row(cfg_card, "Selector Tabel *",
              lambda p: _ck.Entry(p, textvariable=v_tbl, fg_color=CARD2, text_color=FG,
-                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+                                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)))
 
         # Mode
         v_mode = tk.StringVar(value="requests")
         mode_row = _ck.Frame(cfg_card, fg_color=CARD)
         mode_row.pack(fill="x", padx=10, pady=3)
         _ck.Label(mode_row, text="Mode Browser", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
+                 font=("Segoe UI Variable", 9), width=22, anchor="w").pack(side="left")
         for txt, val in [("Requests (halaman statis)", "requests"),
                          ("Headless Chrome (JS/dinamis)", "headless")]:
             _ck.Radiobutton(mode_row, text=txt, variable=v_mode, value=val, fg_color=CARD, text_color=FG, selectcolor=CARD2,
                            activebackground=CARD, activeforeground=FG,
-                           font=("Segoe UI", 9)).pack(side="left", padx=(0, 12))
+                           font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 12))
 
         _ck.Label(cfg_card,
                  text="   Headless = browser tersembunyi, tidak muncul di layar. "
-                      "Tab browser kamu bisa diminimize.", fg_color=CARD, text_color=YEL, font=("Segoe UI", 8)).pack(anchor="w", padx=10, pady=(0, 4))
+                      "Tab browser kamu bisa diminimize.", fg_color=CARD, text_color=YEL, font=("Segoe UI Variable", 8)).pack(anchor="w", padx=10, pady=(0, 4))
 
         # Interval
         v_interval = tk.StringVar(value="5")
         intv_row = _ck.Frame(cfg_card, fg_color=CARD)
         intv_row.pack(fill="x", padx=10, pady=3)
         _ck.Label(intv_row, text="Interval (menit) *", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9), width=22, anchor="w").pack(side="left")
+                 font=("Segoe UI Variable", 9), width=22, anchor="w").pack(side="left")
         tk.Spinbox(intv_row, from_=1, to=1440, textvariable=v_interval,
                    width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
-                   relief="flat", font=("Segoe UI", 9)).pack(side="left")
+                   relief="flat", font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(intv_row, text="menit", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=4)
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=4)
 
         # ── Google Sheet ──────────────────────────────────────────────────────
         sheet_card = _card(body, "Google Sheet Tujuan")
@@ -4428,23 +4449,23 @@ class SynthexApp:
         v_sheet_id = tk.StringVar()
         _row(sheet_card, "Sheet ID / URL *",
              lambda p: _ck.Entry(p, textvariable=v_sheet_id, fg_color=CARD2, text_color=FG,
-                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+                                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)))
 
         v_ws = tk.StringVar(value="Sheet1")
         _row(sheet_card, "Nama Worksheet",
              lambda p: _ck.Entry(p, textvariable=v_ws, fg_color=CARD2, text_color=FG,
-                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+                                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)))
 
         v_cell = tk.StringVar(value="A1")
         _row(sheet_card, "Mulai dari sel",
              lambda p: _ck.Entry(p, textvariable=v_cell, fg_color=CARD2, text_color=FG,
-                                insertbackground=FG, relief="flat", font=("Segoe UI", 9)))
+                                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)))
 
         v_clear = tk.BooleanVar(value=True)
         _ck.Checkbutton(sheet_card, text="Hapus isi sheet sebelum update",
                        variable=v_clear, fg_color=CARD, text_color=FG,
                        selectcolor=CARD2, activebackground=CARD,
-                       activeforeground=FG, font=("Segoe UI", 9)).pack(
+                       activeforeground=FG, font=("Segoe UI Variable", 9)).pack(
                            anchor="w", padx=10, pady=(0, 6))
 
         # ── Status & log ──────────────────────────────────────────────────────
@@ -4460,17 +4481,17 @@ class SynthexApp:
         v_cycle_count = tk.StringVar(value="0")
 
         _ck.Label(stats_row, text="Status:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(stats_row, textvariable=v_status_lbl, fg_color=CARD, text_color=YEL,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(4, 20))
         _ck.Label(stats_row, text="Siklus:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(stats_row, textvariable=v_cycle_count, fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(4, 20))
         _ck.Label(stats_row, text="Update terakhir:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(stats_row, textvariable=v_last_update, fg_color=CARD, text_color=GRN,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=4)
 
         # Log box
         log_frame = _ck.Frame(ctrl_card, fg_color=CARD2, relief="flat")
@@ -4589,14 +4610,14 @@ class SynthexApp:
             return pm
 
         btn_start = _ck.Button(btn_row, text="MULAI MONITOR", fg_color=GRN, text_color=BG,
-                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              font=("Segoe UI Variable", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2")
         btn_stop  = _ck.Button(btn_row, text="STOP", fg_color=RED, text_color="#fff",
-                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              font=("Segoe UI Variable", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2",
                               state="disabled")
         btn_once  = _ck.Button(btn_row, text="JALANKAN SEKALI", fg_color=ACC2, text_color="#fff",
-                              font=("Segoe UI", 10, "bold"), relief="flat",
+                              font=("Segoe UI Variable", 10, "bold"), relief="flat",
                               padx=14, pady=6, cursor="hand2")
 
         def _start():
@@ -4673,7 +4694,7 @@ class SynthexApp:
             row = _ck.Frame(parent, fg_color=CARD)
             row.pack(fill="x", padx=10, pady=3)
             _ck.Label(row, text=label, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 9), width=24, anchor="w").pack(
+                     font=("Segoe UI Variable", 9), width=24, anchor="w").pack(
                 side="left", padx=(0, 6))
             w = widget_fn(row)
             w.pack(side="left", fill="x", expand=True)
@@ -4683,29 +4704,29 @@ class SynthexApp:
         _wrow(wc_cfg, "URL yang dipantau *",
               lambda p: _ck.Entry(p, textvariable=v_wc_url, fg_color=CARD2, text_color=FG,
                                  insertbackground=FG, relief="flat",
-                                 font=("Segoe UI", 9)))
+                                 font=("Segoe UI Variable", 9)))
 
         v_wc_kw = tk.StringVar()
         _wrow(wc_cfg, "Keyword (opsional)",
               lambda p: _ck.Entry(p, textvariable=v_wc_kw, fg_color=CARD2, text_color=FG,
                                  insertbackground=FG, relief="flat",
-                                 font=("Segoe UI", 9)))
+                                 font=("Segoe UI Variable", 9)))
         _ck.Label(wc_cfg,
                  text="   Kosongkan = pantau semua perubahan. "
                       "Isi = pantau keyword ini muncul/hilang. "
-                      "Contoh: Stok habis, Out of stock", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(
+                      "Contoh: Stok habis, Out of stock", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(
             anchor="w", padx=10, pady=(0, 4))
 
         v_wc_intv = tk.StringVar(value="5")
         intv_row2 = _ck.Frame(wc_cfg, fg_color=CARD)
         intv_row2.pack(fill="x", padx=10, pady=3)
         _ck.Label(intv_row2, text="Interval (menit)", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9), width=24, anchor="w").pack(side="left")
+                 font=("Segoe UI Variable", 9), width=24, anchor="w").pack(side="left")
         tk.Spinbox(intv_row2, from_=1, to=1440, textvariable=v_wc_intv,
                    width=6, bg=CARD2, fg=FG, buttonbackground=CARD2,
-                   relief="flat", font=("Segoe UI", 9)).pack(side="left")
+                   relief="flat", font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(intv_row2, text="menit", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=4)
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=4)
 
         # AI analysis toggle
         v_wc_ai = tk.BooleanVar(value=False)
@@ -4713,7 +4734,7 @@ class SynthexApp:
                        text="Analisis perubahan dengan AI (butuh API key di Settings)",
                        variable=v_wc_ai, fg_color=CARD, text_color=FG, selectcolor=CARD2,
                        activebackground=CARD, activeforeground=FG,
-                       font=("Segoe UI", 9)).pack(anchor="w", padx=10, pady=(0, 6))
+                       font=("Segoe UI Variable", 9)).pack(anchor="w", padx=10, pady=(0, 6))
 
         # Status card
         wc_ctrl = _card(body2, "Status & Log")
@@ -4725,17 +4746,17 @@ class SynthexApp:
         v_wc_changes = tk.StringVar(value="0")
         v_wc_last = tk.StringVar(value="-")
         _ck.Label(wc_stats_row, text="Status:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(wc_stats_row, textvariable=v_wc_status, fg_color=CARD, text_color=YEL,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(4, 20))
         _ck.Label(wc_stats_row, text="Perubahan:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(wc_stats_row, textvariable=v_wc_changes, fg_color=CARD, text_color=RED,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(4, 20))
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(4, 20))
         _ck.Label(wc_stats_row, text="Terakhir berubah:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Label(wc_stats_row, textvariable=v_wc_last, fg_color=CARD, text_color=GRN,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=4)
 
         # Log
         wc_log_f = _ck.Frame(wc_ctrl, fg_color=CARD2, relief="flat")
@@ -4811,13 +4832,13 @@ class SynthexApp:
         wc_btn_row.pack(fill="x", padx=10, pady=(0, 8))
 
         wc_btn_start = _ck.Button(wc_btn_row, text="MULAI PANTAU", fg_color=GRN, text_color=BG,
-                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 font=("Segoe UI Variable", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2")
         wc_btn_stop  = _ck.Button(wc_btn_row, text="STOP", fg_color=RED, text_color="#fff",
-                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 font=("Segoe UI Variable", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2", state="disabled")
         wc_btn_once  = _ck.Button(wc_btn_row, text="CEK SEKARANG", fg_color=ACC2, text_color="#fff",
-                                 font=("Segoe UI", 10, "bold"), relief="flat",
+                                 font=("Segoe UI Variable", 10, "bold"), relief="flat",
                                  padx=14, pady=6, cursor="hand2")
 
         def _wc_start():
@@ -4907,10 +4928,10 @@ class SynthexApp:
             h = _ck.Frame(w, fg_color=accent, padx=14, pady=9)
             h.pack(fill="x")
             _ck.Label(h, text=title, fg_color=accent, text_color="white",
-                     font=("Segoe UI", 10, "bold")).pack(side="left")
+                     font=("Segoe UI Variable", 10, "bold")).pack(side="left")
             if subtitle:
                 _ck.Label(h, text=subtitle, fg_color=accent, text_color="white",
-                         font=("Segoe UI", 8)).pack(
+                         font=("Segoe UI Variable", 8)).pack(
                     side="left", padx=(8, 0))
             b = _ck.Frame(w, fg_color=CARD, padx=14, pady=12)
             b.pack(fill="x")
@@ -4927,20 +4948,20 @@ class SynthexApp:
         st = _ck.Frame(conn, fg_color=CARD)
         st.pack(fill="x", pady=(0, 10))
         dot = _ck.Label(st, text="\u25cf", fg_color=CARD, text_color=MUT,
-                       font=("Segoe UI", 14))
+                       font=("Segoe UI Variable", 14))
         dot.pack(side="left")
         status_var = tk.StringVar(value="Menginisialisasi...")
         _ck.Label(st, textvariable=status_var, fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(6, 0))
         _ck.Button(st, text="  Refresh", fg_color=CARD2, text_color=FG,
-                  font=("Segoe UI", 8), padx=10, pady=4,
+                  font=("Segoe UI Variable", 8), padx=10, pady=4,
                   command=lambda: _thr.Thread(
                       target=_refresh_devs, daemon=True).start(),
                   **_FB).pack(side="right")
 
         msg_var = tk.StringVar(value="")
         msg_lbl = _ck.Label(conn, textvariable=msg_var, fg_color=CARD, text_color="#7B7B9B",
-                           font=("Segoe UI", 8), wraplength=560, justify="left")
+                           font=("Segoe UI Variable", 8), wraplength=560, justify="left")
         msg_lbl.pack(anchor="w", pady=(0, 8))
 
         # ── Device cards container ───────────────────────────────────────────
@@ -4953,7 +4974,7 @@ class SynthexApp:
         _card_widgets = {}
 
         empty_lbl = _ck.Label(cards_frame,
-                             text="Tidak ada perangkat — sambungkan HP via USB atau WiFi", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9, "italic"))
+                             text="Tidak ada perangkat — sambungkan HP via USB atau WiFi", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9, "italic"))
         empty_lbl.pack(anchor="w", pady=6)
 
         def _make_device_card(serial: str):
@@ -4973,12 +4994,12 @@ class SynthexApp:
 
             icon = "wifi" if is_wifi else "usb "
             mir_dot = _ck.Label(row, text="\u25cf", fg_color="#16162a", text_color=MUT,
-                               font=("Segoe UI", 11))
+                               font=("Segoe UI Variable", 11))
             mir_dot.pack(side="left")
             _ck.Label(row, text="[{}]  {}".format(icon, serial), fg_color="#16162a", text_color=FG,
-                     font=("Segoe UI", 9, "bold")).pack(side="left", padx=(6, 0))
+                     font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(6, 0))
             mir_lbl = _ck.Label(row, text="", fg_color="#16162a", text_color=MUT,
-                               font=("Segoe UI", 8))
+                               font=("Segoe UI Variable", 8))
             mir_lbl.pack(side="left", padx=(10, 0))
 
             btn_f = _ck.Frame(row, fg_color="#16162a")
@@ -4994,21 +5015,21 @@ class SynthexApp:
                 _thr.Thread(target=_bg, daemon=True).start()
 
             stop_b = _ck.Button(btn_f, text="\u25a0  Stop", fg_color="#7F1D1D", text_color="white",
-                               font=("Segoe UI", 8, "bold"),
+                               font=("Segoe UI Variable", 8, "bold"),
                                padx=10, pady=5, state="disabled", **_FB,
                                command=lambda: _stop_mirror_serial(
                                    serial, start_b, stop_b, mir_dot, mir_lbl))
             stop_b.pack(side="right", padx=(4, 0))
 
             start_b = _ck.Button(btn_f, text="\u25b6  Mirror", fg_color="#14532D", text_color="white",
-                                font=("Segoe UI", 8, "bold"),
+                                font=("Segoe UI Variable", 8, "bold"),
                                 padx=10, pady=5, **_FB,
                                 command=lambda: _start_mirror_serial(
                                     serial, start_b, stop_b, mir_dot, mir_lbl))
             start_b.pack(side="right", padx=(4, 0))
 
             _ck.Button(btn_f, text="Putuskan", fg_color=CARD, text_color="#7B7B9B",
-                      font=("Segoe UI", 8), padx=8, pady=5,
+                      font=("Segoe UI Variable", 8), padx=8, pady=5,
                       **_FB, command=_disc).pack(side="right", padx=(4, 0))
 
             if serial in self._scrcpy_map and self._scrcpy_map[serial].running:
@@ -5205,7 +5226,7 @@ class SynthexApp:
                             self._macro_engine.ping()
                 _thr.Thread(target=_do, daemon=True).start()
 
-            win = ctk.CTkToplevel(self._root)
+            win = _DarkToplevel(self._root)
             win.withdraw()
             win.title("Synthex Control — {}".format(serial))
             win.configure(fg_color="#0D0D14")
@@ -5224,16 +5245,16 @@ class SynthexApp:
             hdr = _ck.Frame(win, fg_color="#111120", padx=12, pady=8)
             hdr.pack(fill="x")
             _ck.Label(hdr, text="⚡ Synthex Control", fg_color="#111120", text_color=ACC,
-                     font=("Segoe UI", 10, "bold")).pack(side="left")
+                     font=("Segoe UI Variable", 10, "bold")).pack(side="left")
             _ck.Label(hdr, text=serial, fg_color="#111120", text_color=MUT,
-                     font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+                     font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 0))
             _ck.Button(hdr, text="✕", fg_color="#111120", text_color=MUT, relief="flat",
-                      bd=0, font=("Segoe UI", 9), cursor="hand2",
+                      bd=0, font=("Segoe UI Variable", 9), cursor="hand2",
                       command=win.destroy).pack(side="right")
 
             def _mbtn(parent, text, cmd, fg_color="#1c1c2e", text_color=FG, w=5):
                 return _ck.Button(parent, text=text, command=cmd, fg_color=bg, text_color=fg, relief="flat", bd=0,
-                                 font=("Segoe UI", 12), width=w,
+                                 font=("Segoe UI Variable", 12), width=w,
                                  cursor="hand2", activebackground=ACC,
                                  activeforeground="white", pady=10)
 
@@ -5241,7 +5262,7 @@ class SynthexApp:
             nav = _ck.Frame(win, fg_color="#0D0D14", pady=6)
             nav.pack(fill="x", padx=10)
             _ck.Label(nav, text="NAVIGASI", fg_color="#0D0D14", text_color="#444466",
-                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+                     font=("Segoe UI Variable", 7, "bold")).pack(anchor="w", pady=(0, 4))
             nr = _ck.Frame(nav, fg_color="#0D0D14")
             nr.pack()
             for txt, code in [("◀  Back", 4), ("⏺  Home", 3), ("⬛  Recent", 187),
@@ -5255,7 +5276,7 @@ class SynthexApp:
             vb = _ck.Frame(win, fg_color="#0D0D14", padx=10)
             vb.pack(fill="x")
             _ck.Label(vb, text="VOLUME  &  BRIGHTNESS", fg_color="#0D0D14", text_color="#444466",
-                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+                     font=("Segoe UI Variable", 7, "bold")).pack(anchor="w", pady=(0, 4))
             vr = _ck.Frame(vb, fg_color="#0D0D14")
             vr.pack()
             for txt, code in [("🔉 Vol−", 25), ("🔊 Vol+", 24),
@@ -5269,7 +5290,7 @@ class SynthexApp:
             sys_f = _ck.Frame(win, fg_color="#0D0D14", padx=10)
             sys_f.pack(fill="x")
             _ck.Label(sys_f, text="SISTEM", fg_color="#0D0D14", text_color="#444466",
-                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+                     font=("Segoe UI Variable", 7, "bold")).pack(anchor="w", pady=(0, 4))
             sr = _ck.Frame(sys_f, fg_color="#0D0D14")
             sr.pack()
             for txt, cmd in [
@@ -5286,21 +5307,21 @@ class SynthexApp:
             ti = _ck.Frame(win, fg_color="#0D0D14", padx=10, pady=6)
             ti.pack(fill="x")
             _ck.Label(ti, text="KIRIM TEKS KE HP", fg_color="#0D0D14", text_color="#444466",
-                     font=("Segoe UI", 7, "bold")).pack(anchor="w", pady=(0, 4))
+                     font=("Segoe UI Variable", 7, "bold")).pack(anchor="w", pady=(0, 4))
             ti_row = _ck.Frame(ti, fg_color="#0D0D14")
             ti_row.pack(fill="x")
             ti_var = tk.StringVar()
             ti_entry = _ck.Entry(ti_row, textvariable=ti_var, fg_color="#16162a", text_color=FG,
                                 insertbackground=FG, relief="flat",
-                                font=("Segoe UI", 10), bd=6)
+                                font=("Segoe UI Variable", 10), bd=6)
             ti_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
             _ck.Button(ti_row, text="Kirim", fg_color=ACC, text_color="white",
-                      relief="flat", bd=0, font=("Segoe UI", 9, "bold"),
+                      relief="flat", bd=0, font=("Segoe UI Variable", 9, "bold"),
                       padx=10, cursor="hand2",
                       command=lambda: (_tap_input(ti_var.get()), ti_var.set("")),
                       ).pack(side="left")
             _ck.Button(ti_row, text="⌫ Del", fg_color="#2A1A1A", text_color=RED,
-                      relief="flat", bd=0, font=("Segoe UI", 9),
+                      relief="flat", bd=0, font=("Segoe UI Variable", 9),
                       padx=8, cursor="hand2",
                       command=lambda: _kev(67),
                       ).pack(side="left", padx=(4, 0))
@@ -5330,16 +5351,16 @@ class SynthexApp:
         ip_row = _ck.Frame(conn, fg_color=CARD)
         ip_row.pack(fill="x", pady=(0, 4))
         _ck.Label(ip_row, text="IP HP:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         ip_var = tk.StringVar(value=self.config.get("remote.last_ip", ""))
         _ck.Entry(ip_row, textvariable=ip_var, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 10),
+                 relief="flat", font=("Segoe UI Variable", 10),
                  width=18, bd=4).pack(side="left", padx=(6, 4))
         _ck.Label(ip_row, text="Port:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         port_var = tk.StringVar(value=str(self.config.get("remote.last_port", "5555")))
         _ck.Entry(ip_row, textvariable=port_var, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 10),
+                 relief="flat", font=("Segoe UI Variable", 10),
                  width=6, bd=4).pack(side="left", padx=(4, 10))
 
         def _connect_bg(ip_override=None):
@@ -5369,7 +5390,7 @@ class SynthexApp:
             _refresh_devs()
 
         _ck.Button(ip_row, text="⚡ Hubungkan", fg_color=ACC, text_color="white",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_connect_bg, daemon=True).start(),
                   **_FB).pack(side="left")
@@ -5385,14 +5406,14 @@ class SynthexApp:
             if not hist:
                 return
             _ck.Label(hist_frame, text="Terakhir:", fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+                     font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 6))
             for saved_ip in hist:
                 def _quick(ip=saved_ip):
                     ip_var.set(ip)
                     _thr.Thread(target=lambda: _connect_bg(ip),
                                 daemon=True).start()
                 _ck.Button(hist_frame, text=saved_ip, fg_color="#1A1A38", text_color=BLUE,
-                          font=("Segoe UI", 8), padx=8, pady=3,
+                          font=("Segoe UI Variable", 8), padx=8, pady=3,
                           relief="flat", cursor="hand2",
                           command=_quick).pack(side="left", padx=(0, 4))
 
@@ -5403,7 +5424,7 @@ class SynthexApp:
 
         setup_hdr = _ck.Frame(conn, fg_color=CARD)
         setup_hdr.pack(fill="x", pady=(0, 6))
-        _ck.Label(setup_hdr, text="Setup Wireless Debugging", fg_color=CARD, text_color=FG, font=("Segoe UI", 9, "bold")).pack(side="left")
+        _ck.Label(setup_hdr, text="Setup Wireless Debugging", fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 9, "bold")).pack(side="left")
 
         steps_frame = _ck.Frame(conn, fg_color="#12121E")
         steps_frame.pack(fill="x", pady=(0, 8))
@@ -5416,20 +5437,20 @@ class SynthexApp:
             row_s = _ck.Frame(steps_frame, fg_color="#12121E", padx=10, pady=4)
             row_s.pack(fill="x")
             _ck.Label(row_s, text=num, fg_color=ACC, text_color="white",
-                     font=("Segoe UI", 8, "bold"),
+                     font=("Segoe UI Variable", 8, "bold"),
                      width=2, anchor="center").pack(side="left")
             _ck.Label(row_s, text="  " + txt, fg_color="#12121E", text_color=MUT,
-                     font=("Segoe UI", 9)).pack(side="left")
+                     font=("Segoe UI Variable", 9)).pack(side="left")
 
         usb_row = _ck.Frame(conn, fg_color=CARD)
         usb_row.pack(fill="x")
         _ck.Button(usb_row, text="⚙ Setup Wireless via USB", fg_color="#3A1060", text_color="white",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   command=lambda: _thr.Thread(
                       target=_usb_setup_bg, daemon=True).start(),
                   **_FB).pack(side="left", padx=(0, 10))
         _ck.Label(usb_row,
-                 text="HP harus sudah di-authorize USB debugging", fg_color=CARD, text_color="#4A4A6A", font=("Segoe UI", 8)).pack(side="left")
+                 text="HP harus sudah di-authorize USB debugging", fg_color=CARD, text_color="#4A4A6A", font=("Segoe UI Variable", 8)).pack(side="left")
 
         def _usb_setup_bg():
             if self._root:
@@ -5460,7 +5481,7 @@ class SynthexApp:
             _refresh_devs()
 
         def _show_unplug_dialog(ip: str):
-            dlg = ctk.CTkToplevel(self._root)
+            dlg = _DarkToplevel(self._root)
             dlg.withdraw()
             dlg.attributes("-topmost", True)
             dlg.configure(fg_color="#0D0D14")
@@ -5469,11 +5490,11 @@ class SynthexApp:
             _b = _ck.Frame(dlg, fg_color="#0D0D14", padx=28, pady=20)
             _b.pack(fill="both", expand=True)
             _ck.Label(_b, text="WiFi Siap!", fg_color="#0D0D14", text_color="white",
-                     font=("Segoe UI", 13, "bold")).pack(anchor="w")
+                     font=("Segoe UI Variable", 13, "bold")).pack(anchor="w")
             _ck.Label(_b, text="{}:5555".format(ip), fg_color="#0D0D14", text_color="#7C3AED",
-                     font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(4, 2))
+                     font=("Segoe UI Variable", 11, "bold")).pack(anchor="w", pady=(4, 2))
             _ck.Label(_b, text="Cabut kabel USB, lalu klik Mulai Mirror.", fg_color="#0D0D14", text_color="#8080A0",
-                     font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 16))
+                     font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 16))
             br = _ck.Frame(_b, fg_color="#0D0D14")
             br.pack(anchor="e")
 
@@ -5523,11 +5544,11 @@ class SynthexApp:
                         w["mir_dot"], w["mir_lbl"])
 
             _ck.Button(br, text="Mulai Mirror", fg_color="#7C3AED", text_color="white",
-                      font=("Segoe UI", 9, "bold"), padx=18, pady=7,
+                      font=("Segoe UI Variable", 9, "bold"), padx=18, pady=7,
                       relief="flat", cursor="hand2",
                       command=_do_connect_mirror).pack(side="left", padx=(0, 8))
             _ck.Button(br, text="Tutup", fg_color="#1c1c2e", text_color="#8080A0",
-                      font=("Segoe UI", 9), padx=12, pady=7,
+                      font=("Segoe UI Variable", 9), padx=12, pady=7,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
             dlg.update_idletasks()
@@ -5551,10 +5572,10 @@ class SynthexApp:
         _ck.Frame(usb_card, fg_color="#0EA5E9", width=3).pack(side="left", fill="y")
         usb_inner = _ck.Frame(usb_card, fg_color="#111820", padx=12)
         usb_inner.pack(side="left", fill="both", expand=True)
-        _ck.Label(usb_inner, text="🔌  Mode 1 — USB Direct (Paling Simpel)", fg_color="#111820", text_color=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        _ck.Label(usb_inner, text="🔌  Mode 1 — USB Direct (Paling Simpel)", fg_color="#111820", text_color=FG, font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
         _ck.Label(usb_inner,
                  text="Hubungkan HP ke PC via kabel USB. ADB & scrcpy otomatis\n"
-                      "berjalan lewat USB — tidak perlu WiFi sama sekali.", fg_color="#111820", text_color=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+                      "berjalan lewat USB — tidak perlu WiFi sama sekali.", fg_color="#111820", text_color=MUT, font=("Segoe UI Variable", 8), justify="left").pack(anchor="w", pady=(2, 6))
         usb_steps = [
             "1. Aktifkan Developer Options di HP (ketuk Build Number 7x)",
             "2. Aktifkan USB Debugging",
@@ -5564,7 +5585,7 @@ class SynthexApp:
         ]
         for s in usb_steps:
             _ck.Label(usb_inner, text=s, fg_color="#111820", text_color="#8888AA",
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         # ── Mode 2: USB Tethering ────────────────────────────────────────────
         teth_card = _ck.Frame(net, fg_color="#111820", padx=14, pady=10)
@@ -5572,10 +5593,10 @@ class SynthexApp:
         _ck.Frame(teth_card, fg_color="#7C3AED", width=3).pack(side="left", fill="y")
         teth_inner = _ck.Frame(teth_card, fg_color="#111820", padx=12)
         teth_inner.pack(side="left", fill="both", expand=True)
-        _ck.Label(teth_inner, text="📡  Mode 2 — USB Tethering (Wireless ADB via USB)", fg_color="#111820", text_color=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        _ck.Label(teth_inner, text="📡  Mode 2 — USB Tethering (Wireless ADB via USB)", fg_color="#111820", text_color=FG, font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
         _ck.Label(teth_inner,
                  text="HP berbagi jaringan ke PC via USB → PC dan HP jadi satu subnet.\n"
-                      "Setelah itu bisa pakai ADB wireless di IP yang didapat.", fg_color="#111820", text_color=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+                      "Setelah itu bisa pakai ADB wireless di IP yang didapat.", fg_color="#111820", text_color=MUT, font=("Segoe UI Variable", 8), justify="left").pack(anchor="w", pady=(2, 6))
         teth_steps = [
             "1. Colok kabel USB ke PC",
             "2. Di HP: Settings → Hotspot & Tethering → USB Tethering → ON",
@@ -5584,7 +5605,7 @@ class SynthexApp:
         ]
         for s in teth_steps:
             _ck.Label(teth_inner, text=s, fg_color="#111820", text_color="#8888AA",
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         def _detect_usb_ip():
             def _bg():
@@ -5614,7 +5635,7 @@ class SynthexApp:
         teth_btn_row = _ck.Frame(teth_inner, fg_color="#111820")
         teth_btn_row.pack(anchor="w", pady=(6, 0))
         _ck.Button(teth_btn_row, text="🔍 Deteksi IP HP via USB", fg_color="#7C3AED", text_color="white", relief="flat", bd=0,
-                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  font=("Segoe UI Variable", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_detect_usb_ip).pack(side="left", padx=(0, 8))
 
         # ── Mode 3: Windows Hotspot ──────────────────────────────────────────
@@ -5623,10 +5644,10 @@ class SynthexApp:
         _ck.Frame(hs_card, fg_color=GRN, width=3).pack(side="left", fill="y")
         hs_inner = _ck.Frame(hs_card, fg_color="#111820", padx=12)
         hs_inner.pack(side="left", fill="both", expand=True)
-        _ck.Label(hs_inner, text="📶  Mode 3 — Windows Mobile Hotspot (LAN → WiFi)", fg_color="#111820", text_color=FG, font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        _ck.Label(hs_inner, text="📶  Mode 3 — Windows Mobile Hotspot (LAN → WiFi)", fg_color="#111820", text_color=FG, font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
         _ck.Label(hs_inner,
                  text="PC bagikan koneksi LAN sebagai WiFi hotspot → HP connect ke hotspot PC\n"
-                      "→ HP & PC satu subnet → ADB wireless normal.", fg_color="#111820", text_color=MUT, font=("Segoe UI", 8), justify="left").pack(anchor="w", pady=(2, 6))
+                      "→ HP & PC satu subnet → ADB wireless normal.", fg_color="#111820", text_color=MUT, font=("Segoe UI Variable", 8), justify="left").pack(anchor="w", pady=(2, 6))
 
         def _open_hotspot_settings():
             import subprocess as _sp
@@ -5640,10 +5661,10 @@ class SynthexApp:
                     pass
 
         _ck.Button(hs_inner, text="⚙ Buka Settings Hotspot Windows", fg_color=GRN, text_color="#000", relief="flat", bd=0,
-                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  font=("Segoe UI Variable", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_open_hotspot_settings).pack(anchor="w")
         _ck.Label(hs_inner,
-                 text="Setelah HP connect ke hotspot PC, HP dapat IP 192.168.137.x — masukkan ke kolom IP di bawah.", fg_color="#111820", text_color="#555577", font=("Segoe UI", 7)).pack(anchor="w", pady=(4, 0))
+                 text="Setelah HP connect ke hotspot PC, HP dapat IP 192.168.137.x — masukkan ke kolom IP di bawah.", fg_color="#111820", text_color="#555577", font=("Segoe UI Variable", 7)).pack(anchor="w", pady=(4, 0))
 
         # ══════════════════════════════════════════════════════════════
         # SECTION 2 — Pengaturan Mirror (shared untuk semua HP)
@@ -5652,7 +5673,7 @@ class SynthexApp:
 
         def _lbl_cb(parent, lbl, var, vals, w=8):
             _ck.Label(parent, text=lbl, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 9)).pack(side="left")
+                     font=("Segoe UI Variable", 9)).pack(side="left")
             _ck.Combobox(parent, textvariable=var, values=vals,
                          state="readonly", width=w).pack(
                 side="left", padx=(4, 14))
@@ -5676,7 +5697,7 @@ class SynthexApp:
         ]:
             _ck.Checkbutton(row2, text=_txt, variable=_v, fg_color=CARD, text_color=FG, selectcolor=CARD2,
                            activebackground=CARD, activeforeground=FG,
-                           font=("Segoe UI", 9)).pack(side="left", padx=(0, 14))
+                           font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 14))
 
         # ── Tool status bars ─────────────────────────────────────────────────
         def _dl_zip(url, tdir, label_var, strip_root=True, on_done=None):
@@ -5730,15 +5751,15 @@ class SynthexApp:
         tools_bar.pack(fill="x")
 
         scrcpy_sv = tk.StringVar(value="scrcpy: memeriksa...")
-        scrcpy_lbl = _ck.Label(tools_bar, textvariable=scrcpy_sv, fg_color="#0E0E1C", text_color=MUT, font=("Segoe UI", 8))
+        scrcpy_lbl = _ck.Label(tools_bar, textvariable=scrcpy_sv, fg_color="#0E0E1C", text_color=MUT, font=("Segoe UI Variable", 8))
         scrcpy_lbl.pack(side="left")
 
         dl_sv = tk.StringVar(value="")
         _ck.Label(tools_bar, textvariable=dl_sv, fg_color="#0E0E1C", text_color=YEL,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 0))
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 0))
 
         adb_sv = tk.StringVar(value="  |  ADB: memeriksa...")
-        adb_lbl = _ck.Label(tools_bar, textvariable=adb_sv, fg_color="#0E0E1C", text_color=MUT, font=("Segoe UI", 8))
+        adb_lbl = _ck.Label(tools_bar, textvariable=adb_sv, fg_color="#0E0E1C", text_color=MUT, font=("Segoe UI Variable", 8))
         adb_lbl.pack(side="left", padx=(6, 0))
 
         def _upd_scrcpy():
@@ -5784,10 +5805,10 @@ class SynthexApp:
         dl_btns = _ck.Frame(tools_bar, fg_color="#0E0E1C")
         dl_btns.pack(side="right")
         _ck.Button(dl_btns, text="Download scrcpy", fg_color="#2A1050", text_color="white",
-                  font=("Segoe UI", 8), padx=8, pady=4,
+                  font=("Segoe UI Variable", 8), padx=8, pady=4,
                   command=_download_scrcpy, **_FB).pack(side="left", padx=(0, 4))
         _ck.Button(dl_btns, text="Download ADB", fg_color="#103020", text_color="white",
-                  font=("Segoe UI", 8), padx=8, pady=4,
+                  font=("Segoe UI Variable", 8), padx=8, pady=4,
                   command=_download_adb, **_FB).pack(side="left")
 
         # ── Screenshot button ────────────────────────────────────────────────
@@ -5795,7 +5816,7 @@ class SynthexApp:
         ss_row.pack(fill="x", pady=(8, 0))
         ss_sv = tk.StringVar(value="")
         _ck.Label(ss_row, textvariable=ss_sv, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="left")
+                 font=("Segoe UI Variable", 8)).pack(side="left")
 
         def _take_screenshot():
             if not self._adb or not self._adb.available:
@@ -5841,7 +5862,7 @@ class SynthexApp:
             _thr.Thread(target=_bg, daemon=True).start()
 
         _ck.Button(ss_row, text="\U0001f4f7  Screenshot HP", fg_color="#1A3A5A", text_color="white",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_take_screenshot).pack(side="right")
 
@@ -5853,7 +5874,7 @@ class SynthexApp:
                       accent="#5B21B6", subtitle="VPN mesh langsung peer-to-peer")
 
         ts_status_var = tk.StringVar(value="Belum dicek…")
-        ts_status_lbl = _ck.Label(ts_sec, textvariable=ts_status_var, fg_color=CARD, text_color=MUT, font=("Segoe UI", 8))
+        ts_status_lbl = _ck.Label(ts_sec, textvariable=ts_status_var, fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8))
         ts_status_lbl.pack(anchor="w", pady=(0, 8))
 
         ts_peers_frame = _ck.Frame(ts_sec, fg_color=CARD)
@@ -5884,7 +5905,7 @@ class SynthexApp:
                         ts_status_lbl.configure(text_color=RED)
                         for w in ts_peers_frame.winfo_children(): w.destroy()
                         _ck.Label(ts_peers_frame,
-                                 text="Download Tailscale di tailscale.com, install di PC & HP.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+                                 text="Download Tailscale di tailscale.com, install di PC & HP.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w")
                     if self._root: self._root.after(0, _ui)
                     return
                 try:
@@ -5919,7 +5940,7 @@ class SynthexApp:
                         w.destroy()
                     if not peer_list:
                         _ck.Label(ts_peers_frame,
-                                 text="Tidak ada peer online. Pastikan Tailscale aktif di HP juga.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+                                 text="Tidak ada peer online. Pastikan Tailscale aktif di HP juga.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w")
                         return
                     for p in peer_list:
                         row = _ck.Frame(ts_peers_frame, fg_color="#16162a", pady=6, padx=10)
@@ -5927,13 +5948,13 @@ class SynthexApp:
                         clr = GRN if p["online"] else MUT
                         dot_t = "🟢" if p["online"] else "⚪"
                         _ck.Label(row, text=dot_t, fg_color="#16162a",
-                                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+                                 font=("Segoe UI Variable", 10)).pack(side="left", padx=(0, 6))
                         info = _ck.Frame(row, fg_color="#16162a")
                         info.pack(side="left", fill="both", expand=True)
                         _ck.Label(info, text=p["name"], fg_color="#16162a", text_color=FG,
-                                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                                 font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
                         _ck.Label(info, text="{} • {}".format(p["ip"], p["os"]), fg_color="#16162a", text_color=MUT,
-                                 font=("Segoe UI", 8)).pack(anchor="w")
+                                 font=("Segoe UI Variable", 8)).pack(anchor="w")
                         def _connect_ts(ip=p["ip"], name=p["name"]):
                             def _auto_mirror(serial, attempt=0):
                                 if serial in _card_widgets:
@@ -5961,7 +5982,7 @@ class SynthexApp:
                                 if self._root: self._root.after(0, _ui2)
                             _thr.Thread(target=_do, daemon=True).start()
                         _ck.Button(row, text="⚡ Connect ADB", fg_color="#5B21B6", text_color="white", relief="flat", bd=0,
-                                  font=("Segoe UI", 8, "bold"), padx=10, pady=4,
+                                  font=("Segoe UI Variable", 8, "bold"), padx=10, pady=4,
                                   cursor="hand2", command=_connect_ts).pack(side="right")
                 if self._root: self._root.after(0, _ui)
             _thr.Thread(target=_bg, daemon=True).start()
@@ -5969,10 +5990,10 @@ class SynthexApp:
         ts_btn_row = _ck.Frame(ts_sec, fg_color=CARD)
         ts_btn_row.pack(anchor="w", pady=(8, 4))
         _ck.Button(ts_btn_row, text="🔍 Cek & Tampilkan Peers Tailscale", fg_color="#5B21B6", text_color="white", relief="flat", bd=0,
-                  font=("Segoe UI", 9, "bold"), padx=12, pady=5,
+                  font=("Segoe UI Variable", 9, "bold"), padx=12, pady=5,
                   cursor="hand2", command=_refresh_tailscale).pack(side="left", padx=(0, 8))
         _ck.Label(ts_sec,
-                 text="💡 Install Tailscale di PC (tailscale.com) + di HP (Play Store) → login akun sama → klik Cek.", fg_color=CARD, text_color="#555577", font=("Segoe UI", 7)).pack(anchor="w")
+                 text="💡 Install Tailscale di PC (tailscale.com) + di HP (Play Store) → login akun sama → klik Cek.", fg_color=CARD, text_color="#555577", font=("Segoe UI Variable", 7)).pack(anchor="w")
 
         _refresh_tailscale()
 
@@ -5985,9 +6006,9 @@ class SynthexApp:
         secure_row.pack(fill="x", pady=(0, 6))
 
         _ck.Label(secure_row,
-                 text="Layar hitam saat buka app bank di mirror?", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9)).pack(side="left")
+                 text="Layar hitam saat buka app bank di mirror?", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9)).pack(side="left")
 
-        _ck.Label(tools_sec, textvariable=secure_sv, fg_color=CARD, text_color=YEL, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+        _ck.Label(tools_sec, textvariable=secure_sv, fg_color=CARD, text_color=YEL, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _run_surface_cmd(flag: str, ok_msg: str):
             devs = list(_card_widgets.keys())
@@ -6028,11 +6049,11 @@ class SynthexApp:
         btn_row = _ck.Frame(tools_sec, fg_color=CARD)
         btn_row.pack(anchor="w")
         _ck.Button(btn_row, text="\U0001f513  Bypass Sekarang", fg_color="#3A2A00", text_color=YEL,
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_bypass_secure).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Kembalikan Normal", fg_color=CARD2, text_color=MUT,
-                  font=("Segoe UI", 9), padx=10, pady=6,
+                  font=("Segoe UI Variable", 9), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_restore_secure).pack(side="left")
 
@@ -6042,7 +6063,7 @@ class SynthexApp:
                        variable=auto_bypass_var,
                        command=_toggle_auto_bypass, fg_color=CARD, text_color=FG, selectcolor="#1c1c2e",
                        activebackground=CARD, activeforeground=FG,
-                       font=("Segoe UI", 9), cursor="hand2").pack(side="left")
+                       font=("Segoe UI Variable", 9), cursor="hand2").pack(side="left")
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — USB First-time Wizard (tombol launcher)
@@ -6053,14 +6074,14 @@ class SynthexApp:
 
         _ck.Label(usb_wiz_sec,
                  text="Wizard ini memandu kamu menghubungkan HP via USB lalu beralih ke WiFi "
-                      "secara otomatis — tinggal ikuti langkah yang muncul.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9),
+                      "secara otomatis — tinggal ikuti langkah yang muncul.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
                  wraplength=560, justify="left").pack(anchor="w", pady=(0, 10))
 
         wiz_btn_row = _ck.Frame(usb_wiz_sec, fg_color=CARD)
         wiz_btn_row.pack(anchor="w")
         _ck.Button(wiz_btn_row,
                   text="  Buka USB Setup Wizard", fg_color="#0EA5E9", text_color="white",
-                  font=("Segoe UI", 10, "bold"), padx=18, pady=8,
+                  font=("Segoe UI Variable", 10, "bold"), padx=18, pady=8,
                   relief="flat", bd=0, cursor="hand2",
                   command=lambda: self._show_usb_wizard(msg_var, ip_var, _refresh_devs)
                   ).pack(side="left", padx=(0, 12))
@@ -6076,15 +6097,15 @@ class SynthexApp:
                        variable=auto_install_var,
                        command=_toggle_auto_install, fg_color=CARD, text_color=FG, selectcolor="#1c1c2e",
                        activebackground=CARD, activeforeground=FG,
-                       font=("Segoe UI", 9), cursor="hand2").pack(
+                       font=("Segoe UI Variable", 9), cursor="hand2").pack(
             anchor="w", pady=(8, 0))
         _ck.Label(usb_wiz_sec,
                  text="Letakkan Synthex.apk di folder  synthex/tools/Synthex.apk  "
-                      "setelah download dari GitHub Actions.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI", 8)).pack(
+                      "setelah download dari GitHub Actions.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI Variable", 8)).pack(
             anchor="w", pady=(2, 0))
 
         _ck.Label(wiz_btn_row,
-                 text="Sudah terhubung sebelumnya? Gunakan IP History di atas.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI", 8)).pack(side="left")
+                 text="Sudah terhubung sebelumnya? Gunakan IP History di atas.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI Variable", 8)).pack(side="left")
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — Macro Remote
@@ -6101,11 +6122,11 @@ class SynthexApp:
                        text="Aktifkan Macro Engine",
                        variable=mac_enable_var, fg_color=CARD, text_color=FG, selectcolor="#1c1c2e",
                        activebackground=CARD, activeforeground=FG,
-                       font=("Segoe UI", 9, "bold"), cursor="hand2").pack(
+                       font=("Segoe UI Variable", 9, "bold"), cursor="hand2").pack(
             side="left")
 
         mac_status_var = tk.StringVar(value="")
-        _ck.Label(mac_hdr_row, textvariable=mac_status_var, fg_color=CARD, text_color=GRN, font=("Segoe UI", 8)).pack(
+        _ck.Label(mac_hdr_row, textvariable=mac_status_var, fg_color=CARD, text_color=GRN, font=("Segoe UI Variable", 8)).pack(
             side="right")
 
         # Macro rules list container
@@ -6125,7 +6146,7 @@ class SynthexApp:
                 try: w.destroy()
                 except Exception: pass
             if not _mac_rules:
-                _ck.Label(mac_rules_frame, text="  Belum ada rule macro — klik + Tambah Rule di bawah.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI", 8)).pack(
+                _ck.Label(mac_rules_frame, text="  Belum ada rule macro — klik + Tambah Rule di bawah.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI Variable", 8)).pack(
                     anchor="w", pady=6, padx=10)
                 return
             for i, rule in enumerate(_mac_rules):
@@ -6168,10 +6189,10 @@ class SynthexApp:
                     rule.get("x2",540), rule.get("y2",1200))
 
             _ck.Label(row,
-                     text="Idle {}  →  {}{}".format(delay_txt, act_txt, coord_txt), fg_color="#0D0D18", text_color=FG, font=("Segoe UI", 9)).pack(
+                     text="Idle {}  →  {}{}".format(delay_txt, act_txt, coord_txt), fg_color="#0D0D18", text_color=FG, font=("Segoe UI Variable", 9)).pack(
                 side="left", padx=(4, 0))
             if rule.get("label"):
-                _ck.Label(row, text="  [{}]".format(rule["label"]), fg_color="#0D0D18", text_color=MUT, font=("Segoe UI", 8)).pack(
+                _ck.Label(row, text="  [{}]".format(rule["label"]), fg_color="#0D0D18", text_color=MUT, font=("Segoe UI Variable", 8)).pack(
                     side="left")
 
             def _del(idx=i):
@@ -6192,11 +6213,11 @@ class SynthexApp:
                     self._root.after(2000, lambda: mac_status_var.set(""))
 
             _ck.Button(row, text="▶", fg_color="#1A1A38", text_color=ACC,
-                      font=("Segoe UI", 8, "bold"), padx=6, pady=2,
+                      font=("Segoe UI Variable", 8, "bold"), padx=6, pady=2,
                       relief="flat", bd=0, cursor="hand2",
                       command=_fire).pack(side="right", padx=(4, 0))
             _ck.Button(row, text="✕", fg_color="#1A1A38", text_color=RED,
-                      font=("Segoe UI", 8), padx=6, pady=2,
+                      font=("Segoe UI Variable", 8), padx=6, pady=2,
                       relief="flat", bd=0, cursor="hand2",
                       command=_del).pack(side="right", padx=(4, 0))
 
@@ -6248,7 +6269,7 @@ class SynthexApp:
 
         # ── Add Rule dialog ──────────────────────────────────────────────────
         def _open_add_rule():
-            dlg = ctk.CTkToplevel(self._root)
+            dlg = _DarkToplevel(self._root)
             dlg.withdraw()
             dlg.title("Tambah Macro Rule")
             dlg.configure(fg_color="#0D0D14")
@@ -6269,11 +6290,11 @@ class SynthexApp:
                 r = _ck.Frame(parent, fg_color="#0D0D14")
                 r.pack(fill="x", pady=(0, 10))
                 _ck.Label(r, text=lbl, fg_color="#0D0D14", text_color=MUT,
-                         font=("Segoe UI", 9), width=18, anchor="w").pack(side="left")
+                         font=("Segoe UI Variable", 9), width=18, anchor="w").pack(side="left")
                 return widget_fn(r)
 
             _ck.Label(b, text="Tambah Macro Rule", fg_color="#0D0D14", text_color=FG,
-                     font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 14))
+                     font=("Segoe UI Variable", 12, "bold")).pack(anchor="w", pady=(0, 14))
 
             # Label (opsional)
             lbl_var = tk.StringVar()
@@ -6286,7 +6307,7 @@ class SynthexApp:
             dr = _row(b, "Idle sebelum fire:", lambda p: p)
             _ck.Entry(dr, textvariable=delay_var, fg_color="#16162a", text_color=FG, insertbackground=FG,
                      relief="flat", width=8, bd=4).pack(side="left")
-            _ck.Label(dr, text="detik  (180=3 menit, 300=5 menit)", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI", 8)).pack(side="left", padx=(6,0))
+            _ck.Label(dr, text="detik  (180=3 menit, 300=5 menit)", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI Variable", 8)).pack(side="left", padx=(6,0))
 
             # Action
             act_var = tk.StringVar(value="swipe_down")
@@ -6306,7 +6327,7 @@ class SynthexApp:
 
             def _entry(parent, lbl, var, w=6):
                 _ck.Label(parent, text=lbl, fg_color="#0D0D14", text_color=MUT,
-                         font=("Segoe UI", 8)).pack(side="left", padx=(0,2))
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(0,2))
                 _ck.Entry(parent, textvariable=var, fg_color="#16162a", text_color=FG, insertbackground=FG,
                          relief="flat", width=w, bd=3).pack(side="left", padx=(0,8))
 
@@ -6333,7 +6354,7 @@ class SynthexApp:
 
             err_var = tk.StringVar(value="")
             _ck.Label(b, textvariable=err_var, fg_color="#0D0D14", text_color=RED,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
 
             def _save():
                 disp = act_var.get()
@@ -6374,11 +6395,11 @@ class SynthexApp:
             btn_r = _ck.Frame(b, fg_color="#0D0D14")
             btn_r.pack(anchor="e", pady=(10, 0))
             _ck.Button(btn_r, text="Simpan", fg_color=ACC, text_color="white",
-                      font=("Segoe UI", 9, "bold"), padx=18, pady=7,
+                      font=("Segoe UI Variable", 9, "bold"), padx=18, pady=7,
                       relief="flat", bd=0, cursor="hand2",
                       command=_save).pack(side="left", padx=(0, 8))
             _ck.Button(btn_r, text="Batal", fg_color="#1c1c2e", text_color=MUT,
-                      font=("Segoe UI", 9), padx=12, pady=7,
+                      font=("Segoe UI Variable", 9), padx=12, pady=7,
                       relief="flat", bd=0, cursor="hand2",
                       command=dlg.destroy).pack(side="left")
             dlg.update()
@@ -6387,11 +6408,11 @@ class SynthexApp:
         mac_add_row = _ck.Frame(mac_sec, fg_color=CARD)
         mac_add_row.pack(anchor="w")
         _ck.Button(mac_add_row, text="+ Tambah Rule", fg_color="#1A0840", text_color=ACC,
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_open_add_rule).pack(side="left", padx=(0, 10))
         _ck.Button(mac_add_row, text="Stop Engine", fg_color="#1c1c2e", text_color=MUT,
-                  font=("Segoe UI", 8), padx=10, pady=6,
+                  font=("Segoe UI Variable", 8), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=lambda: (
                       self._macro_engine.stop() if self._macro_engine else None,
@@ -6408,17 +6429,17 @@ class SynthexApp:
         comp_info = _ck.Label(comp_sec,
             text="PC akan menjalankan server lokal. Buka URL di bawah dari Chrome HP kamu.\n"
                  "Tambahkan ke Home Screen (menu Chrome → Add to Home Screen) "
-                 "supaya terasa seperti app sungguhan.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9), wraplength=560, justify="left")
+                 "supaya terasa seperti app sungguhan.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9), wraplength=560, justify="left")
         comp_info.pack(anchor="w", pady=(0, 10))
 
         comp_url_var  = tk.StringVar(value="Server belum berjalan")
         comp_stat_var = tk.StringVar(value="")
 
-        comp_url_lbl = _ck.Label(comp_sec, textvariable=comp_url_var, fg_color=CARD, text_color=ACC, font=("Segoe UI", 11, "bold"),
+        comp_url_lbl = _ck.Label(comp_sec, textvariable=comp_url_var, fg_color=CARD, text_color=ACC, font=("Segoe UI Variable", 11, "bold"),
                                 cursor="hand2")
         comp_url_lbl.pack(anchor="w", pady=(0, 6))
 
-        _ck.Label(comp_sec, textvariable=comp_stat_var, fg_color=CARD, text_color=GRN, font=("Segoe UI", 8)).pack(anchor="w")
+        _ck.Label(comp_sec, textvariable=comp_stat_var, fg_color=CARD, text_color=GRN, font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         def _comp_copy_url():
             url = comp_url_var.get()
@@ -6486,11 +6507,11 @@ class SynthexApp:
         comp_btn_row = _ck.Frame(comp_sec, fg_color=CARD)
         comp_btn_row.pack(anchor="w", pady=(8, 0))
         _ck.Button(comp_btn_row, text="▶ Jalankan Server Companion", fg_color="#16803C", text_color="white",
-                  font=("Segoe UI", 9, "bold"), padx=14, pady=6,
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_start_companion).pack(side="left", padx=(0, 8))
         _ck.Button(comp_btn_row, text="■ Stop", fg_color="#1c1c2e", text_color=MUT,
-                  font=("Segoe UI", 9), padx=10, pady=6,
+                  font=("Segoe UI Variable", 9), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
                   command=_stop_companion).pack(side="left")
 
@@ -6498,6 +6519,519 @@ class SynthexApp:
         if self._bridge and self._bridge.running:
             comp_url_var.set(self._bridge.url)
             comp_stat_var.set("Server aktif")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Tasker Webhook (Android → PC Automation)
+        # ══════════════════════════════════════════════════════════════
+        tk_sec = _sec("Tasker Webhook", accent="#0F2D1A",
+                      subtitle="Notifikasi & otomasi dari Android ke PC")
+
+        # ── Server toggle row ────────────────────────────────────────────────
+        tk_hdr = _ck.Frame(tk_sec, fg_color=CARD)
+        tk_hdr.pack(fill="x", pady=(0, 6))
+
+        tk_srv_var = tk.BooleanVar(
+            value=self.config.get("tasker.server_enabled", False))
+        tk_dot = _ck.Label(tk_hdr, text="●", fg_color=CARD,
+                          text_color=MUT, font=("Segoe UI Variable", 14))
+        tk_dot.pack(side="left")
+        tk_stat_var = tk.StringVar(value="Server tidak aktif")
+        _ck.Label(tk_hdr, textvariable=tk_stat_var, fg_color=CARD, text_color=FG,
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(6, 0))
+
+        tk_ip_var = tk.StringVar(value="")
+        _ck.Label(tk_hdr, textvariable=tk_ip_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(10, 0))
+
+        def _tasker_apply_state():
+            if not self._webhook_server:
+                return
+            running = self._webhook_server.is_running
+            tk_dot.configure(text_color=GRN if running else MUT)
+            if running:
+                ip = self._webhook_server.get_local_ip()
+                port = self._webhook_server.port
+                tk_ip_var.set("  WiFi: {}:{}".format(ip, port))
+                tk_stat_var.set("Server aktif")
+            else:
+                tk_ip_var.set("")
+                tk_stat_var.set("Server tidak aktif")
+
+        def _tasker_start():
+            from modules.webhook_server import WebhookServer
+            from modules.trigger_engine import TriggerEngine, TriggerConfig
+            port  = int(self.config.get("tasker.port", 7799))
+            token = self.config.get("tasker.token", "synthex")
+            if self._webhook_server is None or self._webhook_server.port != port:
+                if self._webhook_server:
+                    self._webhook_server.stop()
+                self._webhook_server = WebhookServer(port=port, token=token)
+            if self._trigger_engine is None:
+                cfg = TriggerConfig(
+                    adb_path=self.config.get("tasker.adb_path", "adb"),
+                    adb_serial=self.config.get("tasker.adb_serial", ""),
+                    google_credentials_file=self.config.get("google.credentials_file", ""),
+                    google_spreadsheet_id=self.config.get("google.spreadsheet_id", ""),
+                )
+                self._trigger_engine = TriggerEngine(cfg)
+            _rules = list(self.config.get("tasker.rules", []))
+            self._trigger_engine.rules = _rules
+
+            def _on_event(ev):
+                self._trigger_engine.process(ev)
+                if self._root:
+                    self._root.after(0, lambda e=ev: _tasker_push_log(e))
+            self._webhook_server.on_event = _on_event
+
+            ok = self._webhook_server.start()
+            self.config.set("tasker.server_enabled", ok)
+            self.config.save()
+            if self._root:
+                self._root.after(0, _tasker_apply_state)
+
+        def _tasker_stop():
+            if self._webhook_server:
+                self._webhook_server.stop()
+            self.config.set("tasker.server_enabled", False)
+            self.config.save()
+            if self._root:
+                self._root.after(0, _tasker_apply_state)
+
+        _ck.Button(tk_hdr, text="▶ Start", fg_color="#16803C", text_color="white",
+                  font=("Segoe UI Variable", 8, "bold"), padx=10, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_tasker_start, daemon=True).start()
+                  ).pack(side="right", padx=(4, 0))
+        _ck.Button(tk_hdr, text="■ Stop", fg_color="#1c1c2e", text_color=MUT,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_tasker_stop).pack(side="right", padx=(4, 0))
+
+        # ── Settings row: port + token ────────────────────────────────────────
+        tk_cfg_row = _ck.Frame(tk_sec, fg_color=CARD)
+        tk_cfg_row.pack(fill="x", pady=(0, 6))
+
+        def _lbl(parent, text, w=80):
+            _ck.Label(parent, text=text, fg_color=CARD, text_color=MUT,
+                     font=("Segoe UI Variable", 8), width=w).pack(side="left")
+
+        _lbl(tk_cfg_row, "Port")
+        tk_port_var = tk.StringVar(value=str(self.config.get("tasker.port", 7799)))
+        tk.Entry(tk_cfg_row, textvariable=tk_port_var, width=7, bg=CARD2, fg=FG,
+                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)
+                ).pack(side="left", padx=(0, 16))
+        _lbl(tk_cfg_row, "Token")
+        tk_token_var = tk.StringVar(value=self.config.get("tasker.token", "synthex"))
+        tk.Entry(tk_cfg_row, textvariable=tk_token_var, width=14, bg=CARD2, fg=FG,
+                insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9)
+                ).pack(side="left", padx=(0, 16))
+
+        def _tk_save_cfg():
+            try:
+                p = int(tk_port_var.get())
+            except ValueError:
+                p = 7799
+            self.config.set("tasker.port", p)
+            self.config.set("tasker.token", tk_token_var.get().strip())
+            self.config.save()
+        _ck.Button(tk_cfg_row, text="Simpan", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_tk_save_cfg).pack(side="left")
+
+        # ── USB tunnel toggle ─────────────────────────────────────────────────
+        tk_usb_row = _ck.Frame(tk_sec, fg_color=CARD)
+        tk_usb_row.pack(fill="x", pady=(0, 8))
+        tk_usb_stat = tk.StringVar(value="")
+
+        def _tasker_usb_setup():
+            if not self._webhook_server:
+                tk_usb_stat.set("Start server dulu")
+                return
+            adb_path = self.config.get("tasker.adb_path", "adb")
+            serial   = self.config.get("tasker.adb_serial", "")
+            ok, err  = self._webhook_server.setup_usb_tunnel(adb_path, serial)
+            tk_usb_stat.set("USB tunnel OK" if ok else "Gagal: {}".format(err))
+
+        def _tasker_usb_remove():
+            if not self._webhook_server:
+                return
+            adb_path = self.config.get("tasker.adb_path", "adb")
+            serial   = self.config.get("tasker.adb_serial", "")
+            self._webhook_server.remove_usb_tunnel(adb_path, serial)
+            tk_usb_stat.set("Tunnel dihapus")
+
+        _ck.Button(tk_usb_row, text="USB Tunnel ON", fg_color="#1A3A1A", text_color=GRN,
+                  font=("Segoe UI Variable", 8, "bold"), padx=10, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_tasker_usb_setup, daemon=True).start()
+                  ).pack(side="left", padx=(0, 6))
+        _ck.Button(tk_usb_row, text="USB Tunnel OFF", fg_color="#1c1c2e", text_color=MUT,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_tasker_usb_remove).pack(side="left", padx=(0, 10))
+        _ck.Label(tk_usb_row, textvariable=tk_usb_stat, fg_color=CARD, text_color=GRN,
+                 font=("Segoe UI Variable", 8)).pack(side="left")
+
+        # ── Trigger rules ─────────────────────────────────────────────────────
+        _ck.Frame(tk_sec, fg_color="#1A2A1A", height=1).pack(fill="x", pady=(4, 8))
+        tk_rules_hdr = _ck.Frame(tk_sec, fg_color=CARD)
+        tk_rules_hdr.pack(fill="x", pady=(0, 4))
+        _ck.Label(tk_rules_hdr, text="Trigger Rules", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+
+        _tk_rules: list = list(self.config.get("tasker.rules", []))
+
+        tk_rules_frame = _ck.Frame(tk_sec, fg_color="#080D10")
+        tk_rules_frame.pack(fill="x", pady=(0, 8))
+
+        def _rebuild_tk_rules():
+            for w in tk_rules_frame.winfo_children():
+                try: w.destroy()
+                except Exception: pass
+            if not _tk_rules:
+                _ck.Label(tk_rules_frame, text="  Belum ada rule — klik + Tambah Rule.",
+                         fg_color="#080D10", text_color=MUT,
+                         font=("Segoe UI Variable", 8)).pack(anchor="w", pady=6, padx=10)
+                return
+            for i, rule in enumerate(_tk_rules):
+                _make_tk_rule_row(i, rule)
+
+        def _save_tk_rules():
+            self.config.set("tasker.rules", _tk_rules)
+            self.config.save()
+            if self._trigger_engine:
+                self._trigger_engine.rules = list(_tk_rules)
+
+        def _make_tk_rule_row(i, rule):
+            enabled = rule.get("enabled", True)
+            row = _ck.Frame(tk_rules_frame, fg_color="#080D10", padx=10, pady=5)
+            row.pack(fill="x")
+            _ck.Frame(tk_rules_frame, fg_color="#16162a", height=1).pack(fill="x")
+
+            en_var = tk.BooleanVar(value=enabled)
+            def _tog(idx=i, v=en_var):
+                _tk_rules[idx]["enabled"] = v.get()
+                _save_tk_rules()
+            _ck.Checkbutton(row, variable=en_var, fg_color="#080D10", text_color=FG,
+                           selectcolor="#1c1c2e", activebackground="#080D10",
+                           command=_tog).pack(side="left")
+
+            et  = rule.get("event_type", "*")
+            nm  = rule.get("name", "Rule {}".format(i + 1))
+            acts = rule.get("actions", [])
+            act_summary = ", ".join(a.get("type", "?") for a in acts) or "tidak ada aksi"
+            _ck.Label(row,
+                     text="[{}]  {}  →  {}".format(et, nm, act_summary),
+                     fg_color="#080D10", text_color=FG,
+                     font=("Segoe UI Variable", 8)).pack(side="left", padx=(4, 0))
+
+            def _del(idx=i):
+                _tk_rules.pop(idx)
+                _save_tk_rules()
+                _rebuild_tk_rules()
+            _ck.Button(row, text="✕", fg_color="#1A1A38", text_color=RED,
+                      font=("Segoe UI Variable", 8), padx=6, pady=2,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=_del).pack(side="right")
+
+        def _open_add_tk_rule():
+            dlg = _DarkToplevel(self._root)
+            dlg.withdraw()
+            dlg.title("Tambah Trigger Rule")
+            W, H = 440, 520
+            dlg.geometry("{}x{}+{}+{}".format(
+                W, H,
+                (dlg.winfo_screenwidth() - W) // 2,
+                (dlg.winfo_screenheight() - H) // 2))
+            dlg.resizable(False, False)
+            dlg.update()
+            dlg.deiconify()
+            dlg.after(120, dlg.grab_set)
+
+            _EVENT_TYPES = ["*", "notification", "sms", "app_opened", "custom"]
+            _ACTION_TYPES = ["notify_desktop", "log_sheet", "adb_tap",
+                             "adb_swipe", "adb_key", "adb_shell"]
+
+            def _lbl2(parent, text):
+                tk.Label(parent, text=text, bg=BG, fg=MUT,
+                        font=("Segoe UI Variable", 8)).pack(anchor="w", padx=14, pady=(8, 0))
+
+            def _entry2(parent, default=""):
+                sv = tk.StringVar(value=default)
+                tk.Entry(parent, textvariable=sv, bg=CARD2, fg=FG,
+                        insertbackground=FG, relief="flat",
+                        font=("Segoe UI Variable", 9)).pack(fill="x", padx=14, pady=2)
+                return sv
+
+            scroll_c = tk.Canvas(dlg, bg=BG, highlightthickness=0)
+            scroll_c.pack(fill="both", expand=True)
+            scroll_inner = tk.Frame(scroll_c, bg=BG)
+            scroll_c.create_window((0, 0), window=scroll_inner, anchor="nw")
+            scroll_inner.bind("<Configure>",
+                              lambda e: scroll_c.configure(
+                                  scrollregion=scroll_c.bbox("all")))
+
+            tk.Label(scroll_inner, text="Nama Rule", bg=BG, fg=MUT,
+                    font=("Segoe UI Variable", 8)).pack(anchor="w", padx=14, pady=(14, 0))
+            name_sv = _entry2(scroll_inner, "Rule Baru")
+
+            tk.Label(scroll_inner, text="Event Type", bg=BG, fg=MUT,
+                    font=("Segoe UI Variable", 8)).pack(anchor="w", padx=14, pady=(8, 0))
+            et_var = tk.StringVar(value="*")
+            et_frame = tk.Frame(scroll_inner, bg=BG)
+            et_frame.pack(fill="x", padx=14)
+            for et in _EVENT_TYPES:
+                tk.Radiobutton(et_frame, text=et, variable=et_var, value=et,
+                              bg=BG, fg=FG, selectcolor=CARD2, activebackground=BG,
+                              font=("Segoe UI Variable", 8)).pack(side="left", padx=4)
+
+            # Conditions
+            tk.Label(scroll_inner, text="Kondisi (field → op → value)",
+                    bg=BG, fg=MUT, font=("Segoe UI Variable", 8)).pack(
+                anchor="w", padx=14, pady=(8, 0))
+            cond_frame = tk.Frame(scroll_inner, bg=BG)
+            cond_frame.pack(fill="x", padx=14)
+            _conds: list = []
+
+            _OPS = ["eq", "ne", "contains", "not_contains", "starts_with", "ends_with", "regex"]
+
+            def _add_cond():
+                idx = len(_conds)
+                row2 = tk.Frame(cond_frame, bg=BG)
+                row2.pack(fill="x", pady=2)
+                f_sv = tk.StringVar(value="package")
+                op_sv = tk.StringVar(value="eq")
+                v_sv  = tk.StringVar(value="")
+                tk.Entry(row2, textvariable=f_sv, width=12, bg=CARD2, fg=FG,
+                        insertbackground=FG, relief="flat",
+                        font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 4))
+                tk.OptionMenu(row2, op_sv, *_OPS).configure(
+                    bg=CARD2, fg=FG, activebackground=CARD2,
+                    font=("Segoe UI Variable", 8))
+                om = tk.OptionMenu(row2, op_sv, *_OPS)
+                om.configure(bg=CARD2, fg=FG, font=("Segoe UI Variable", 8),
+                             relief="flat", activebackground=CARD)
+                om.pack(side="left", padx=(0, 4))
+                tk.Entry(row2, textvariable=v_sv, width=16, bg=CARD2, fg=FG,
+                        insertbackground=FG, relief="flat",
+                        font=("Segoe UI Variable", 8)).pack(side="left")
+                _conds.append((f_sv, op_sv, v_sv, row2))
+
+            _add_cond()
+            tk.Button(cond_frame, text="+ Kondisi", bg=CARD2, fg=FG,
+                     font=("Segoe UI Variable", 8), relief="flat",
+                     command=_add_cond).pack(anchor="w", pady=(4, 0))
+
+            # Actions
+            tk.Label(scroll_inner, text="Aksi", bg=BG, fg=MUT,
+                    font=("Segoe UI Variable", 8)).pack(anchor="w", padx=14, pady=(8, 0))
+            act_frame = tk.Frame(scroll_inner, bg=BG)
+            act_frame.pack(fill="x", padx=14)
+            _acts_ui: list = []
+
+            _ACT_FIELDS = {
+                "notify_desktop": [("title", "Judul (template {field})"),
+                                   ("body", "Body (template {field})")],
+                "log_sheet":      [("spreadsheet_id", "Spreadsheet ID"),
+                                   ("worksheet_name", "Worksheet"),
+                                   ("fields", "Fields (koma): event_type,body,_ts")],
+                "adb_tap":        [("x", "X"), ("y", "Y")],
+                "adb_swipe":      [("x1", "X1"), ("y1", "Y1"),
+                                   ("x2", "X2"), ("y2", "Y2"), ("ms", "Durasi ms")],
+                "adb_key":        [("keycode", "Keycode (ex: KEYCODE_HOME)")],
+                "adb_shell":      [("cmd", "Shell command")],
+            }
+
+            def _add_action():
+                idx = len(_acts_ui)
+                arow = tk.Frame(act_frame, bg="#0D0D14", pady=6)
+                arow.pack(fill="x", pady=(0, 4))
+                at_var = tk.StringVar(value="notify_desktop")
+                fields_frame = tk.Frame(arow, bg="#0D0D14")
+                fields_frame.pack(fill="x", padx=6, pady=(4, 0))
+                _field_svs = {}
+
+                def _rebuild_fields(*_):
+                    for w in fields_frame.winfo_children():
+                        try: w.destroy()
+                        except Exception: pass
+                    _field_svs.clear()
+                    for key, label in _ACT_FIELDS.get(at_var.get(), []):
+                        tk.Label(fields_frame, text=label, bg="#0D0D14", fg=MUT,
+                                font=("Segoe UI Variable", 7)).pack(anchor="w")
+                        sv = tk.StringVar()
+                        tk.Entry(fields_frame, textvariable=sv, bg=CARD2, fg=FG,
+                                insertbackground=FG, relief="flat",
+                                font=("Segoe UI Variable", 8)).pack(fill="x", pady=(0, 2))
+                        _field_svs[key] = sv
+
+                at_var.trace_add("write", _rebuild_fields)
+                om2 = tk.OptionMenu(arow, at_var, *_ACTION_TYPES)
+                om2.configure(bg=CARD2, fg=FG, font=("Segoe UI Variable", 8),
+                              relief="flat", activebackground=CARD)
+                om2.pack(anchor="w", padx=6)
+                _rebuild_fields()
+                _acts_ui.append((at_var, _field_svs, arow))
+
+            _add_action()
+            tk.Button(act_frame, text="+ Aksi", bg=CARD2, fg=FG,
+                     font=("Segoe UI Variable", 8), relief="flat",
+                     command=_add_action).pack(anchor="w", pady=(4, 0))
+
+            # Save / cancel
+            btn_row = tk.Frame(dlg, bg=BG)
+            btn_row.pack(fill="x", pady=10)
+
+            def _do_save():
+                conds = []
+                for f_sv, op_sv, v_sv, _ in _conds:
+                    f = f_sv.get().strip()
+                    v = v_sv.get().strip()
+                    if f:
+                        conds.append({"field": f, "op": op_sv.get(), "value": v})
+                acts = []
+                for at_var, fsvs, _ in _acts_ui:
+                    a = {"type": at_var.get()}
+                    for k, sv in fsvs.items():
+                        v = sv.get().strip()
+                        if v:
+                            a[k] = v
+                    acts.append(a)
+                import uuid
+                rule = {
+                    "id": str(uuid.uuid4())[:8],
+                    "name": name_sv.get().strip() or "Rule",
+                    "enabled": True,
+                    "event_type": et_var.get(),
+                    "conditions": conds,
+                    "actions": acts,
+                }
+                _tk_rules.append(rule)
+                _save_tk_rules()
+                _rebuild_tk_rules()
+                dlg.destroy()
+
+            tk.Button(btn_row, text="  Simpan  ", bg=GRN, fg="white",
+                     font=("Segoe UI Variable", 9, "bold"), relief="flat",
+                     command=_do_save).pack(side="left", padx=(14, 6))
+            tk.Button(btn_row, text="Batal", bg=CARD2, fg=MUT,
+                     font=("Segoe UI Variable", 9), relief="flat",
+                     command=dlg.destroy).pack(side="left")
+
+        _ck.Button(tk_rules_hdr, text="+ Tambah Rule", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_open_add_tk_rule).pack(side="right")
+
+        _rebuild_tk_rules()
+
+        # ── Event log ─────────────────────────────────────────────────────────
+        _ck.Frame(tk_sec, fg_color="#1A2A1A", height=1).pack(fill="x", pady=(4, 6))
+        tk_log_hdr = _ck.Frame(tk_sec, fg_color=CARD)
+        tk_log_hdr.pack(fill="x", pady=(0, 4))
+        _ck.Label(tk_log_hdr, text="Event Log (live)", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+
+        def _tasker_clear_log():
+            for w in tk_log_box.winfo_children():
+                try: w.destroy()
+                except Exception: pass
+            _ck.Label(tk_log_box, text="  Belum ada event.", fg_color="#060A08",
+                     text_color=MUT, font=("Segoe UI Variable", 8)).pack(
+                anchor="w", pady=4, padx=6)
+
+        _ck.Button(tk_log_hdr, text="Bersihkan", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI Variable", 8), padx=8, pady=2,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: _tasker_clear_log()).pack(side="right")
+
+        tk_log_box = _ck.Frame(tk_sec, fg_color="#060A08")
+        tk_log_box.pack(fill="x")
+        _tasker_clear_log()
+
+        _tk_log_rows = [0]
+
+        def _tasker_push_log(ev: dict):
+            import time as _t
+            for w in tk_log_box.winfo_children():
+                try:
+                    if isinstance(w, _ck.Label) and "Belum ada event" in w.cget("text"):
+                        w.destroy()
+                except Exception:
+                    pass
+            ts   = _t.strftime("%H:%M:%S", _t.localtime(ev.get("_ts", _t.time())))
+            et   = ev.get("event_type", "?")
+            pkg  = ev.get("package", ev.get("app", ""))
+            body = ev.get("body", ev.get("text", ""))[:60]
+            txt  = "[{}] {}  {}  {}".format(ts, et, pkg, body)
+            row_lbl = _ck.Label(tk_log_box, text=txt, fg_color="#060A08",
+                               text_color=FG, font=("Segoe UI Variable", 8),
+                               anchor="w", justify="left")
+            row_lbl.pack(fill="x", padx=6, pady=1)
+            _tk_log_rows[0] += 1
+            if _tk_log_rows[0] > 50:
+                children = tk_log_box.winfo_children()
+                if children:
+                    try: children[-1].destroy()
+                    except Exception: pass
+
+        # Restore state if server already running
+        if self._webhook_server and self._webhook_server.is_running:
+            _tasker_apply_state()
+            self._webhook_server.on_event = lambda ev: (
+                self._trigger_engine.process(ev) if self._trigger_engine else None,
+                self._root.after(0, lambda e=ev: _tasker_push_log(e)) if self._root else None,
+            )
+
+        # Auto-start if was enabled
+        if self.config.get("tasker.server_enabled", False) and (
+                not self._webhook_server or not self._webhook_server.is_running):
+            _thr.Thread(target=_tasker_start, daemon=True).start()
+
+        # ── Tasker setup guide ─────────────────────────────────────────────────
+        _ck.Frame(tk_sec, fg_color="#1A2A1A", height=1).pack(fill="x", pady=(6, 8))
+        guide_frame = _ck.Frame(tk_sec, fg_color=CARD)
+        guide_frame.pack(fill="x")
+        guide_toggle = [False]
+        guide_btn = _ck.Button(guide_frame, text="▶  Panduan Setup Tasker",
+                              fg_color=CARD, text_color=MUT,
+                              font=("Segoe UI Variable", 8), padx=0, pady=4,
+                              relief="flat", bd=0, cursor="hand2")
+
+        guide_content = tk.Frame(guide_frame, bg=CARD)
+        GUIDE_TEXT = (
+            "1. Install Tasker di HP.\n"
+            "2. Buat Profile baru → Event → Plugin → AutoNotification → pilih app.\n"
+            "3. Tambahkan Task → Net → HTTP Request:\n"
+            "   Method: POST\n"
+            "   URL   : http://<IP_PC>:7799/event   (WiFi)\n"
+            "           atau http://localhost:7799/event  (USB tunnel)\n"
+            "   Body  : {\"event_type\":\"notification\",\"package\":\"%antitle\","
+            "\"body\":\"%antext\",\"token\":\"synthex\"}\n"
+            "   Headers: Content-Type: application/json\n"
+            "4. Untuk USB: sambungkan HP ke PC via USB, aktifkan USB Tunnel di atas.\n"
+            "5. Untuk SMS: Profile → Event → Phone → Received Text → task HTTP POST\n"
+            "   Body  : {\"event_type\":\"sms\",\"from\":\"%SMSRF\","
+            "\"body\":\"%SMSRB\",\"token\":\"synthex\"}\n"
+            "6. Gunakan AutoNotification / AutoInput untuk auto-klik koordinat\n"
+            "   dengan mengirim event_type=automation dan trigger adb_tap di sini."
+        )
+        tk.Label(guide_content, text=GUIDE_TEXT, bg=CARD, fg=MUT,
+                justify="left", font=("Segoe UI Variable", 8),
+                wraplength=560).pack(anchor="w", padx=14, pady=8)
+
+        def _toggle_guide():
+            if guide_toggle[0]:
+                guide_content.pack_forget()
+                guide_btn.configure(text="▶  Panduan Setup Tasker")
+            else:
+                guide_content.pack(fill="x")
+                guide_btn.configure(text="▼  Panduan Setup Tasker")
+            guide_toggle[0] = not guide_toggle[0]
+
+        guide_btn.configure(command=_toggle_guide)
+        guide_btn.pack(anchor="w", padx=0)
 
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
@@ -6614,7 +7148,7 @@ class SynthexApp:
         """Show a dialog asking user to download companion APK first."""
         import webbrowser as _wb
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Synthex App diperlukan")
         dlg.configure(fg_color="#0A0A0F")
@@ -6633,21 +7167,21 @@ class SynthexApp:
         body.pack(fill="both", expand=True)
 
         _ck.Label(body, text="HP Baru Terdeteksi!", fg_color="#0A0A0F", text_color="white",
-                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 13, "bold")).pack(anchor="w")
         _ck.Label(body,
                  text="HP kamu belum punya Synthex App.\n"
                       "Install sekarang supaya bisa dikontrol dari app ini.", fg_color="#0A0A0F", text_color="#8080A0",
-                 font=("Segoe UI", 9),
+                 font=("Segoe UI Variable", 9),
                  wraplength=400, justify="left").pack(anchor="w", pady=(6, 0))
 
         _ck.Label(body, text="Serial: {}".format(serial), fg_color="#0A0A0F", text_color="#6C4AFF",
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 0))
+                 font=("Segoe UI Variable", 9, "bold")).pack(anchor="w", pady=(8, 0))
 
         info = _ck.Label(body,
                  text="Download Synthex.apk dari GitHub Actions lalu letakkan di:\n"
                       "synthex/tools/Synthex.apk\n\n"
                       "Setelah file ada, colok HP lagi → install otomatis.", fg_color="#0A0A0F", text_color="#555577",
-                 font=("Segoe UI", 8),
+                 font=("Segoe UI Variable", 8),
                  wraplength=400, justify="left")
         info.pack(anchor="w", pady=(6, 0))
 
@@ -6659,11 +7193,11 @@ class SynthexApp:
             dlg.destroy()
 
         _ck.Button(br, text="Buka GitHub Actions", fg_color="#6C4AFF", text_color="white",
-                  font=("Segoe UI", 9, "bold"), padx=16, pady=7,
+                  font=("Segoe UI Variable", 9, "bold"), padx=16, pady=7,
                   relief="flat", bd=0, cursor="hand2",
                   command=_open_actions).pack(side="left", padx=(0, 8))
         _ck.Button(br, text="Nanti", fg_color="#1c1c2e", text_color="#555577",
-                  font=("Segoe UI", 9), padx=12, pady=7,
+                  font=("Segoe UI Variable", 9), padx=12, pady=7,
                   relief="flat", bd=0, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
         dlg.update()
@@ -6678,7 +7212,7 @@ class SynthexApp:
         import threading as _thr
         import time as _time
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Synthex USB Setup Wizard")
         dlg.configure(fg_color="#0A0A0F")
@@ -6699,10 +7233,10 @@ class SynthexApp:
         hdr = _ck.Frame(dlg, fg_color="#111118", padx=20, pady=14)
         hdr.pack(fill="x")
         _ck.Label(hdr, text="USB Setup Wizard", fg_color="#111118", text_color="white",
-                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 13, "bold")).pack(anchor="w")
         _ck.Label(hdr,
                  text="Hubungkan HP pertama kali — panduan otomatis langkah demi langkah", fg_color="#111118", text_color="#64748b",
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(2, 0))
+                 font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(2, 0))
 
         body = _ck.Frame(dlg, fg_color="#0A0A0F", padx=20, pady=14)
         body.pack(fill="both", expand=True)
@@ -6733,15 +7267,15 @@ class SynthexApp:
             row = _ck.Frame(body, fg_color="#0A0A0F", pady=3)
             row.pack(fill="x")
             dot = _ck.Label(row, text="●", fg_color="#0A0A0F", text_color="#374151",
-                           font=("Segoe UI", 12))
+                           font=("Segoe UI Variable", 12))
             dot.pack(side="left", padx=(0, 8))
             info = _ck.Frame(row, fg_color="#0A0A0F")
             info.pack(side="left", fill="x", expand=True)
             lbl  = _ck.Label(info, text="{}. {}".format(i+1, title), fg_color="#0A0A0F", text_color="#64748b",
-                            font=("Segoe UI", 9, "bold"), anchor="w")
+                            font=("Segoe UI Variable", 9, "bold"), anchor="w")
             lbl.pack(anchor="w")
             desc_lbl = _ck.Label(info, text=desc, fg_color="#0A0A0F", text_color="#374151",
-                                font=("Segoe UI", 8),
+                                font=("Segoe UI Variable", 8),
                                 wraplength=370, justify="left", anchor="w")
             desc_lbl.pack(anchor="w")
             step_frames.append(row)
@@ -6753,18 +7287,18 @@ class SynthexApp:
         status_var = tk.StringVar(value="Siap — klik Mulai untuk memulai wizard")
         _ck.Frame(body, fg_color="#1c1c2e", height=1).pack(fill="x", pady=(10, 6))
         st_lbl = _ck.Label(body, textvariable=status_var, fg_color="#0A0A0F", text_color="#e2e8f0",
-                          font=("Segoe UI", 9), wraplength=420, justify="left")
+                          font=("Segoe UI Variable", 9), wraplength=420, justify="left")
         st_lbl.pack(anchor="w")
 
         # Buttons
         btn_row = _ck.Frame(dlg, fg_color="#0A0A0F", padx=20, pady=12)
         btn_row.pack(fill="x", side="bottom")
         next_btn = _ck.Button(btn_row, text="▶  Mulai Wizard", fg_color="#0EA5E9", text_color="white",
-                             font=("Segoe UI", 10, "bold"),
+                             font=("Segoe UI Variable", 10, "bold"),
                              padx=18, pady=8, relief="flat", bd=0, cursor="hand2")
         next_btn.pack(side="left", padx=(0, 10))
         _ck.Button(btn_row, text="Tutup", fg_color="#1c1c2e", text_color="#64748b",
-                  font=("Segoe UI", 9), padx=12, pady=8,
+                  font=("Segoe UI Variable", 9), padx=12, pady=8,
                   relief="flat", bd=0, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
         dlg.update()
@@ -6958,7 +7492,7 @@ class SynthexApp:
 
         _ck.Frame(left, fg_color="#7C3AED", height=4).pack(fill="x")
         _ck.Label(left, text="Online Sekarang", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9, "bold"),
+                 font=("Segoe UI Variable", 9, "bold"),
                  padx=12, pady=8).pack(anchor="w")
         _ck.Frame(left, fg_color=CARD2, height=1).pack(fill="x")
 
@@ -6967,7 +7501,7 @@ class SynthexApp:
 
         online_count_var = tk.StringVar(value="")
         _ck.Label(left, textvariable=online_count_var, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 7), padx=12, pady=4).pack(anchor="w")
+                 font=("Segoe UI Variable", 7), padx=12, pady=4).pack(anchor="w")
 
         # ── Right: messages + input ──────────────────────────────────────────
         right = _ck.Frame(body, fg_color=CARD)
@@ -6977,7 +7511,7 @@ class SynthexApp:
 
         # Messages area (Text widget, read-only)
         msg_area = _ck.Text(right, fg_color="#0F0F1C", text_color=FG,
-                           font=("Segoe UI", 9),
+                           font=("Segoe UI Variable", 9),
                            relief="flat", bd=0,
                            wrap="word", state="disabled",
                            padx=12, pady=8,
@@ -6988,13 +7522,13 @@ class SynthexApp:
         msg_area.pack(fill="both", expand=True)
 
         # Tags for message styling
-        msg_area.tag_configure("time",    foreground=MUT,        font=("Segoe UI", 7))
-        msg_area.tag_configure("me",      foreground="#7C3AED",  font=("Segoe UI", 9, "bold"))
-        msg_area.tag_configure("other",   foreground="#0EA5E9",  font=("Segoe UI", 9, "bold"))
-        msg_area.tag_configure("system",  foreground=YEL,        font=("Segoe UI", 8, "italic"))
-        msg_area.tag_configure("text",    foreground=FG,         font=("Segoe UI", 9))
-        msg_area.tag_configure("err",     foreground=RED,        font=("Segoe UI", 8, "italic"))
-        msg_area.tag_configure("mention", foreground="#FFD700",  font=("Segoe UI", 9, "bold"),
+        msg_area.tag_configure("time",    foreground=MUT,        font=("Segoe UI Variable", 7))
+        msg_area.tag_configure("me",      foreground="#7C3AED",  font=("Segoe UI Variable", 9, "bold"))
+        msg_area.tag_configure("other",   foreground="#0EA5E9",  font=("Segoe UI Variable", 9, "bold"))
+        msg_area.tag_configure("system",  foreground=YEL,        font=("Segoe UI Variable", 8, "italic"))
+        msg_area.tag_configure("text",    foreground=FG,         font=("Segoe UI Variable", 9))
+        msg_area.tag_configure("err",     foreground=RED,        font=("Segoe UI Variable", 8, "italic"))
+        msg_area.tag_configure("mention", foreground="#FFD700",  font=("Segoe UI Variable", 9, "bold"),
                                background="#2A1A00")
 
         # Input row
@@ -7002,18 +7536,18 @@ class SynthexApp:
         inp_row.pack(fill="x")
         inp_var = tk.StringVar()
         inp_entry = _ck.Entry(inp_row, textvariable=inp_var, fg_color="#0F0F1C", text_color=FG, insertbackground=FG,
-                             relief="flat", font=("Segoe UI", 10),
+                             relief="flat", font=("Segoe UI Variable", 10),
                              bd=6)
         inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         send_btn = _ck.Button(inp_row, text="Kirim", fg_color="#7C3AED", text_color="white",
-                             font=("Segoe UI", 9, "bold"),
+                             font=("Segoe UI Variable", 9, "bold"),
                              padx=16, pady=5,
                              relief="flat", bd=0, cursor="hand2")
         send_btn.pack(side="left")
 
         status_var = tk.StringVar(value="")
         _ck.Label(right, textvariable=status_var, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 7), pady=2).pack(anchor="e", padx=8)
+                 font=("Segoe UI Variable", 7), pady=2).pack(anchor="e", padx=8)
 
         # ── Helpers ─────────────────────────────────────────────────────────
         _my_email = self._email or ""
@@ -7042,7 +7576,7 @@ class SynthexApp:
                 _close_mention_popup()
                 return
             _close_mention_popup()
-            popup = ctk.CTkToplevel(self._root)
+            popup = _DarkToplevel(self._root)
             popup.withdraw()
             popup.configure(fg_color="#1c1c2e")
             _mention_popup[0] = popup
@@ -7058,7 +7592,7 @@ class SynthexApp:
                     _close_mention_popup()
                     inp_entry.focus_set()
                 btn = _ck.Button(popup, text="@{}".format(name), fg_color="#1c1c2e", text_color="#FFD700",
-                                font=("Segoe UI", 9), relief="flat", bd=0,
+                                font=("Segoe UI Variable", 9), relief="flat", bd=0,
                                 padx=10, pady=3, cursor="hand2",
                                 command=_pick)
                 btn.pack(fill="x")
@@ -7115,16 +7649,16 @@ class SynthexApp:
                 row = _ck.Frame(users_frame, fg_color=CARD)
                 row.pack(fill="x", padx=8, pady=2)
                 _ck.Label(row, text="\u25cf", fg_color=CARD, text_color=dot_clr,
-                         font=("Segoe UI", 10)).pack(side="left")
+                         font=("Segoe UI Variable", 10)).pack(side="left")
                 _ck.Label(row, text=label, fg_color=CARD, text_color=FG,
-                         font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(4, 0))
             if not me_found and _my_email:
                 row = _ck.Frame(users_frame, fg_color=CARD)
                 row.pack(fill="x", padx=8, pady=2)
                 _ck.Label(row, text="\u25cf", fg_color=CARD, text_color="#7C3AED",
-                         font=("Segoe UI", 10)).pack(side="left")
+                         font=("Segoe UI Variable", 10)).pack(side="left")
                 _ck.Label(row, text="{} (kamu)".format(_my_email.split("@")[0]), fg_color=CARD, text_color=FG,
-                         font=("Segoe UI", 8)).pack(side="left", padx=(4, 0))
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(4, 0))
             online_count_var.set("{} online".format(
                 len(users) + (0 if me_found else 1)))
 
@@ -7372,7 +7906,7 @@ class SynthexApp:
         }
         _ck.Label(top_bar,
                  text=" {} ".format(provider.upper()), fg_color=_prov_colors.get(provider, ACC), text_color="white",
-                 font=("Segoe UI", 8, "bold"),
+                 font=("Segoe UI Variable", 8, "bold"),
                  padx=6, pady=3).pack(side="left")
 
         # Model switcher (OptionMenu styled dark)
@@ -7380,16 +7914,16 @@ class SynthexApp:
                                  command=_on_model_change)
         model_om.configure(bg=CARD2, fg=FG, relief="flat", bd=0,
                            activebackground=CARD, activeforeground=FG,
-                           font=("Segoe UI", 8), highlightthickness=0,
+                           font=("Segoe UI Variable", 8), highlightthickness=0,
                            indicatoron=True, padx=6, pady=2)
         model_om["menu"].configure(bg=CARD2, fg=FG, relief="flat",
                                    activebackground=ACC, activeforeground="white",
-                                   font=("Segoe UI", 8))
+                                   font=("Segoe UI Variable", 8))
         model_om.pack(side="left", padx=(6, 0))
 
         if not api_key:
             _ck.Label(top_bar,
-                     text="  ⚠ API key belum diset — Settings → AI Integration", fg_color=CARD, text_color=YEL, font=("Segoe UI", 8)).pack(
+                     text="  ⚠ API key belum diset — Settings → AI Integration", fg_color=CARD, text_color=YEL, font=("Segoe UI Variable", 8)).pack(
                 side="left", padx=(12, 0))
 
         def _clear_chat():
@@ -7413,12 +7947,12 @@ class SynthexApp:
                 pass
 
         _copy_all_btn = _ck.Button(top_bar, text="📋 Salin Semua", fg_color=CARD2, text_color=MUT, relief="flat", bd=0,
-                  font=("Segoe UI", 8), padx=8, pady=3,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
                   cursor="hand2", command=_copy_all_chat)
         _copy_all_btn.pack(side="right", padx=(0, 6))
 
         _ck.Button(top_bar, text="🗑 Hapus", fg_color=CARD2, text_color=MUT, relief="flat", bd=0,
-                  font=("Segoe UI", 8), padx=8, pady=3,
+                  font=("Segoe UI Variable", 8), padx=8, pady=3,
                   cursor="hand2", command=_clear_chat).pack(side="right")
 
         # ── message canvas ───────────────────────────────────────────────────
@@ -7459,9 +7993,9 @@ class SynthexApp:
 
         _typing_frame = _ck.Frame(msg_body, fg_color=BG)
         _typing_frame_ref[0] = _typing_frame
-        _dot_lbl = _ck.Label(_typing_frame, text="●", fg_color=BG, text_color=MUT, font=("Segoe UI", 11))
+        _dot_lbl = _ck.Label(_typing_frame, text="●", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 11))
         _dot_lbl.pack(side="left", padx=(16, 4))
-        _ck.Label(_typing_frame, text="AI sedang mengetik", fg_color=BG, text_color=MUT, font=("Segoe UI", 8, "italic")).pack(side="left")
+        _ck.Label(_typing_frame, text="AI sedang mengetik", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 8, "italic")).pack(side="left")
 
         def _animate_typing():
             if not _thinking[0]:
@@ -7501,10 +8035,10 @@ class SynthexApp:
 
         def _build_quick_into(parent):
             _ck.Label(parent, text="Halo! Mau ngapain hari ini?", fg_color=BG, text_color=FG,
-                     font=("Segoe UI", 12, "bold")).pack(pady=(20, 4))
+                     font=("Segoe UI Variable", 12, "bold")).pack(pady=(20, 4))
             _ck.Label(parent,
                      text="Pilih prompt cepat atau ketik sendiri di bawah.", fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 8)).pack(pady=(0, 18))
+                     font=("Segoe UI Variable", 8)).pack(pady=(0, 18))
             for i in range(0, len(_QUICK), 3):
                 row = _ck.Frame(parent, fg_color=BG)
                 row.pack(pady=3)
@@ -7518,14 +8052,14 @@ class SynthexApp:
                         inp.focus_set()
                         inp.mark_set("insert", tk.END)
                     _ck.Button(row, text=label, fg_color=CARD2, text_color=FG, relief="flat", bd=0,
-                              font=("Segoe UI", 8), padx=10, pady=7,
+                              font=("Segoe UI Variable", 8), padx=10, pady=7,
                               cursor="hand2", command=_use,
                               activebackground=ACC,
                               activeforeground="white").pack(
                         side="left", padx=5)
             _ck.Label(parent,
                      text="Tip: ketik @url https://... untuk analisis isi halaman web", fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 7, "italic")).pack(pady=(14, 0))
+                     font=("Segoe UI Variable", 7, "italic")).pack(pady=(14, 0))
 
         # ── bubble builder ───────────────────────────────────────────────────
         def _add_bubble(role: str, text: str, ts: str = "",
@@ -7545,10 +8079,10 @@ class SynthexApp:
             hdr = _ck.Frame(row, fg_color=BG)
             hdr.pack(anchor=anchor, padx=padx_l)
             _ck.Label(hdr, text=name, fg_color=BG, text_color=name_fg,
-                     font=("Segoe UI", 7, "bold")).pack(side="left")
+                     font=("Segoe UI Variable", 7, "bold")).pack(side="left")
             if ts:
                 _ck.Label(hdr, text="  {}".format(ts), fg_color=BG, text_color=MUT,
-                         font=("Segoe UI", 7)).pack(side="left")
+                         font=("Segoe UI Variable", 7)).pack(side="left")
             if not is_user:
                 def _copy_fn(t=text):
                     try:
@@ -7561,7 +8095,7 @@ class SynthexApp:
                         pass
                 _cb = _ck.Button(hdr, text="📋", fg_color=BG, text_color=MUT,
                                 relief="flat", bd=0,
-                                font=("Segoe UI", 8), cursor="hand2",
+                                font=("Segoe UI Variable", 8), cursor="hand2",
                                 command=_copy_fn, activebackground=BG)
                 _cb.pack(side="left", padx=(6, 0))
 
@@ -7570,7 +8104,7 @@ class SynthexApp:
             bubble.pack(anchor=anchor, padx=padx_l)
             _wrap = max(280, msg_cv.winfo_width() - 160)
             _ck.Label(bubble, text=text, fg_color=bubble_bg, text_color=bubble_fg,
-                     font=("Segoe UI", 9),
+                     font=("Segoe UI Variable", 9),
                      wraplength=_wrap, justify="left").pack(anchor="w")
             _bind_scroll_recursive(row)
 
@@ -7583,7 +8117,7 @@ class SynthexApp:
                 rf.pack(anchor="w", padx=16, pady=(0, 4))
                 _regen_ref[0] = rf
                 _ck.Button(rf, text="↺  Ulangi jawaban", fg_color=CARD2, text_color=MUT, relief="flat", bd=0,
-                          font=("Segoe UI", 8), padx=8, pady=3,
+                          font=("Segoe UI Variable", 8), padx=8, pady=3,
                           cursor="hand2",
                           command=lambda: _regenerate()).pack(side="left")
 
@@ -7619,16 +8153,16 @@ class SynthexApp:
         meta_row.pack(fill="x", pady=(0, 5))
         _ck.Label(meta_row,
                  text="Enter / Ctrl+Enter kirim  •  Shift+Enter baris baru  •  @url https://... scrape web", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 7, "italic")).pack(side="left")
+                 font=("Segoe UI Variable", 7, "italic")).pack(side="left")
         char_var = tk.StringVar(value="0 karakter")
-        _ck.Label(meta_row, textvariable=char_var, fg_color=CARD, text_color=MUT, font=("Segoe UI", 7)).pack(side="right")
+        _ck.Label(meta_row, textvariable=char_var, fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 7)).pack(side="right")
 
         # Input + buttons row
         inp_row = _ck.Frame(inp_frame, fg_color=CARD)
         inp_row.pack(fill="x")
 
         inp_entry = _ck.Text(inp_row, height=3, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                            relief="flat", font=("Segoe UI", 10),
+                            relief="flat", font=("Segoe UI Variable", 10),
                             bd=8, wrap="word")
         inp_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
         inp_entry.focus_set()
@@ -7643,13 +8177,13 @@ class SynthexApp:
         right_col.pack(side="left", fill="y")
 
         send_btn = _ck.Button(right_col, text="Kirim ➤", fg_color=ACC, text_color="white", relief="flat", bd=0,
-                             font=("Segoe UI", 9, "bold"),
+                             font=("Segoe UI Variable", 9, "bold"),
                              padx=14, pady=6, cursor="hand2")
         send_btn.pack(anchor="n")
 
         status_var = tk.StringVar(value="")
         status_lbl = _ck.Label(right_col, textvariable=status_var, fg_color=CARD, text_color=RED,
-                              font=("Segoe UI", 8),
+                              font=("Segoe UI Variable", 8),
                               wraplength=140, justify="left")
         status_lbl.pack(anchor="n", pady=(4, 0))
 
@@ -7788,10 +8322,10 @@ class SynthexApp:
         top_bar = _ck.Frame(left, fg_color=CARD, padx=12, pady=8)
         top_bar.pack(fill="x")
         _ck.Label(top_bar, text="Semua Post", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 10, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 10, "bold")).pack(side="left")
         if _is_admin:
             _ck.Button(top_bar, text="+ Tulis", fg_color=BLUE_ACC, text_color="white",
-                      font=("Segoe UI", 8, "bold"), padx=8, pady=3,
+                      font=("Segoe UI Variable", 8, "bold"), padx=8, pady=3,
                       relief="flat", bd=0, cursor="hand2",
                       command=lambda: _open_editor()).pack(side="right")
 
@@ -7819,7 +8353,7 @@ class SynthexApp:
         reader_sb = _ck.Scrollbar(reader_wrap)
         reader_sb.pack(side="right", fill="y")
         reader = _ck.Text(reader_wrap, fg_color="#0A0A18", text_color=FG,
-                         font=("Segoe UI", 10),
+                         font=("Segoe UI Variable", 10),
                          relief="flat", bd=0, wrap="word",
                          state="disabled", padx=20, pady=16,
                          yscrollcommand=reader_sb.set,
@@ -7827,20 +8361,20 @@ class SynthexApp:
         reader_sb.configure(command=reader.yview)
         reader.pack(side="left", fill="both", expand=True)
 
-        reader.tag_configure("title",  foreground="white",      font=("Segoe UI", 16, "bold"))
-        reader.tag_configure("meta",   foreground=MUT,          font=("Segoe UI", 8))
-        reader.tag_configure("h1",     foreground="white",      font=("Segoe UI", 14, "bold"))
-        reader.tag_configure("h2",     foreground="#C0C0F0",    font=("Segoe UI", 12, "bold"))
-        reader.tag_configure("body",   foreground="#D0D0E0",    font=("Segoe UI", 10))
-        reader.tag_configure("bold",   foreground="white",      font=("Segoe UI", 10, "bold"))
-        reader.tag_configure("italic", foreground="#C8C8F0",    font=("Segoe UI", 10, "italic"))
+        reader.tag_configure("title",  foreground="white",      font=("Segoe UI Variable", 16, "bold"))
+        reader.tag_configure("meta",   foreground=MUT,          font=("Segoe UI Variable", 8))
+        reader.tag_configure("h1",     foreground="white",      font=("Segoe UI Variable", 14, "bold"))
+        reader.tag_configure("h2",     foreground="#C0C0F0",    font=("Segoe UI Variable", 12, "bold"))
+        reader.tag_configure("body",   foreground="#D0D0E0",    font=("Segoe UI Variable", 10))
+        reader.tag_configure("bold",   foreground="white",      font=("Segoe UI Variable", 10, "bold"))
+        reader.tag_configure("italic", foreground="#C8C8F0",    font=("Segoe UI Variable", 10, "italic"))
         reader.tag_configure("code",   foreground="#A0F0A0",    font=("Consolas", 9),
                              background="#0A1A0A")
-        reader.tag_configure("link",   foreground="#4A9EFF",    font=("Segoe UI", 10, "underline"))
-        reader.tag_configure("empty",  foreground=MUT,          font=("Segoe UI", 10, "italic"))
-        reader.tag_configure("cap",    foreground=MUT,          font=("Segoe UI", 8, "italic"),
+        reader.tag_configure("link",   foreground="#4A9EFF",    font=("Segoe UI Variable", 10, "underline"))
+        reader.tag_configure("empty",  foreground=MUT,          font=("Segoe UI Variable", 10, "italic"))
+        reader.tag_configure("cap",    foreground=MUT,          font=("Segoe UI Variable", 8, "italic"),
                              justify="center")
-        reader.tag_configure("video",  foreground=BLUE_ACC,     font=("Segoe UI", 9, "bold"),
+        reader.tag_configure("video",  foreground=BLUE_ACC,     font=("Segoe UI Variable", 9, "bold"),
                              background="#0A1428")
         reader.tag_configure("divider", foreground="#2A2A4A")
 
@@ -7910,7 +8444,7 @@ class SynthexApp:
             reader.insert("end", "\n")
             tag_id = "video_{}".format(id(url))
             reader.tag_configure(tag_id, foreground=BLUE_ACC,
-                                 font=("Segoe UI", 9, "bold"), background="#0A1428")
+                                 font=("Segoe UI Variable", 9, "bold"), background="#0A1428")
             reader.insert("end", btn_text, tag_id)
             reader.tag_bind(tag_id, "<Button-1>", lambda e, u=url: _wb.open(u))
             reader.tag_bind(tag_id, "<Enter>",
@@ -7959,11 +8493,11 @@ class SynthexApp:
                 admin_bar._is_admin_btn = True
                 admin_bar.place(relx=1.0, rely=0.0, anchor="ne", x=-8, y=8)
                 _ck.Button(admin_bar, text=" Edit ", fg_color="#1D4E8F", text_color="white",
-                          font=("Segoe UI", 8), padx=8, pady=4,
+                          font=("Segoe UI Variable", 8), padx=8, pady=4,
                           relief="flat", bd=0, cursor="hand2",
                           command=lambda p=post: _open_editor(p)).pack(side="left", padx=(0, 4))
                 _ck.Button(admin_bar, text=" Hapus ", fg_color="#7F1D1D", text_color="white",
-                          font=("Segoe UI", 8), padx=8, pady=4,
+                          font=("Segoe UI Variable", 8), padx=8, pady=4,
                           relief="flat", bd=0, cursor="hand2",
                           command=lambda p=post: _delete_post(p)).pack(side="left")
 
@@ -7980,7 +8514,7 @@ class SynthexApp:
                 w.destroy()
             if not _posts:
                 _ck.Label(list_frame, text="Belum ada post.", fg_color=CARD, text_color=MUT,
-                         font=("Segoe UI", 9, "italic"),
+                         font=("Segoe UI Variable", 9, "italic"),
                          padx=12, pady=10).pack(anchor="w")
                 _show_empty()
                 return
@@ -7995,19 +8529,19 @@ class SynthexApp:
                 inner = _ck.Frame(card, fg_color=CARD, padx=12, pady=8)
                 inner.pack(fill="x")
                 _ck.Label(inner, text=p.get("title", "")[:36], fg_color=CARD, text_color=FG,
-                         font=("Segoe UI", 9, "bold"),
+                         font=("Segoe UI Variable", 9, "bold"),
                          wraplength=220, justify="left").pack(anchor="w")
                 _ck.Label(inner, text=p.get("summary", "")[:70], fg_color=CARD, text_color=MUT,
-                         font=("Segoe UI", 8),
+                         font=("Segoe UI Variable", 8),
                          wraplength=220, justify="left").pack(anchor="w", pady=(2, 0))
                 meta_row = _ck.Frame(inner, fg_color=CARD)
                 meta_row.pack(anchor="w", pady=(4, 0), fill="x")
                 _ck.Label(meta_row, text=date_s, fg_color=CARD, text_color="#5A5A7A",
-                         font=("Segoe UI", 7)).pack(side="left")
+                         font=("Segoe UI Variable", 7)).pack(side="left")
                 if media_count:
                     _ck.Label(meta_row,
                              text="  \U0001f5bc {}  ".format(media_count), fg_color=CARD, text_color=BLUE_ACC,
-                             font=("Segoe UI", 7)).pack(side="left")
+                             font=("Segoe UI Variable", 7)).pack(side="left")
                 for w in (card, inner, meta_row):
                     w.bind("<Button-1>", lambda e, post=p: _show_post(post))
                     w.bind("<Enter>", lambda e, c=card: _deep_bg(c, "#18183A"))
@@ -8041,7 +8575,7 @@ class SynthexApp:
 
         # ── Editor ────────────────────────────────────────────────────────────
         def _open_editor(post=None):
-            dlg = ctk.CTkToplevel(self._root)
+            dlg = _DarkToplevel(self._root)
             dlg.withdraw()
             dlg.title("Tulis Post" if not post else "Edit Post")
             dlg.configure(fg_color="#0D0D14")
@@ -8067,25 +8601,25 @@ class SynthexApp:
                 int(-1 * (e.delta / 120)), "units"))
 
             _ck.Label(ed, text="Judul", fg_color="#0D0D14", text_color=MUT,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
             title_var = tk.StringVar(value=post.get("title", "") if post else "")
             _ck.Entry(ed, textvariable=title_var, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                     relief="flat", font=("Segoe UI", 11), bd=6).pack(
+                     relief="flat", font=("Segoe UI Variable", 11), bd=6).pack(
                 fill="x", pady=(2, 8))
 
             _ck.Label(ed, text="Ringkasan (tampil di daftar)", fg_color="#0D0D14", text_color=MUT,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
             sum_var = tk.StringVar(value=post.get("summary", "") if post else "")
             _ck.Entry(ed, textvariable=sum_var, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                     relief="flat", font=("Segoe UI", 9), bd=6).pack(
+                     relief="flat", font=("Segoe UI Variable", 9), bd=6).pack(
                 fill="x", pady=(2, 8))
 
             _ck.Label(ed, text="Isi Artikel", fg_color="#0D0D14", text_color=MUT,
-                     font=("Segoe UI", 8)).pack(anchor="w")
+                     font=("Segoe UI Variable", 8)).pack(anchor="w")
             fmt_bar = _ck.Frame(ed, fg_color="#1c1c2e")
             fmt_bar.pack(fill="x", pady=(2, 0))
             content_box = _ck.Text(ed, fg_color="#16162a", text_color=FG, insertbackground=FG,
-                                  relief="flat", font=("Segoe UI", 10),
+                                  relief="flat", font=("Segoe UI Variable", 10),
                                   bd=6, wrap="word", height=9)
             content_box.pack(fill="both", expand=True, pady=(0, 8))
             if post:
@@ -8118,20 +8652,20 @@ class SynthexApp:
                 ("\U0001f517", _insert_link),
             ]:
                 _ck.Button(fmt_bar, text=lbl, fg_color="#222236", text_color=FG,
-                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                           padx=9, pady=3, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 2), pady=3)
             _ck.Label(fmt_bar, text="Markdown", fg_color="#1c1c2e", text_color="#4A4A6A",
-                     font=("Segoe UI", 7)).pack(side="right", padx=8)
+                     font=("Segoe UI Variable", 7)).pack(side="right", padx=8)
 
             # ── Media section ─────────────────────────────────────────────────
             media_list = list(post.get("media") or []) if post else []
 
             media_hdr = _ck.Frame(ed, fg_color="#0D0D14")
             media_hdr.pack(fill="x")
-            _ck.Label(media_hdr, text="Media (Foto & Video)", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI", 8)).pack(side="left")
+            _ck.Label(media_hdr, text="Media (Foto & Video)", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI Variable", 8)).pack(side="left")
             upload_status = tk.StringVar(value="")
-            _ck.Label(media_hdr, textvariable=upload_status, fg_color="#0D0D14", text_color=BLUE_ACC, font=("Segoe UI", 8)).pack(side="right")
+            _ck.Label(media_hdr, textvariable=upload_status, fg_color="#0D0D14", text_color=BLUE_ACC, font=("Segoe UI Variable", 8)).pack(side="right")
 
             media_frame = _ck.Frame(ed, fg_color="#0D0D14")
             media_frame.pack(fill="x", pady=(4, 0))
@@ -8147,12 +8681,12 @@ class SynthexApp:
                     row = _ck.Frame(media_frame, fg_color="#16162a")
                     row.pack(fill="x", pady=(0, 3))
                     _ck.Label(row, text=icon, fg_color="#16162a",
-                             font=("Segoe UI", 10)).pack(side="left", padx=(6, 4))
+                             font=("Segoe UI Variable", 10)).pack(side="left", padx=(6, 4))
                     _ck.Label(row, text=(url[:52] + "..." if len(url) > 52 else url), fg_color="#16162a", text_color=FG,
-                             font=("Segoe UI", 8)).pack(side="left")
+                             font=("Segoe UI Variable", 8)).pack(side="left")
                     cap_var = tk.StringVar(value=cap)
                     cap_e = _ck.Entry(row, textvariable=cap_var, width=16, fg_color="#1E1E38", text_color=MUT, insertbackground=FG,
-                                     relief="flat", font=("Segoe UI", 8), bd=4)
+                                     relief="flat", font=("Segoe UI Variable", 8), bd=4)
                     cap_e.pack(side="left", padx=(6, 0))
                     def _save_cap(e, idx=i, cv=cap_var):
                         if idx < len(media_list):
@@ -8160,7 +8694,7 @@ class SynthexApp:
                     cap_e.bind("<FocusOut>", _save_cap)
                     cap_e.bind("<Return>",   _save_cap)
                     _ck.Button(row, text="✕", fg_color="#3A0A0A", text_color="#FF6060",
-                              font=("Segoe UI", 8), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 8), relief="flat", bd=0,
                               padx=6, cursor="hand2",
                               command=lambda idx=i: (_remove_media(idx))).pack(
                                   side="right", padx=4)
@@ -8171,18 +8705,18 @@ class SynthexApp:
                     _refresh_media_ui()
 
             def _add_image_url():
-                url_dlg = ctk.CTkToplevel(dlg)
+                url_dlg = _DarkToplevel(dlg)
                 url_dlg.withdraw()
                 url_dlg.title("URL Gambar")
                 url_dlg.configure(fg_color="#0D0D14")
                 url_dlg.geometry("440x100")
                 url_dlg.attributes("-topmost", True)
-                _ck.Label(url_dlg, text="Masukkan URL gambar:", fg_color="#0D0D14", text_color=FG, font=("Segoe UI", 9)).pack(
+                _ck.Label(url_dlg, text="Masukkan URL gambar:", fg_color="#0D0D14", text_color=FG, font=("Segoe UI Variable", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
                 ue = _ck.Entry(url_dlg, textvariable=uv, fg_color="#16162a", text_color=FG,
                               insertbackground=FG, relief="flat",
-                              font=("Segoe UI", 10), bd=6)
+                              font=("Segoe UI Variable", 10), bd=6)
                 ue.pack(fill="x", padx=16)
                 ue.focus_set()
                 def _ok(e=None):
@@ -8194,7 +8728,7 @@ class SynthexApp:
                 ue.bind("<Return>", _ok)
                 _ck.Button(url_dlg, text="Tambah", fg_color=BLUE_ACC, text_color="white",
                           relief="flat", bd=0, padx=12, pady=4,
-                          font=("Segoe UI", 9, "bold"),
+                          font=("Segoe UI Variable", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
                 url_dlg.deiconify()
@@ -8222,18 +8756,18 @@ class SynthexApp:
                 _thr.Thread(target=_bg, daemon=True).start()
 
             def _add_video_url():
-                url_dlg = ctk.CTkToplevel(dlg)
+                url_dlg = _DarkToplevel(dlg)
                 url_dlg.withdraw()
                 url_dlg.title("URL Video")
                 url_dlg.configure(fg_color="#0D0D14")
                 url_dlg.geometry("440x100")
                 url_dlg.attributes("-topmost", True)
-                _ck.Label(url_dlg, text="Masukkan URL video (YouTube, dll):", fg_color="#0D0D14", text_color=FG, font=("Segoe UI", 9)).pack(
+                _ck.Label(url_dlg, text="Masukkan URL video (YouTube, dll):", fg_color="#0D0D14", text_color=FG, font=("Segoe UI Variable", 9)).pack(
                     anchor="w", padx=16, pady=(12, 4))
                 uv = tk.StringVar()
                 ue = _ck.Entry(url_dlg, textvariable=uv, fg_color="#16162a", text_color=FG,
                               insertbackground=FG, relief="flat",
-                              font=("Segoe UI", 10), bd=6)
+                              font=("Segoe UI Variable", 10), bd=6)
                 ue.pack(fill="x", padx=16)
                 ue.focus_set()
                 def _ok(e=None):
@@ -8245,7 +8779,7 @@ class SynthexApp:
                 ue.bind("<Return>", _ok)
                 _ck.Button(url_dlg, text="Tambah", fg_color="#7C3AED", text_color="white",
                           relief="flat", bd=0, padx=12, pady=4,
-                          font=("Segoe UI", 9, "bold"),
+                          font=("Segoe UI Variable", 9, "bold"),
                           command=_ok).pack(anchor="e", padx=16, pady=8)
                 url_dlg.update()
                 url_dlg.deiconify()
@@ -8259,7 +8793,7 @@ class SynthexApp:
                 ("▶  Tambah Video",    _add_video_url,  "#7C3AED"),
             ]:
                 _ck.Button(btn_row_media, text=lbl, fg_color=bg_c, text_color="white",
-                          font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 8, "bold"), relief="flat", bd=0,
                           padx=10, pady=5, cursor="hand2",
                           command=cmd).pack(side="left", padx=(0, 6))
 
@@ -8294,11 +8828,11 @@ class SynthexApp:
 
             btn_lbl = "Simpan Perubahan" if post else "Publikasikan"
             _ck.Button(sub_row, text=btn_lbl, fg_color=BLUE_ACC, text_color="white",
-                      font=("Segoe UI", 9, "bold"), padx=16, pady=6,
+                      font=("Segoe UI Variable", 9, "bold"), padx=16, pady=6,
                       relief="flat", cursor="hand2",
                       command=_submit).pack(side="left", padx=(0, 8))
             _ck.Button(sub_row, text="Batal", fg_color="#1c1c2e", text_color=MUT,
-                      font=("Segoe UI", 9), padx=12, pady=6,
+                      font=("Segoe UI Variable", 9), padx=12, pady=6,
                       relief="flat", cursor="hand2",
                       command=dlg.destroy).pack(side="left")
             dlg.update()
@@ -8369,7 +8903,7 @@ class SynthexApp:
             self._show_alert("Restore", "No backups found.")
             return
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Restore from Backup")
         dlg.configure(fg_color=BG)
@@ -8379,13 +8913,13 @@ class SynthexApp:
         dlg.after(120, dlg.grab_set)
 
         _lbl(dlg, "Select a backup to restore:", fg_color=BG,
-             font=("Segoe UI", 10, "bold")).pack(padx=20, pady=(16, 8))
+             font=("Segoe UI Variable", 10, "bold")).pack(padx=20, pady=(16, 8))
 
         lb_frame = _ck.Frame(dlg, fg_color=BG)
         lb_frame.pack(padx=20, fill="both", expand=True)
 
         lb = tk.Listbox(lb_frame, bg=CARD, fg=FG, selectbackground=ACC,
-                        font=("Segoe UI", 9), relief="flat",
+                        font=("Segoe UI Variable", 9), relief="flat",
                         width=36, height=min(len(backups), 8))
         lb.pack(side="left", fill="both", expand=True)
         sb = _ck.Scrollbar(lb_frame, orient="vertical", command=lb.yview)
@@ -8420,7 +8954,7 @@ class SynthexApp:
         _ck.Button(btn_row, text="Cancel",
                    command=dlg.destroy).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Restore", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat",
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat",
                   padx=10, pady=4, cursor="hand2",
                   command=_do_restore).pack(side="left")
 
@@ -8455,7 +8989,7 @@ class SynthexApp:
             _ck.Radiobutton(
                 theme_row, text=_lbl_t, variable=_theme_var, value=_val_t, fg_color=CARD, text_color=FG, selectcolor=CARD2,
                 activebackground=CARD, activeforeground=ACC,
-                font=("Segoe UI", 10)
+                font=("Segoe UI Variable", 10)
             ).pack(side="left", padx=(0, 24))
 
         def _apply_theme():
@@ -8484,7 +9018,7 @@ class SynthexApp:
                 import os as _os2; _os2._exit(0)
 
         _ck.Button(tc, text="Terapkan Tema", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_apply_theme).pack(anchor="w")
 
@@ -8498,13 +9032,13 @@ class SynthexApp:
         info_row = _ck.Frame(bc, fg_color=CARD)
         info_row.pack(fill="x", pady=(0, 8))
         last_lbl = _lbl(info_row,
-                        f"Last backup: {_ab.last_backup_label()}", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9))
+                        f"Last backup: {_ab.last_backup_label()}", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9))
         last_lbl.pack(side="left")
-        _lbl(info_row, "  |  Auto-backup: Daily", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9)).pack(side="left")
+        _lbl(info_row, "  |  Auto-backup: Daily", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9)).pack(side="left")
 
         btn_row_b = _ck.Frame(bc, fg_color=CARD)
         btn_row_b.pack(anchor="w")
-        _ck.Button(btn_row_b, text="Backup Now", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(btn_row_b, text="Backup Now", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=lambda: self._backup_now(last_lbl)).pack(
                       side="left", padx=(0, 10))
@@ -8519,13 +9053,13 @@ class SynthexApp:
         _rak_row.pack(anchor="w", fill="x")
         _rak_has_key = bool(self.config.get("rekening_api_key", ""))
         _ck.Label(_rak_row, text="[*]", fg_color=CARD, text_color=GRN if _rak_has_key else MUT,
-                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 11, "bold")).pack(side="left", padx=(0, 8))
         _rak_info = _ck.Frame(_rak_row, fg_color=CARD)
         _rak_info.pack(side="left")
-        _ck.Label(_rak_info, text="API Validasi Rekening", fg_color=CARD, text_color=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        _ck.Label(_rak_info, text="API Validasi Rekening", fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 10, "bold")).pack(anchor="w")
         _ck.Label(_rak_info,
                  text="Aktif — disediakan oleh Synthex" if _rak_has_key else "Tidak aktif", fg_color=CARD, text_color=GRN if _rak_has_key else RED,
-                 font=("Segoe UI", 9)).pack(anchor="w")
+                 font=("Segoe UI Variable", 9)).pack(anchor="w")
 
         # ---- Google Accounts card ------------------------------------
         self._build_google_accounts_card(_sbody)
@@ -8551,14 +9085,14 @@ class SynthexApp:
         pr_row = _ck.Frame(aic, fg_color=CARD)
         pr_row.pack(fill="x", pady=(0, 6))
         _ck.Label(pr_row, text="Provider:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 8))
         _prov_disp = [PROVIDER_LABELS[PROVIDER_NAMES.index(
             self.config.get("ai.provider", "openai")
             if self.config.get("ai.provider", "openai") in PROVIDER_NAMES
             else "openai")]]
         _prov_mb = _ck.Combobox(pr_row, values=PROVIDER_LABELS,
                                 state="readonly", width=24,
-                                font=("Segoe UI", 9))
+                                font=("Segoe UI Variable", 9))
         _prov_mb.set(_prov_disp[0])
         _prov_mb.pack(side="left")
 
@@ -8571,9 +9105,9 @@ class SynthexApp:
         key_row = _ck.Frame(aic, fg_color=CARD)
         key_row.pack(fill="x", pady=(0, 6))
         _ck.Label(key_row, text="API Key:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 8))
         _key_entry = _ck.Entry(key_row, textvariable=_ai_key_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                              relief="flat", font=("Segoe UI", 9), show="*",
+                              relief="flat", font=("Segoe UI Variable", 9), show="*",
                               width=34)
         _key_entry.pack(side="left")
         _show_key = [False]
@@ -8581,7 +9115,7 @@ class SynthexApp:
             _show_key[0] = not _show_key[0]
             _key_entry.configure(show="" if _show_key[0] else "*")
         _ck.Button(key_row, text="👁", fg_color=CARD2, text_color=MUT,
-                  relief="flat", bd=0, font=("Segoe UI", 9),
+                  relief="flat", bd=0, font=("Segoe UI Variable", 9),
                   padx=4, cursor="hand2",
                   command=_toggle_show).pack(side="left", padx=(4, 0))
 
@@ -8589,20 +9123,20 @@ class SynthexApp:
         mod_row = _ck.Frame(aic, fg_color=CARD)
         mod_row.pack(fill="x", pady=(0, 6))
         _ck.Label(mod_row, text="Model (opsional):", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(0, 8))
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 8))
         _ck.Entry(mod_row, textvariable=_ai_model_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 9),
+                 relief="flat", font=("Segoe UI Variable", 9),
                  width=22).pack(side="left")
         _ck.Label(mod_row, text="  Max tokens:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="left", padx=(8, 4))
+                 font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 4))
         _ck.Entry(mod_row, textvariable=_ai_tokens_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 9), width=6).pack(side="left")
+                 relief="flat", font=("Segoe UI Variable", 9), width=6).pack(side="left")
 
         # System prompt
         _ck.Label(aic, text="System Prompt default:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 2))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 2))
         _sys_txt = _ck.Text(aic, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                           relief="flat", font=("Segoe UI", 9),
+                           relief="flat", font=("Segoe UI Variable", 9),
                            height=2, wrap="word")
         _sys_txt.insert("1.0", _ai_sys_var.get())
         _sys_txt.pack(fill="x", pady=(0, 8))
@@ -8612,7 +9146,7 @@ class SynthexApp:
         ai_btn_row.pack(anchor="w", pady=(0, 4))
         _ai_status = tk.StringVar(value="")
         _ck.Label(aic, textvariable=_ai_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w")
+                 font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         def _save_ai():
             self.config.set("ai.provider", _ai_provider_var.get())
@@ -8647,10 +9181,10 @@ class SynthexApp:
                     self._root.after(0, lambda m=msg: _ai_status.set(m))
             threading.Thread(target=_bg, daemon=True).start()
 
-        _ck.Button(ai_btn_row, text="💾 Simpan", fg_color=ACC, text_color="white", font=("Segoe UI", 9, "bold"),
+        _ck.Button(ai_btn_row, text="💾 Simpan", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_save_ai).pack(side="left", padx=(0, 8))
-        _ck.Button(ai_btn_row, text="🔌 Test Koneksi", fg_color=CARD2, text_color=FG, font=("Segoe UI", 9),
+        _ck.Button(ai_btn_row, text="🔌 Test Koneksi", fg_color=CARD2, text_color=FG, font=("Segoe UI Variable", 9),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_test_ai).pack(side="left")
 
@@ -8660,7 +9194,7 @@ class SynthexApp:
         _cur_ver = self.config.get("app.version", "?")
         _upd_status = tk.StringVar(value="Versi saat ini: v{}".format(_cur_ver))
         _upd_lbl = _ck.Label(upc, textvariable=_upd_status, fg_color=CARD, text_color=MUT,
-                            font=("Segoe UI", 9))
+                            font=("Segoe UI Variable", 9))
         _upd_lbl.pack(anchor="w", pady=(0, 6))
         _upd_bar_frame = _ck.Frame(upc, fg_color=CARD)
         _upd_bar_frame.pack(anchor="w", fill="x", pady=(0, 4))
@@ -8725,7 +9259,7 @@ class SynthexApp:
                         self._root.after(0, _upd_prog.pack_forget)
             threading.Thread(target=_bg, daemon=True).start()
 
-        _ck.Button(upc, text="🔄 Cek Pembaruan", fg_color=ACC, text_color="white", font=("Segoe UI", 9, "bold"),
+        _ck.Button(upc, text="🔄 Cek Pembaruan", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_do_check_update).pack(anchor="w")
 
@@ -8738,7 +9272,7 @@ class SynthexApp:
         apc.pack(fill="x", padx=20, pady=(12, 0))
         _cur_theme = self.config.get("ui.theme", "dark")
         _theme_lbl = _ck.Label(apc,
-            text="Tema saat ini: {}".format("Gelap 🌙" if _cur_theme == "dark" else "Terang ☀️"), fg_color=CARD, text_color=FG, font=("Segoe UI", 9))
+            text="Tema saat ini: {}".format("Gelap 🌙" if _cur_theme == "dark" else "Terang ☀️"), fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 9))
         _theme_lbl.pack(anchor="w", pady=(0, 6))
         def _toggle_theme():
             new_t = "light" if self.config.get("ui.theme", "dark") == "dark" else "dark"
@@ -8749,7 +9283,7 @@ class SynthexApp:
             self._show_alert("Tema Diubah",
                 "Tema berhasil disimpan ke '{}'.\nRestart Synthex untuk menerapkan tema baru.".format(
                     new_t), kind="info")
-        _ck.Button(apc, text="Toggle Gelap / Terang", fg_color=ACC, text_color="white", font=("Segoe UI", 9, "bold"),
+        _ck.Button(apc, text="Toggle Gelap / Terang", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_toggle_theme).pack(anchor="w")
 
@@ -8762,7 +9296,7 @@ class SynthexApp:
         btn_row.pack(anchor="w", pady=(8, 0))
         _ck.Button(btn_row, text="Logout",
                    command=self._logout).pack(side="left", padx=(0, 10))
-        _ck.Button(btn_row, text="Setup Guide", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(btn_row, text="Setup Guide", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=self._launch_onboarding).pack(side="left")
         lc = _card(_sbody, "System Log")
@@ -8823,7 +9357,7 @@ class SynthexApp:
 
         # Status / loading label
         _status = tk.StringVar(value="Memuat pesan…")
-        status_lbl = _ck.Label(msg_inner, textvariable=_status, fg_color=BG, text_color=MUT, font=("Segoe UI", 9))
+        status_lbl = _ck.Label(msg_inner, textvariable=_status, fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 9))
         status_lbl.pack(pady=20)
 
         def _render_messages(msgs):
@@ -8831,7 +9365,7 @@ class SynthexApp:
                 w.destroy()
             if not msgs:
                 _ck.Label(msg_inner,
-                         text="Belum ada pesan dari Admin.\nPesan akan muncul di sini.", fg_color=BG, text_color=MUT, font=("Segoe UI", 10),
+                         text="Belum ada pesan dari Admin.\nPesan akan muncul di sini.", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 10),
                          justify="center").pack(pady=60)
                 return
 
@@ -8866,12 +9400,12 @@ class SynthexApp:
                 bubble.pack(side="left" if side == "left" else "right")
 
                 _ck.Label(bubble, text=name_txt, fg_color=bubble_bg, text_color=name_clr,
-                         font=("Segoe UI", 7, "bold")).pack(anchor="w")
+                         font=("Segoe UI Variable", 7, "bold")).pack(anchor="w")
                 _ck.Label(bubble, text=m.get("message", ""), fg_color=bubble_bg, text_color=FG,
-                         font=("Segoe UI", 10), wraplength=420,
+                         font=("Segoe UI Variable", 10), wraplength=420,
                          justify="left").pack(anchor="w", pady=(2, 0))
                 _ck.Label(bubble, text=t_str, fg_color=bubble_bg, text_color=MUT,
-                         font=("Segoe UI", 7)).pack(anchor="e", pady=(2, 0))
+                         font=("Segoe UI Variable", 7)).pack(anchor="e", pady=(2, 0))
 
             # Scroll to bottom
             msg_cv.update_idletasks()
@@ -8899,7 +9433,7 @@ class SynthexApp:
         inp_area.pack(fill="x")
 
         inp_box = _ck.Text(inp_area, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                          relief="flat", font=("Segoe UI", 10), height=3,
+                          relief="flat", font=("Segoe UI Variable", 10), height=3,
                           wrap="word", bd=8)
         inp_box.pack(side="left", fill="x", expand=True, padx=(0, 10))
         inp_box.insert("1.0", "")
@@ -8925,10 +9459,10 @@ class SynthexApp:
 
         btn_col = _ck.Frame(inp_area, fg_color=BG)
         btn_col.pack(side="right")
-        _ck.Button(btn_col, text="📨 Kirim", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
+        _ck.Button(btn_col, text="📨 Kirim", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=16, pady=10, cursor="hand2",
                   command=_send_reply).pack(fill="x")
-        _ck.Label(btn_col, text="Enter = kirim\nShift+Enter = baris baru", fg_color=BG, text_color=MUT, font=("Segoe UI", 7)).pack(pady=(4, 0))
+        _ck.Label(btn_col, text="Enter = kirim\nShift+Enter = baris baru", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 7)).pack(pady=(4, 0))
 
         # Refresh button
         def _refresh():
@@ -8937,7 +9471,7 @@ class SynthexApp:
                 w.destroy()
             _thr.Thread(target=_load, daemon=True).start()
 
-        _ck.Button(f, text="🔄 Refresh", fg_color=CARD2, text_color=FG, font=("Segoe UI", 8),
+        _ck.Button(f, text="🔄 Refresh", fg_color=CARD2, text_color=FG, font=("Segoe UI Variable", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=_refresh).place(relx=1.0, x=-30, y=10, anchor="ne")
 
@@ -8957,7 +9491,7 @@ class SynthexApp:
         _email_now = self._email
         if _email_now != self.MASTER_EMAIL:
             _ck.Label(f, text="Akses ditolak.", fg_color=BG, text_color=RED,
-                     font=("Segoe UI", 14, "bold")).pack(pady=40)
+                     font=("Segoe UI Variable", 14, "bold")).pack(pady=40)
             return f
 
         def _tok():
@@ -8971,13 +9505,13 @@ class SynthexApp:
         hdr = _ck.Frame(f, fg_color="#0D0D1F", padx=20, pady=14)
         hdr.pack(fill="x")
         _ck.Label(hdr, text="\U0001f451", fg_color="#0D0D1F", text_color="#F59E0B",
-                 font=("Segoe UI", 22)).pack(side="left", padx=(0, 12))
+                 font=("Segoe UI Variable", 22)).pack(side="left", padx=(0, 12))
         hdr_txt = _ck.Frame(hdr, fg_color="#0D0D1F")
         hdr_txt.pack(side="left")
         _ck.Label(hdr_txt, text="Master Panel", fg_color="#0D0D1F", text_color=FG,
-                 font=("Segoe UI", 15, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 15, "bold")).pack(anchor="w")
         _ck.Label(hdr_txt, text=self.MASTER_EMAIL, fg_color="#0D0D1F", text_color="#7C3AED",
-                 font=("Segoe UI", 8)).pack(anchor="w")
+                 font=("Segoe UI Variable", 8)).pack(anchor="w")
         _ck.Frame(f, fg_color="#7C3AED", height=2).pack(fill="x")
 
         # ── Scrollable body ──────────────────────────────────────────────────
@@ -9015,21 +9549,21 @@ class SynthexApp:
             bdg = _ck.Frame(hrow, fg_color=bdg_bg, padx=8, pady=4)
             bdg.pack(side="left", padx=(0, 10))
             _ck.Label(bdg, text=icon, fg_color=bdg_bg, text_color=accent,
-                     font=("Segoe UI", 14)).pack()
+                     font=("Segoe UI Variable", 14)).pack()
             _ck.Label(hrow, text=title, fg_color=CARD, text_color=FG,
-                     font=("Segoe UI", 11, "bold")).pack(side="left", anchor="w")
+                     font=("Segoe UI Variable", 11, "bold")).pack(side="left", anchor="w")
             return inner
 
         def _sect(parent, label):
             row = _ck.Frame(parent, fg_color=BG)
             row.pack(fill="x", padx=16, pady=(16, 6))
             _ck.Label(row, text=label.upper(), fg_color=BG, text_color="#5B5B8A",
-                     font=("Segoe UI", 7, "bold")).pack(side="left")
+                     font=("Segoe UI Variable", 7, "bold")).pack(side="left")
             _ck.Frame(row, fg_color="#2A2A4A", height=1).pack(
                 side="left", fill="x", expand=True, padx=(8, 0), pady=5)
 
         def _btn(parent, text, bg, text_color="white", cmd=None, **kw):
-            defaults = dict(font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+            defaults = dict(font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                             padx=14, pady=6, cursor="hand2")
             defaults.update(kw)
             return _ck.Button(parent, text=text, fg_color=bg, text_color=text_color, command=cmd, **defaults)
@@ -9050,12 +9584,12 @@ class SynthexApp:
             box.grid(row=0, column=col, padx=(0, 8), sticky="nsew")
             stats_row.columnconfigure(col, weight=1)
             _ck.Label(box, text=icon, fg_color=CARD, text_color=clr,
-                     font=("Segoe UI", 18)).pack()
+                     font=("Segoe UI Variable", 18)).pack()
             v = _ck.Label(box, text="—", fg_color=CARD, text_color=clr,
-                         font=("Segoe UI", 20, "bold"))
+                         font=("Segoe UI Variable", 20, "bold"))
             v.pack()
             _ck.Label(box, text=lbl, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 7)).pack()
+                     font=("Segoe UI Variable", 7)).pack()
             _sb[key] = v
 
         def _load_stats_bar():
@@ -9084,7 +9618,7 @@ class SynthexApp:
 
         _wo_status = tk.StringVar(value="Memuat…")
         _ck.Label(_wo_card, textvariable=_wo_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
 
         _wo_list_frame = _ck.Frame(_wo_card, fg_color=CARD)
         _wo_list_frame.pack(fill="x")
@@ -9093,15 +9627,15 @@ class SynthexApp:
             for w in _wo_list_frame.winfo_children():
                 w.destroy()
             if not users:
-                _ck.Label(_wo_list_frame, text="Tidak ada user online saat ini.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9)).pack(anchor="w")
+                _ck.Label(_wo_list_frame, text="Tidak ada user online saat ini.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9)).pack(anchor="w")
                 return
             for u in users:
                 row = _ck.Frame(_wo_list_frame, fg_color=CARD2, pady=5, padx=10)
                 row.pack(fill="x", pady=(0, 3))
                 _ck.Label(row, text="\U0001f7e2", fg_color=CARD2, text_color="#22D3EE",
-                         font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+                         font=("Segoe UI Variable", 10)).pack(side="left", padx=(0, 8))
                 _ck.Label(row, text=u["email"], fg_color=CARD2, text_color=FG,
-                         font=("Segoe UI", 9, "bold")).pack(side="left")
+                         font=("Segoe UI Variable", 9, "bold")).pack(side="left")
                 secs = int(time.time() - u.get("last_seen", time.time()))
                 if secs < 60:
                     ago = "baru saja"
@@ -9110,7 +9644,7 @@ class SynthexApp:
                 else:
                     ago = "{}j lalu".format(secs // 3600)
                 _ck.Label(row, text=ago, fg_color=CARD2, text_color=MUT,
-                         font=("Segoe UI", 8)).pack(side="right")
+                         font=("Segoe UI Variable", 8)).pack(side="right")
 
         _wo_refresh_id = [None]
 
@@ -9144,22 +9678,22 @@ class SynthexApp:
 
         # ── Maintenance Mode ─────────────────────────────────────────────────
         mnt = _mk(body, "Maintenance Mode", "\U0001f527", RED)
-        _ck.Label(mnt, text="Aktifkan untuk memblokir semua user masuk ke app.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+        _ck.Label(mnt, text="Aktifkan untuk memblokir semua user masuk ke app.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
         _mnt_en = tk.BooleanVar(value=False)
         mnt_row = _ck.Frame(mnt, fg_color=CARD)
         mnt_row.pack(fill="x", pady=(0, 6))
         _ck.Checkbutton(mnt_row, text="MAINTENANCE AKTIF (user diblokir)",
                        variable=_mnt_en, fg_color=CARD, text_color=RED, selectcolor=CARD2,
                        activebackground=CARD,
-                       font=("Segoe UI", 9, "bold")).pack(side="left")
-        _ck.Label(mnt, text="Pesan yang ditampilkan ke user:", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 2))
+                       font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+        _ck.Label(mnt, text="Pesan yang ditampilkan ke user:", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 2))
         _mnt_msg = tk.StringVar()
         _ck.Entry(mnt, textvariable=_mnt_msg, fg_color=CARD2, text_color=FG,
-                 insertbackground=FG, relief="flat", font=("Segoe UI", 10),
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 10),
                  bd=6).pack(fill="x", pady=(0, 8))
         _mnt_status = tk.StringVar(value="Memuat…")
         _ck.Label(mnt, textvariable=_mnt_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
 
         def _load_mnt():
             from modules.master_config import get_maintenance
@@ -9188,18 +9722,18 @@ class SynthexApp:
 
         # ── Force Update ─────────────────────────────────────────────────────
         fu = _mk(body, "Force Update / Min Version", "\U0001f4e6", "#F59E0B")
-        _ck.Label(fu, text="User dengan versi lebih lama akan dipaksa update.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+        _ck.Label(fu, text="User dengan versi lebih lama akan dipaksa update.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
         fu_row = _ck.Frame(fu, fg_color=CARD)
         fu_row.pack(fill="x", pady=(0, 6))
         _fu_ver = tk.StringVar()
         _ck.Label(fu_row, text="Min Version:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Entry(fu_row, textvariable=_fu_ver, fg_color=CARD2, text_color=FG,
-                 insertbackground=FG, relief="flat", font=("Segoe UI", 10),
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 10),
                  bd=6, width=12).pack(side="left", padx=6)
         _fu_status = tk.StringVar(value="Memuat…")
         _ck.Label(fu, textvariable=_fu_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_fu():
             from modules.master_config import get_min_version
@@ -9229,33 +9763,33 @@ class SynthexApp:
 
         # ── Announcement Bar ─────────────────────────────────────────────────
         ann = _mk(body, "Announcement Bar", "\U0001f4e3", "#0EA5E9")
-        _ck.Label(ann, text="Tampilkan banner pesan di atas app semua user.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(ann, text="Tampilkan banner pesan di atas app semua user.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         _ann_en = tk.BooleanVar(value=False)
         ann_r1 = _ck.Frame(ann, fg_color=CARD)
         ann_r1.pack(fill="x", pady=(0, 4))
         _ck.Label(ann_r1, text="Aktif:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Checkbutton(ann_r1, variable=_ann_en, fg_color=CARD, text_color=FG,
                        selectcolor=CARD2, activebackground=CARD,
-                       font=("Segoe UI", 9)).pack(side="left", padx=4)
+                       font=("Segoe UI Variable", 9)).pack(side="left", padx=4)
         _ann_clr = tk.StringVar(value="#B45309")
         _clr_opts = ["#B45309", "#1E40AF", "#065F46", "#7C2D12",
                      "#6B21A8", "#BE123C"]
         ann_r2 = _ck.Frame(ann, fg_color=CARD)
         ann_r2.pack(fill="x", pady=(0, 4))
         _ck.Label(ann_r2, text="Warna:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         ann_clr_m = tk.OptionMenu(ann_r2, _ann_clr, *_clr_opts)
         ann_clr_m.config(bg=CARD2, fg=FG, relief="flat",
-                         highlightthickness=0, font=("Segoe UI", 9),
+                         highlightthickness=0, font=("Segoe UI Variable", 9),
                          activebackground=ACC)
         ann_clr_m.pack(side="left", padx=4)
         ann_txt = _ck.Entry(ann, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                           relief="flat", font=("Segoe UI", 10), bd=6)
+                           relief="flat", font=("Segoe UI Variable", 10), bd=6)
         ann_txt.pack(fill="x", pady=(0, 6))
         _ann_status = tk.StringVar(value="")
         _ck.Label(ann, textvariable=_ann_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _set_ann():
             txt = ann_txt.get().strip()
@@ -9300,7 +9834,7 @@ class SynthexApp:
 
         # ── Remote Config Toggles ─────────────────────────────────────────────
         rc = _mk(body, "Remote Config — Toggle Fitur", "⚙️", "#6366F1")
-        _ck.Label(rc, text="Toggle on/off fitur untuk SEMUA user secara realtime.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+        _ck.Label(rc, text="Toggle on/off fitur untuk SEMUA user secara realtime.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
         _RC_LABELS = {
             "rekening_enabled": "\U0001f4b3 Cek Rekening",
             "chat_enabled":     "\U0001f4ac Chat",
@@ -9317,10 +9851,10 @@ class SynthexApp:
             r_f.grid(row=i // 2, column=i % 2, sticky="w", padx=8, pady=2)
             _ck.Checkbutton(r_f, text=lbl, variable=_rc_vars[k], fg_color=CARD, text_color=FG, selectcolor=CARD2,
                            activebackground=CARD,
-                           font=("Segoe UI", 9)).pack(side="left")
+                           font=("Segoe UI Variable", 9)).pack(side="left")
         _rc_status = tk.StringVar(value="Memuat…")
         _ck.Label(rc, textvariable=_rc_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_rc():
             from modules.master_config import get_remote_config
@@ -9354,24 +9888,24 @@ class SynthexApp:
 
         # ── Changelog Editor ─────────────────────────────────────────────────
         cl = _mk(body, "Changelog / Release Notes", "\U0001f4dd", "#8B5CF6")
-        _ck.Label(cl, text="Popup akan muncul ke user saat versi berubah.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(cl, text="Popup akan muncul ke user saat versi berubah.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         cl_vrow = _ck.Frame(cl, fg_color=CARD)
         cl_vrow.pack(fill="x", pady=(0, 4))
         _ck.Label(cl_vrow, text="Versi:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _cl_ver = tk.StringVar()
         _ck.Entry(cl_vrow, textvariable=_cl_ver, fg_color=CARD2, text_color=FG,
-                 insertbackground=FG, relief="flat", font=("Segoe UI", 9),
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9),
                  bd=6, width=12).pack(side="left", padx=6)
         _ck.Label(cl, text="Release notes:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(4, 2))
         cl_txt = _ck.Text(cl, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                         relief="flat", font=("Segoe UI", 9),
+                         relief="flat", font=("Segoe UI Variable", 9),
                          height=5, wrap="word")
         cl_txt.pack(fill="x", pady=(0, 6))
         _cl_status = tk.StringVar(value="Memuat…")
         _ck.Label(cl, textvariable=_cl_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_cl():
             from modules.master_config import get_changelog
@@ -9412,14 +9946,14 @@ class SynthexApp:
         tpl = _mk(body, "Firebase Templates Sync", "\U0001f4cb", GRN)
         _ck.Label(tpl,
                  text="Push template lokal ke Firebase → semua user dapat template"
-                      " terbaru tanpa rebuild.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8),
+                      " terbaru tanpa rebuild.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8),
                  wraplength=500, justify="left").pack(anchor="w", pady=(0, 8))
         _tpl_count = _ck.Label(tpl, text="", fg_color=CARD, text_color=FG,
-                              font=("Segoe UI", 9, "bold"))
+                              font=("Segoe UI Variable", 9, "bold"))
         _tpl_count.pack(anchor="w", pady=(0, 4))
         _tpl_status = tk.StringVar(value="")
         _ck.Label(tpl, textvariable=_tpl_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
 
         def _count_local():
             import json
@@ -9492,21 +10026,21 @@ class SynthexApp:
 
         # ── Whitelist ─────────────────────────────────────────────────────────
         wl = _mk(body, "Whitelist Akses", "\U0001f511", "#0EA5E9")
-        _ck.Label(wl, text="Aktifkan whitelist → hanya email terdaftar yang bisa login.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(wl, text="Aktifkan whitelist → hanya email terdaftar yang bisa login.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         _wl_en = tk.BooleanVar(value=False)
         wl_r = _ck.Frame(wl, fg_color=CARD)
         wl_r.pack(fill="x", pady=(0, 4))
         _ck.Checkbutton(wl_r, text="Whitelist Aktif", variable=_wl_en, fg_color=CARD, text_color=FG, selectcolor=CARD2,
                        activebackground=CARD,
-                       font=("Segoe UI", 9, "bold")).pack(side="left")
-        _ck.Label(wl, text="Daftar email (satu per baris):", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 2))
+                       font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+        _ck.Label(wl, text="Daftar email (satu per baris):", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(6, 2))
         wl_txt = _ck.Text(wl, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                         relief="flat", font=("Segoe UI", 9),
+                         relief="flat", font=("Segoe UI Variable", 9),
                          height=5, wrap="none")
         wl_txt.pack(fill="x", pady=(0, 6))
         _wl_status = tk.StringVar(value="Memuat…")
         _ck.Label(wl, textvariable=_wl_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_wl():
             from modules.master_config import get_whitelist
@@ -9540,18 +10074,18 @@ class SynthexApp:
 
         # ── Kick / Ban ────────────────────────────────────────────────────────
         kb = _mk(body, "Kick / Ban User", "\U0001f6ab", RED)
-        _ck.Label(kb, text="Kick = paksa logout. Ban = blokir login permanen.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(kb, text="Kick = paksa logout. Ban = blokir login permanen.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         kb_ir = _ck.Frame(kb, fg_color=CARD)
         kb_ir.pack(fill="x", pady=(0, 6))
         _kb_email = tk.StringVar()
         _ck.Label(kb_ir, text="Email:", fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
         _ck.Entry(kb_ir, textvariable=_kb_email, fg_color=CARD2, text_color=FG,
-                 insertbackground=FG, relief="flat", font=("Segoe UI", 9),
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9),
                  bd=6, width=28).pack(side="left", padx=6)
         _kb_status = tk.StringVar(value="")
         _ck.Label(kb, textvariable=_kb_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _do_kick():
             em = _kb_email.get().strip()
@@ -9602,18 +10136,18 @@ class SynthexApp:
         kb_btns = _ck.Frame(kb, fg_color=CARD)
         kb_btns.pack(fill="x", pady=(0, 8))
         _ck.Button(kb_btns, text="\U0001f462 Kick", fg_color="#92400E", text_color="white",
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_kick).pack(side="left", padx=(0, 6))
         _ck.Button(kb_btns, text="\U0001f6ab Ban + Kick", fg_color=RED, text_color="white",
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_ban).pack(side="left", padx=(0, 6))
         _ck.Button(kb_btns, text="✅ Unban", fg_color=GRN, text_color="white",
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_do_unban).pack(side="left")
-        _ck.Label(kb, text="Daftar user yang di-ban:", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(4, 2))
+        _ck.Label(kb, text="Daftar user yang di-ban:", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(4, 2))
         kb_list = _ck.Frame(kb, fg_color=CARD)
         kb_list.pack(fill="x")
 
@@ -9624,16 +10158,16 @@ class SynthexApp:
                 for w in kb_list.winfo_children():
                     w.destroy()
                 if not banned:
-                    _ck.Label(kb_list, text="Tidak ada user yang di-ban.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8),
+                    _ck.Label(kb_list, text="Tidak ada user yang di-ban.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8),
                              padx=6).pack(anchor="w")
                     return
                 for em in banned:
                     row = _ck.Frame(kb_list, fg_color=CARD)
                     row.pack(fill="x", pady=1)
                     _ck.Label(row, text="\U0001f6ab {}".format(em), fg_color=CARD, text_color=RED,
-                             font=("Segoe UI", 8)).pack(side="left")
+                             font=("Segoe UI Variable", 8)).pack(side="left")
                     _ck.Button(row, text="Unban", fg_color=CARD2, text_color=FG,
-                              font=("Segoe UI", 7), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 7), relief="flat", bd=0,
                               padx=6, pady=2, cursor="hand2",
                               command=lambda e=em: (
                                   _kb_email.set(e), _do_unban())
@@ -9641,7 +10175,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _upd)
 
-        _ck.Button(kb, text="\U0001f504 Refresh Banned List", fg_color=CARD2, text_color=FG, font=("Segoe UI", 8),
+        _ck.Button(kb, text="\U0001f504 Refresh Banned List", fg_color=CARD2, text_color=FG, font=("Segoe UI Variable", 8),
                   relief="flat", bd=0, padx=10, pady=3, cursor="hand2",
                   command=lambda: _thr.Thread(
                       target=_load_banned, daemon=True).start()
@@ -9652,7 +10186,7 @@ class SynthexApp:
         ou = _mk(body, "User Online Sekarang", "\U0001f465", "#22D3EE")
         _ou_status = tk.StringVar(value="Memuat…")
         _ck.Label(ou, textvariable=_ou_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         ou_frame = _ck.Frame(ou, fg_color=CARD)
         ou_frame.pack(fill="x")
 
@@ -9677,20 +10211,20 @@ class SynthexApp:
                     row = _ck.Frame(ou_frame, fg_color=CARD, padx=10, pady=4)
                     row.pack(fill="x")
                     _ck.Label(row, text="●", fg_color=CARD, text_color=GRN,
-                             font=("Segoe UI", 9)).pack(side="left")
+                             font=("Segoe UI Variable", 9)).pack(side="left")
                     _ck.Label(row, text=em, fg_color=CARD, text_color=FG,
-                             font=("Segoe UI", 9, "bold")).pack(
+                             font=("Segoe UI Variable", 9, "bold")).pack(
                         side="left", padx=(6, 0))
                     _ck.Label(row, text="last seen {}".format(t_str), fg_color=CARD, text_color=MUT,
-                             font=("Segoe UI", 8)).pack(side="right")
+                             font=("Segoe UI Variable", 8)).pack(side="right")
                 if not users:
                     _ck.Label(ou_frame,
-                             text="Tidak ada user lain yang online.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 9),
+                             text="Tidak ada user lain yang online.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
                              padx=10, pady=6).pack(anchor="w")
             if self._root:
                 self._root.after(0, _upd)
 
-        _ck.Button(ou, text="\U0001f504 Refresh", fg_color=CARD2, text_color=FG, font=("Segoe UI", 8),
+        _ck.Button(ou, text="\U0001f504 Refresh", fg_color=CARD2, text_color=FG, font=("Segoe UI Variable", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=lambda: _thr.Thread(
                       target=_load_users, daemon=True).start()
@@ -9711,16 +10245,16 @@ class SynthexApp:
             box.grid(row=0, column=col, padx=6, sticky="nsew")
             st_grid.columnconfigure(col, weight=1)
             _ck.Label(box, text=icon, fg_color=CARD2, text_color=clr,
-                     font=("Segoe UI", 20)).pack()
+                     font=("Segoe UI Variable", 20)).pack()
             v = _ck.Label(box, text="…", fg_color=CARD2, text_color=clr,
-                         font=("Segoe UI", 18, "bold"))
+                         font=("Segoe UI Variable", 18, "bold"))
             v.pack()
             _ck.Label(box, text=lbl, fg_color=CARD2, text_color=MUT,
-                     font=("Segoe UI", 7)).pack()
+                     font=("Segoe UI Variable", 7)).pack()
             _sl[key] = v
         _st_status = tk.StringVar(value="Memuat statistik…")
         _ck.Label(st, textvariable=_st_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _load_stats():
             from modules.master_config import (get_all_sessions, get_online_count,
@@ -9738,7 +10272,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _upd)
 
-        _ck.Button(st, text="\U0001f504 Refresh Statistik", fg_color=CARD2, text_color=FG, font=("Segoe UI", 8),
+        _ck.Button(st, text="\U0001f504 Refresh Statistik", fg_color=CARD2, text_color=FG, font=("Segoe UI Variable", 8),
                   relief="flat", bd=0, padx=10, pady=4, cursor="hand2",
                   command=lambda: _thr.Thread(
                       target=_load_stats, daemon=True).start()
@@ -9752,14 +10286,14 @@ class SynthexApp:
 
         # ── Broadcast ─────────────────────────────────────────────────────────
         bc = _mk(body, "Broadcast ke Semua User", "\U0001f4e2", PRP)
-        _ck.Label(bc, text="Pesan broadcast akan muncul di Chat semua user yang online.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(bc, text="Pesan broadcast akan muncul di Chat semua user yang online.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         bc_txt = _ck.Text(bc, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                         relief="flat", font=("Segoe UI", 10),
+                         relief="flat", font=("Segoe UI Variable", 10),
                          height=3, wrap="word")
         bc_txt.pack(fill="x", pady=(0, 8))
         _bc_status = tk.StringVar(value="")
         _ck.Label(bc, textvariable=_bc_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 4))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 4))
 
         def _send_bc():
             msg = bc_txt.get("1.0", "end").strip()
@@ -9779,25 +10313,25 @@ class SynthexApp:
             _thr.Thread(target=_bg, daemon=True).start()
 
         _btn(bc, "\U0001f4e2 Kirim Broadcast", PRP, cmd=_send_bc,
-             font=("Segoe UI", 10, "bold"), pady=8).pack(anchor="w")
+             font=("Segoe UI Variable", 10, "bold"), pady=8).pack(anchor="w")
 
         # ── DM Conversations ──────────────────────────────────────────────────
         dm = _mk(body, "DM — Percakapan dengan User", "\U0001f4ac", ACC)
-        _ck.Label(dm, text="Pilih user → lihat percakapan → balas.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 8))
+        _ck.Label(dm, text="Pilih user → lihat percakapan → balas.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
         dm_split = _ck.Frame(dm, fg_color=CARD)
         dm_split.pack(fill="x")
         dm_left = _ck.Frame(dm_split, fg_color="#0D0D18", width=200)
         dm_left.pack(side="left", fill="y", padx=(0, 8))
         dm_left.pack_propagate(False)
         _ck.Label(dm_left, text="Inbox", fg_color="#0D0D18", text_color=MUT,
-                 font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
+                 font=("Segoe UI Variable", 8, "bold")).pack(anchor="w", padx=8, pady=(6, 2))
         thread_frame = _ck.Frame(dm_left, fg_color="#0D0D18")
         thread_frame.pack(fill="both", expand=True)
         dm_right = _ck.Frame(dm_split, fg_color=CARD2)
         dm_right.pack(side="left", fill="both", expand=True)
         _conv_title = tk.StringVar(value="← Pilih percakapan")
         _ck.Label(dm_right, textvariable=_conv_title, fg_color=CARD2, text_color=ACC,
-                 font=("Segoe UI", 9, "bold"), anchor="w", padx=10,
+                 font=("Segoe UI Variable", 9, "bold"), anchor="w", padx=10,
                  pady=6).pack(fill="x")
         _ck.Frame(dm_right, fg_color="#1c1c2e", height=1).pack(fill="x")
         conv_sb = _ck.Scrollbar(dm_right, orient="vertical")
@@ -9817,19 +10351,19 @@ class SynthexApp:
         dm_ir = _ck.Frame(dm_right, fg_color=CARD2, padx=8, pady=6)
         dm_ir.pack(fill="x")
         dm_inp = _ck.Text(dm_ir, fg_color="#0D0D18", text_color=FG, insertbackground=FG,
-                         relief="flat", font=("Segoe UI", 9),
+                         relief="flat", font=("Segoe UI Variable", 9),
                          height=2, wrap="word", bd=6)
         dm_inp.pack(side="left", fill="x", expand=True, padx=(0, 6))
         _dm_sel = [None]
         _dm_st = tk.StringVar(value="")
         _ck.Label(dm_right, textvariable=_dm_st, fg_color=CARD2, text_color=MUT,
-                 font=("Segoe UI", 7)).pack(anchor="w", padx=8)
+                 font=("Segoe UI Variable", 7)).pack(anchor="w", padx=8)
 
         def _render_conv(msgs, target):
             for w in conv_inner.winfo_children():
                 w.destroy()
             if not msgs:
-                _ck.Label(conv_inner, text="Belum ada pesan.", fg_color=CARD2, text_color=MUT, font=("Segoe UI", 9), pady=20).pack()
+                _ck.Label(conv_inner, text="Belum ada pesan.", fg_color=CARD2, text_color=MUT, font=("Segoe UI Variable", 9), pady=20).pack()
                 return
             for m in msgs:
                 is_me = (m.get("from", "") == self.MASTER_EMAIL)
@@ -9844,10 +10378,10 @@ class SynthexApp:
                 bub = _ck.Frame(row, fg_color=bub_bg, padx=8, pady=5)
                 bub.pack(anchor="w" if is_me else "e")
                 prefix = "\U0001f451 " if is_me else "↩ "
-                _ck.Label(bub, text="{}{}".format(prefix, m.get("message", "")), fg_color=bub_bg, text_color=FG, font=("Segoe UI", 9),
+                _ck.Label(bub, text="{}{}".format(prefix, m.get("message", "")), fg_color=bub_bg, text_color=FG, font=("Segoe UI Variable", 9),
                          wraplength=300, justify="left").pack(anchor="w")
                 _ck.Label(bub, text=t_str, fg_color=bub_bg, text_color=MUT,
-                         font=("Segoe UI", 7)).pack(anchor="e")
+                         font=("Segoe UI Variable", 7)).pack(anchor="e")
             conv_cv.update_idletasks()
             conv_cv.yview_moveto(1.0)
 
@@ -9882,12 +10416,12 @@ class SynthexApp:
                     self._root.after(0, _u)
             _thr.Thread(target=_bg, daemon=True).start()
 
-        _ck.Button(dm_ir, text="\U0001f4e8 Kirim", fg_color=ACC, text_color="white", font=("Segoe UI", 9, "bold"),
+        _ck.Button(dm_ir, text="\U0001f4e8 Kirim", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
                   command=_send_dm).pack(side="right")
         _dm_ts = tk.StringVar(value="Memuat thread…")
         _ck.Label(dm_left, textvariable=_dm_ts, fg_color="#0D0D18", text_color=MUT,
-                 font=("Segoe UI", 7), wraplength=180).pack(
+                 font=("Segoe UI Variable", 7), wraplength=180).pack(
             anchor="w", padx=8)
 
         def _load_threads():
@@ -9897,7 +10431,7 @@ class SynthexApp:
                 for w in thread_frame.winfo_children():
                     w.destroy()
                 if not threads:
-                    _ck.Label(thread_frame, text="Belum ada percakapan.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI", 8),
+                    _ck.Label(thread_frame, text="Belum ada percakapan.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI Variable", 8),
                              padx=8, pady=8).pack(anchor="w")
                     _dm_ts.set("")
                     return
@@ -9913,13 +10447,13 @@ class SynthexApp:
                                     padx=8, cursor="hand2")
                     trow.pack(fill="x", pady=1)
                     _ck.Label(trow, text=em.split("@")[0], fg_color=btn_bg, text_color=FG if unrd == 0 else "#A78BFA",
-                             font=("Segoe UI", 8,
+                             font=("Segoe UI Variable", 8,
                                    "bold" if unrd else "normal"),
                              anchor="w").pack(anchor="w")
                     if unrd:
                         _ck.Label(trow, text="● {} baru".format(unrd), fg_color=btn_bg, text_color="#E11D48",
-                                 font=("Segoe UI", 7)).pack(anchor="w")
-                    _ck.Label(trow, text=last or "(kosong)", fg_color=btn_bg, text_color=MUT, font=("Segoe UI", 7),
+                                 font=("Segoe UI Variable", 7)).pack(anchor="w")
+                    _ck.Label(trow, text=last or "(kosong)", fg_color=btn_bg, text_color=MUT, font=("Segoe UI Variable", 7),
                              anchor="w").pack(anchor="w")
                     trow.bind("<Button-1>", lambda e, em=em: _load_conv(em))
                     for w in trow.winfo_children():
@@ -9927,7 +10461,7 @@ class SynthexApp:
             if self._root:
                 self._root.after(0, _render)
 
-        _ck.Button(dm_left, text="\U0001f504", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI", 8),
+        _ck.Button(dm_left, text="\U0001f504", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI Variable", 8),
                   relief="flat", bd=0, padx=6, pady=2, cursor="hand2",
                   command=lambda: _thr.Thread(
                       target=_load_threads, daemon=True).start()
@@ -9943,7 +10477,7 @@ class SynthexApp:
         rl = _mk(body, "Firebase Security Rules", "\U0001f512", GRN)
         _rules_st = tk.StringVar(value="Auto-deploy rules saat master login aktif.")
         _ck.Label(rl, textvariable=_rules_st, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8), wraplength=580,
+                 font=("Segoe UI Variable", 8), wraplength=580,
                  justify="left").pack(anchor="w", pady=(0, 6))
 
         def _deploy_rules():
@@ -9955,7 +10489,7 @@ class SynthexApp:
                     self._root.after(0, lambda m=msg: _rules_st.set(m))
             _thr.Thread(target=_bg, daemon=True).start()
 
-        _ck.Button(rl, text="\U0001f512 Deploy Firebase Rules", fg_color="#1A3A1A", text_color=GRN, font=("Segoe UI", 9, "bold"),
+        _ck.Button(rl, text="\U0001f512 Deploy Firebase Rules", fg_color="#1A3A1A", text_color=GRN, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=12, pady=5, cursor="hand2",
                   command=_deploy_rules).pack(anchor="w")
         _thr.Thread(target=lambda: (
@@ -9967,13 +10501,13 @@ class SynthexApp:
         rek = _mk(body, "Rekening API URL", "\U0001f517", "#F59E0B")
         _url_st = tk.StringVar(value="Memuat URL dari Firebase…")
         _ck.Label(rek, textvariable=_url_st, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(0, 6))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 6))
         _url_var = tk.StringVar()
         url_row = _ck.Frame(rek, fg_color=CARD)
         url_row.pack(fill="x", pady=(0, 8))
         _ck.Entry(url_row, textvariable=_url_var, fg_color=CARD2, text_color=FG,
                  insertbackground=FG, relief="flat",
-                 font=("Segoe UI", 10), bd=6).pack(
+                 font=("Segoe UI Variable", 10), bd=6).pack(
             side="left", fill="x", expand=True, padx=(0, 8))
 
         def _load_url():
@@ -10011,7 +10545,7 @@ class SynthexApp:
         _thr.Thread(target=_load_url, daemon=True).start()
         _ck.Label(rek,
                  text="URL ini dipakai SEMUA user untuk validasi rekening.\n"
-                      "Ganti di sini → langsung berlaku tanpa update app.", fg_color=CARD, text_color=MUT, font=("Segoe UI", 8),
+                      "Ganti di sini → langsung berlaku tanpa update app.", fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8),
                  justify="left").pack(anchor="w")
 
         return f
@@ -10224,7 +10758,7 @@ class SynthexApp:
                              "warning")
             return
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Scrape ke Sheet")
         dlg.configure(fg_color=BG)
@@ -10236,18 +10770,18 @@ class SynthexApp:
             self._root.winfo_rootx() + 80,
             self._root.winfo_rooty() + 80))
 
-        _lbl(dlg, "Sheet tujuan:", fg_color=BG, font=("Segoe UI", 9)).pack(
+        _lbl(dlg, "Sheet tujuan:", fg_color=BG, font=("Segoe UI Variable", 9)).pack(
             anchor="w", padx=16, pady=(14, 2))
         sheet_var = tk.StringVar(value=sheets[0])
         _ck.Combobox(dlg, textvariable=sheet_var, values=sheets,
-                     state="readonly", font=("Segoe UI", 10)).pack(
+                     state="readonly", font=("Segoe UI Variable", 10)).pack(
             fill="x", padx=16)
 
-        _lbl(dlg, "Nama kolom / header (kosongkan = append nilai saja):", fg_color=BG, font=("Segoe UI", 9), text_color=MUT).pack(
+        _lbl(dlg, "Nama kolom / header (kosongkan = append nilai saja):", fg_color=BG, font=("Segoe UI Variable", 9), text_color=MUT).pack(
             anchor="w", padx=16, pady=(10, 2))
         col_var = tk.StringVar()
         _ck.Entry(dlg, textvariable=col_var,
-                  font=("Segoe UI", 10)).pack(fill="x", padx=16)
+                  font=("Segoe UI Variable", 10)).pack(fill="x", padx=16)
 
         def _do_scrape():
             sheet_name = sheet_var.get().strip()
@@ -10326,7 +10860,7 @@ class SynthexApp:
 
     def _do_countdown(self, count, callback):
         """Show a full-screen-style countdown overlay, then call callback."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("")
         dlg.geometry("200x120")
@@ -10338,10 +10872,10 @@ class SynthexApp:
         dlg.geometry("200x120+{}+{}".format(sw // 2 - 100, sh // 2 - 60))
 
         lbl = _ck.Label(dlg, text="Recording starts in", fg_color=BG, text_color=MUT,
-                       font=("Segoe UI", 11))
+                       font=("Segoe UI Variable", 11))
         lbl.pack(pady=(18, 4))
         num = _ck.Label(dlg, text=str(count), fg_color=BG, text_color=ACC,
-                       font=("Segoe UI", 40, "bold"))
+                       font=("Segoe UI Variable", 40, "bold"))
         num.pack()
 
         remaining = [count]
@@ -10363,18 +10897,18 @@ class SynthexApp:
         """Floating recorder control panel - recording starts/stops from here."""
         import time as _time
 
-        win = ctk.CTkToplevel(self._root)
+        win = tk.Toplevel(self._root)
         win.withdraw()
         win.title("Synthex Recorder")
-        win.configure(fg_color="#0D0D14")
+        win.configure(bg="#0D0D14")
         win.resizable(False, False)
         win.attributes("-topmost", True)
 
-        W, H = 292, 120
+        W, H = 320, 148
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
         # Default position: top-right corner
-        win.geometry("{}x{}+{}+{}".format(W, H, sw - W - 12, 12))
+        win.geometry("{}x{}+{}+{}".format(W, H, sw - W - 16, 16))
         self._rec_toolbar_win  = win
         self._rec_toggle_fn    = None   # diisi setelah fungsi didefinisikan
         self._rec_pause_fn     = None   # diisi setelah fungsi didefinisikan
@@ -10423,44 +10957,44 @@ class SynthexApp:
             win.geometry("+{}+{}".format(
                 e.x_root - _drag["x"], e.y_root - _drag["y"]))
 
-        # ── Header (compact 22px) ────────────────────────────────────────────
-        hdr = _ck.Frame(win, fg_color=ACC, height=22, cursor="fleur")
+        # ── Header ───────────────────────────────────────────────────────────
+        hdr = _ck.Frame(win, fg_color=ACC, height=30, cursor="fleur")
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         hdr.bind("<ButtonPress-1>", _drag_start)
         hdr.bind("<B1-Motion>",     _drag_move)
 
-        _ck.Label(hdr, text="  SYNTHEX REC", fg_color=ACC, text_color="#FFFFFF",
-                 font=("Segoe UI", 8, "bold")).pack(side="left", pady=3)
-        _ck.Button(hdr, text="x", fg_color=ACC, text_color="#FFFFFF",
-                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                  padx=7, cursor="hand2",
+        _ck.Label(hdr, text="  ⏺  SYNTHEX RECORDER", fg_color=ACC, text_color="#FFFFFF",
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", pady=4)
+        _ck.Button(hdr, text=" ✕ ", fg_color=ACC, text_color="#FFFFFF",
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
+                  padx=6, cursor="hand2",
                   activebackground=RED, activeforeground="#FFFFFF",
                   command=lambda: _close_ref[0]()).pack(side="right", fill="y")
-        _ck.Button(hdr, text="—", fg_color=ACC, text_color="#FFFFFF",
-                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
-                  padx=7, cursor="hand2",
-                  activebackground="#8870FF", activeforeground="#FFFFFF",
+        _ck.Button(hdr, text=" — ", fg_color=ACC, text_color="#FFFFFF",
+                  font=("Segoe UI Variable", 9), relief="flat", bd=0,
+                  padx=6, cursor="hand2",
+                  activebackground="#6D55EE", activeforeground="#FFFFFF",
                   command=_do_minimize).pack(side="right", fill="y")
 
-        # ── Status bar (1 compact line) ──────────────────────────────────────
+        # ── Status row ───────────────────────────────────────────────────────
         dot_var   = tk.StringVar(value="●")
         state_var = tk.StringVar(value="SIAP")
         timer_var = tk.StringVar(value="00:00")
-        steps_var = tk.StringVar(value="0 steps")
+        steps_var = tk.StringVar(value="0 langkah")
 
         st = _ck.Frame(win, fg_color="#0D0D14")
-        st.pack(fill="x", padx=8, pady=(4, 2))
+        st.pack(fill="x", padx=10, pady=(8, 4))
 
         dot_lbl = _ck.Label(st, textvariable=dot_var, fg_color="#0D0D14", text_color=MUT,
-                           font=("Segoe UI", 10))
+                           font=("Segoe UI Variable", 13))
         dot_lbl.pack(side="left")
         _ck.Label(st, textvariable=state_var, fg_color="#0D0D14", text_color=FG,
-                 font=("Segoe UI", 8, "bold")).pack(side="left", padx=(4, 0))
-        _ck.Label(st, textvariable=timer_var, fg_color="#0D0D14", text_color=MUT,
-                 font=("Consolas", 8)).pack(side="right", padx=(0, 2))
+                 font=("Segoe UI Variable", 10, "bold")).pack(side="left", padx=(6, 0))
+        _ck.Label(st, textvariable=timer_var, fg_color="#0D0D14", text_color=ACC,
+                 font=("Consolas", 10, "bold")).pack(side="right", padx=(0, 2))
         _ck.Label(st, textvariable=steps_var, fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 8)).pack(side="right", padx=(0, 6))
+                 font=("Segoe UI Variable", 9)).pack(side="right", padx=(0, 8))
 
         _ck.Frame(win, fg_color="#2A2A40", height=1).pack(fill="x", pady=(2, 0))
 
@@ -10593,9 +11127,9 @@ class SynthexApp:
         # (set at bottom of this function)
 
         # ── 4 equal buttons in single horizontal row ──────────────────────────
-        ICON_F = ("Segoe UI Emoji", 15)
+        ICON_F = ("Segoe UI Emoji", 17)
 
-        btn_row = _ck.Frame(win, fg_color="#0D0D14", height=52)
+        btn_row = _ck.Frame(win, fg_color="#0D0D14", height=58)
         btn_row.pack(fill="x", padx=8, pady=(6, 8))
         btn_row.pack_propagate(False)
 
@@ -10642,8 +11176,9 @@ class SynthexApp:
 
         win.protocol("WM_DELETE_WINDOW", lambda: _close_ref[0]())
         _update_state_idle()
-        win.update()
+        win.update_idletasks()
         win.deiconify()
+        win.focus_force()
 
     def _toggle_rec_pause(self):
         # Legacy – pause logic now lives inside _show_rec_toolbar closure.
@@ -10696,15 +11231,15 @@ class SynthexApp:
         # ------------------------------------------------------------------ #
         #  Window setup                                                        #
         # ------------------------------------------------------------------ #
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = tk.Toplevel(self._root)
         dlg.withdraw()
         dlg.title("Macro Step Editor")
         dlg.geometry("980x700")
-        dlg.configure(fg_color=BG)
+        dlg.configure(bg=BG)
         dlg.resizable(True, True)
-        dlg.update()
+        dlg.update_idletasks()
         dlg.deiconify()
-        dlg.after(120, dlg.grab_set)
+        dlg.focus_force()
         self._simple_step_editor_win = dlg
 
         def _on_editor_close():
@@ -10763,25 +11298,25 @@ class SynthexApp:
 
         # Single compact row
         _lbl(top_bar, "Nama:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 4))
         name_var = tk.StringVar(
             value=existing.get("name", "") if existing else "")
         _ck.Entry(top_bar, textvariable=name_var, fg_color=BG, text_color=FG,
-                 insertbackground=FG, font=("Segoe UI", 10),
+                 insertbackground=FG, font=("Segoe UI Variable", 10),
                  relief="flat", bd=0, width=22).pack(
             side="left", padx=(0, 14), ipady=4)
 
         _lbl(top_bar, "Deskripsi:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 4))
         desc_var = tk.StringVar(
             value=existing.get("description", "") if existing else "")
         _ck.Entry(top_bar, textvariable=desc_var, fg_color=BG, text_color=FG,
-                 insertbackground=FG, font=("Segoe UI", 10),
+                 insertbackground=FG, font=("Segoe UI Variable", 10),
                  relief="flat", bd=0, width=28).pack(
             side="left", padx=(0, 14), ipady=4)
 
         _lbl(top_bar, "Folder:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 4))
         folders = sorted(
             {r.get("folder", "General") for r in self._ud.recordings}
             | {"General", "Work", "Personal"})
@@ -10792,7 +11327,7 @@ class SynthexApp:
 
         # Filter combobox on the right side of top bar
         _lbl(top_bar, "  Filter:", text_color=MUT, fg_color=CARD,
-             font=("Segoe UI", 9)).pack(side="left", padx=(18, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(18, 4))
         filter_cb = _ck.Combobox(top_bar, textvariable=_filter_var,
                                  values=["Semua", "click", "type", "key", "scroll"],
                                  state="readonly", width=8)
@@ -10807,7 +11342,7 @@ class SynthexApp:
         def _tb_btn(parent, text, cmd, fg_col=FG, width=None):
             kw = {"width": width} if width else {}
             b = _ck.Button(parent, text=text, command=cmd, fg_color=CARD, text_color=fg_col, relief="flat", bd=0,
-                          font=("Segoe UI", 9), padx=8, pady=3,
+                          font=("Segoe UI Variable", 9), padx=8, pady=3,
                           activebackground=ACC, activeforeground=BG,
                           cursor="hand2", **kw)
             b.pack(side="left", padx=2)
@@ -10815,7 +11350,7 @@ class SynthexApp:
 
         def _tb_sep():
             _ck.Label(toolbar, text="|", fg_color=SIDE, text_color=MUT,
-                     font=("Segoe UI", 10)).pack(side="left", padx=4)
+                     font=("Segoe UI Variable", 10)).pack(side="left", padx=4)
 
         # Add button with dropdown menu
         add_menu = tk.Menu(dlg, tearoff=0, bg=CARD, fg=FG,
@@ -10849,7 +11384,7 @@ class SynthexApp:
                 command=lambda t=_t: _add_step(t))
 
         add_btn = _ck.Button(toolbar, text="+ Tambah", fg_color=ACC, text_color=BG, relief="flat", bd=0,
-                            font=("Segoe UI", 9, "bold"), padx=10, pady=3,
+                            font=("Segoe UI Variable", 9, "bold"), padx=10, pady=3,
                             activebackground=PRP, activeforeground=BG,
                             cursor="hand2")
         add_btn.pack(side="left", padx=2)
@@ -10954,11 +11489,11 @@ class SynthexApp:
 
         # Bulk delay
         _lbl(toolbar, "Bulk Delay:", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 9)).pack(side="left", padx=(4, 2))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(4, 2))
         bulk_delay_var = tk.IntVar(value=500)
         tk.Spinbox(toolbar, from_=0, to=30000, increment=50, width=6,
                    textvariable=bulk_delay_var, bg=CARD, fg=FG, insertbackground=FG,
-                   relief="flat", font=("Segoe UI", 9)).pack(
+                   relief="flat", font=("Segoe UI Variable", 9)).pack(
             side="left", padx=(0, 4), ipady=2)
 
         def _apply_bulk_delay():
@@ -10985,9 +11520,9 @@ class SynthexApp:
         _tb_sep()
 
         # Right-aligned counters
-        step_count_lbl = _ck.Label(toolbar, text="0 langkah", fg_color=SIDE, text_color=MUT, font=("Segoe UI", 9))
+        step_count_lbl = _ck.Label(toolbar, text="0 langkah", fg_color=SIDE, text_color=MUT, font=("Segoe UI Variable", 9))
         step_count_lbl.pack(side="right", padx=(4, 8))
-        total_dur_lbl = _ck.Label(toolbar, text="Total: 0.0s", fg_color=SIDE, text_color=MUT, font=("Segoe UI", 9))
+        total_dur_lbl = _ck.Label(toolbar, text="Total: 0.0s", fg_color=SIDE, text_color=MUT, font=("Segoe UI Variable", 9))
         total_dur_lbl.pack(side="right", padx=(4, 4))
 
         # ------------------------------------------------------------------ #
@@ -11037,7 +11572,7 @@ class SynthexApp:
         right_frame.pack_propagate(False)
 
         edit_header = _ck.Label(right_frame, text="Pilih langkah untuk diedit", fg_color=CARD, text_color=MUT,
-                               font=("Segoe UI", 10, "bold"), anchor="w")
+                               font=("Segoe UI Variable", 10, "bold"), anchor="w")
         edit_header.pack(fill="x", padx=10, pady=(10, 6))
 
         edit_fields = _ck.Frame(right_frame, fg_color=CARD)
@@ -11057,7 +11592,7 @@ class SynthexApp:
 
         def _ep_lbl(parent, text):
             return _ck.Label(parent, text=text, fg_color=CARD, text_color=MUT,
-                            font=("Segoe UI", 9), anchor="w")
+                            font=("Segoe UI Variable", 9), anchor="w")
 
         def _build_edit_panel(atype="click"):
             for w in edit_fields.winfo_children():
@@ -11082,7 +11617,7 @@ class SynthexApp:
             _ep_lbl(r1, "Delay (ms):").pack(anchor="w")
             delay_sp = tk.Spinbox(r1, from_=0, to=30000, increment=50,
                                   textvariable=_ep_delay, width=10, bg=BG, fg=FG, insertbackground=FG,
-                                  relief="flat", font=("Segoe UI", 9))
+                                  relief="flat", font=("Segoe UI Variable", 9))
             delay_sp.pack(fill="x", pady=(2, 0), ipady=3)
             _edit_widgets["delay_sp"] = delay_sp
 
@@ -11096,7 +11631,7 @@ class SynthexApp:
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
                                     width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
-                                    font=("Segoe UI", 9))
+                                    font=("Segoe UI Variable", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
                     _edit_widgets[name] = sp
                 rb = _ck.Frame(edit_fields, fg_color=CARD)
@@ -11113,7 +11648,7 @@ class SynthexApp:
                 rt.pack(fill="x", pady=(4, 2))
                 _ep_lbl(rt, "Teks:").pack(anchor="w")
                 txt_e = _ck.Entry(rt, textvariable=_ep_text, fg_color=BG, text_color=FG, insertbackground=FG,
-                                 font=("Segoe UI", 9), relief="flat", bd=0)
+                                 font=("Segoe UI Variable", 9), relief="flat", bd=0)
                 txt_e.pack(fill="x", pady=(2, 0), ipady=4)
                 _edit_widgets["txt_e"] = txt_e
 
@@ -11126,7 +11661,7 @@ class SynthexApp:
                     sp = tk.Spinbox(rf, from_=-9999, to=9999, textvariable=var,
                                     width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
-                                    font=("Segoe UI", 9))
+                                    font=("Segoe UI Variable", 9))
                     sp.pack(fill="x", pady=(2, 0), ipady=3)
                     _edit_widgets[name] = sp
                 ra = _ck.Frame(edit_fields, fg_color=CARD)
@@ -11135,7 +11670,7 @@ class SynthexApp:
                 amt_sp = tk.Spinbox(ra, from_=-100, to=100, textvariable=_ep_amount,
                                     width=10, bg=BG, fg=FG,
                                     insertbackground=FG, relief="flat",
-                                    font=("Segoe UI", 9))
+                                    font=("Segoe UI Variable", 9))
                 amt_sp.pack(fill="x", pady=(2, 0), ipady=3)
                 _edit_widgets["amt_sp"] = amt_sp
 
@@ -11144,7 +11679,7 @@ class SynthexApp:
                 rk.pack(fill="x", pady=(4, 2))
                 _ep_lbl(rk, "Key:").pack(anchor="w")
                 key_e = _ck.Entry(rk, textvariable=_ep_key, fg_color=BG, text_color=FG, insertbackground=FG,
-                                 font=("Segoe UI", 9), relief="flat", bd=0)
+                                 font=("Segoe UI Variable", 9), relief="flat", bd=0)
                 key_e.pack(fill="x", pady=(2, 0), ipady=4)
                 _ep_lbl(rk, "mis. enter, ctrl, f5").pack(anchor="w")
                 _edit_widgets["key_e"] = key_e
@@ -11170,7 +11705,7 @@ class SynthexApp:
                     self._play_simple_recording(tmp, -1)
 
             _ck.Button(edit_fields, text="Test Step", fg_color=CARD, text_color=BLUE, relief="flat", bd=0,
-                      font=("Segoe UI", 9), padx=8, pady=4,
+                      font=("Segoe UI Variable", 9), padx=8, pady=4,
                       activebackground=BLUE, activeforeground=BG,
                       cursor="hand2",
                       command=_test_one_step).pack(fill="x", pady=(0, 4))
@@ -11212,7 +11747,7 @@ class SynthexApp:
                 _refresh_tree(keep_sel=orig_idx)
 
             _ck.Button(edit_fields, text="Terapkan", fg_color=GRN, text_color=BG, relief="flat", bd=0,
-                      font=("Segoe UI", 9, "bold"), padx=8, pady=4,
+                      font=("Segoe UI Variable", 9, "bold"), padx=8, pady=4,
                       activebackground="#3A9F70", activeforeground=BG,
                       cursor="hand2",
                       command=_apply_edit).pack(fill="x")
@@ -11325,7 +11860,7 @@ class SynthexApp:
 
             # Small popup entry
             x0, y0, x1, y1 = st.bbox(item, "#5")
-            popup = ctk.CTkToplevel(dlg)
+            popup = _DarkToplevel(dlg)
             popup.withdraw()
             popup.geometry("{}x{}+{}+{}".format(
                 x1 - x0, y1 - y0,
@@ -11336,7 +11871,7 @@ class SynthexApp:
             cur_ms = int(round(step_data[orig_idx].get("delay", 0) * 1000))
             popup_var = tk.StringVar(value=str(cur_ms))
             popup_e = _ck.Entry(popup, textvariable=popup_var, fg_color=BG, text_color=FG, insertbackground=FG,
-                               font=("Segoe UI", 9), relief="flat",
+                               font=("Segoe UI Variable", 9), relief="flat",
                                justify="center")
             popup_e.pack(fill="both", expand=True, padx=1, pady=1)
             popup_e.select_range(0, "end")
@@ -11403,7 +11938,7 @@ class SynthexApp:
         left_bottom.pack(side="left", fill="y")
 
         _lbl(left_bottom, "Speed:", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 4))
         speed_var = tk.DoubleVar(
             value=float(existing.get("speed", 1.0)) if existing else 1.0)
         _ck.Combobox(left_bottom, textvariable=speed_var,
@@ -11411,12 +11946,12 @@ class SynthexApp:
                      state="readonly", width=5).pack(side="left", padx=(0, 14))
 
         _lbl(left_bottom, "Ulangi:", text_color=MUT, fg_color=SIDE,
-             font=("Segoe UI", 9)).pack(side="left", padx=(0, 4))
+             font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 4))
         repeat_var = tk.IntVar(
             value=int(existing.get("repeat", 1)) if existing else 1)
         repeat_sp = tk.Spinbox(left_bottom, from_=1, to=999999, width=6,
                                textvariable=repeat_var, bg=CARD, fg=FG, insertbackground=FG,
-                               relief="flat", font=("Segoe UI", 9))
+                               relief="flat", font=("Segoe UI Variable", 9))
         repeat_sp.pack(side="left", padx=(0, 14), ipady=2)
 
         silent_var = tk.BooleanVar(
@@ -11425,7 +11960,7 @@ class SynthexApp:
                        variable=silent_var, fg_color=SIDE, text_color=FG,
                        activebackground=SIDE, activeforeground=FG,
                        selectcolor=CARD,
-                       font=("Segoe UI", 9)).pack(side="left", padx=(0, 10))
+                       font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 10))
 
         unlimited_var = tk.BooleanVar(value=False)
 
@@ -11441,14 +11976,14 @@ class SynthexApp:
                        variable=unlimited_var, command=_toggle_unlimited, fg_color=SIDE, text_color=FG,
                        activebackground=SIDE, activeforeground=FG,
                        selectcolor=CARD,
-                       font=("Segoe UI", 9)).pack(side="left")
+                       font=("Segoe UI Variable", 9)).pack(side="left")
 
         right_bottom = _ck.Frame(bottom, fg_color=SIDE)
         right_bottom.pack(side="right", fill="y")
 
         warn_lbl = _ck.Label(right_bottom,
                             text="Belum tersimpan", fg_color=SIDE, text_color=YEL,
-                            font=("Segoe UI", 8))
+                            font=("Segoe UI Variable", 8))
         warn_lbl.pack(side="left", padx=(0, 12))
 
         # ------------------------------------------------------------------ #
@@ -11525,18 +12060,18 @@ class SynthexApp:
                         0 <= (edit_idx or -1) < len(self._ud.recordings))
                     else "SIMPAN REKAMAN")
         _ck.Button(right_bottom, text=lbl_save, fg_color=GRN, text_color="#FFFFFF",
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=6, cursor="hand2",
                   activebackground="#3A9F70", activeforeground="#FFFFFF",
                   command=_save).pack(side="left", padx=(0, 6))
 
         _ck.Button(right_bottom, text="Test Run", fg_color=CARD, text_color=FG, relief="flat", bd=0,
-                  font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
+                  font=("Segoe UI Variable", 9), padx=10, pady=6, cursor="hand2",
                   activebackground=ACC, activeforeground=BG,
                   command=_test_run).pack(side="left", padx=(0, 6))
 
         _ck.Button(right_bottom, text="Batal", fg_color=CARD, text_color=MUT, relief="flat", bd=0,
-                  font=("Segoe UI", 9), padx=10, pady=6, cursor="hand2",
+                  font=("Segoe UI Variable", 9), padx=10, pady=6, cursor="hand2",
                   activebackground=RED, activeforeground=BG,
                   command=_on_editor_close).pack(side="left")
 
@@ -11550,6 +12085,11 @@ class SynthexApp:
         dlg.bind("<Control-c>", lambda e: _copy_step())
         dlg.bind("<Control-v>", lambda e: _paste_step())
         dlg.bind("<Control-a>", lambda e: st.selection_set(st.get_children()))
+
+        dlg.update()
+        dlg.deiconify()
+        dlg.focus_force()
+        dlg.after(120, dlg.grab_set)
 
     # -- Smart Record ---------------------------------------------------
 
@@ -11630,10 +12170,10 @@ class SynthexApp:
         def _friendly(t):
             return _TYPE_LABEL.get(t, t)
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = tk.Toplevel(self._root)
         dlg.withdraw()
         dlg.title("Editor Langkah Rekaman")
-        dlg.configure(fg_color=BG)
+        dlg.configure(bg=BG)
         dlg.resizable(True, True)
         self._step_editor_open = True
 
@@ -11650,22 +12190,22 @@ class SynthexApp:
         hdr_f = _ck.Frame(dlg, fg_color=BG)
         hdr_f.pack(fill="x", padx=20, pady=(16, 4))
         _lbl(hdr_f, "Editor Langkah Rekaman",
-             font=("Segoe UI", 13, "bold"), fg_color=BG).pack(anchor="w")
+             font=("Segoe UI Variable", 13, "bold"), fg_color=BG).pack(anchor="w")
         step_count_var = tk.StringVar(
             value="{} langkah   |   Klik baris untuk edit, lalu klik Perbarui".format(
                 len(steps)))
-        _lbl(hdr_f, "", text_color=MUT, fg_color=BG, font=("Segoe UI", 9),
+        _lbl(hdr_f, "", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 9),
              textvariable=step_count_var).pack(anchor="w", pady=(2, 0))
 
         # Panduan cepat
         guide = _ck.Frame(dlg, fg_color="#1A2A1A", padx=12, pady=8)
         guide.pack(fill="x", padx=20, pady=(0, 6))
         _ck.Label(guide, text="Cara pakai: ", fg_color="#1A2A1A", text_color=GRN,
-                 font=("Segoe UI", 8, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 8, "bold")).pack(side="left")
         _ck.Label(guide,
                  text="Pilih baris di tabel -> Edit tipe & nilai di bawah -> Klik [Perbarui]. "
                       "Klik [+ Tambah] untuk langkah baru.", fg_color="#1A2A1A", text_color=FG,
-                 font=("Segoe UI", 8), wraplength=580, justify="left").pack(
+                 font=("Segoe UI Variable", 8), wraplength=580, justify="left").pack(
             side="left", fill="x", expand=True)
 
         lf = _ck.Frame(dlg, fg_color=CARD, padx=8, pady=8)
@@ -11713,7 +12253,7 @@ class SynthexApp:
                                values=_FRIENDLY_TYPES,
                                state="readonly", width=18)
         type_cb.pack(side="left", padx=(0, 8))
-        hint_lbl = _ck.Label(r1, textvariable=hint_var, fg_color=CARD, text_color=MUT, font=("Segoe UI", 8),
+        hint_lbl = _ck.Label(r1, textvariable=hint_var, fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8),
                             anchor="w")
         hint_lbl.pack(side="left", fill="x", expand=True)
 
@@ -11727,7 +12267,7 @@ class SynthexApp:
         _lbl(r2, "Nilai / Target:", text_color=MUT, fg_color=CARD, width=12, anchor="w").pack(
             side="left")
         _ck.Entry(r2, textvariable=val_var,
-                  font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True)
+                  font=("Segoe UI Variable", 10)).pack(side="left", fill="x", expand=True)
 
         def on_sel(event):
             s = st.selection()
@@ -11793,7 +12333,7 @@ class SynthexApp:
             ("Turun",     move_down, MUT),
         ]:
             _ck.Button(btn_row, text=txt, fg_color=col if col != MUT else CARD, text_color=BG if col != MUT else FG,
-                      font=("Segoe UI", 9), relief="flat", bd=0,
+                      font=("Segoe UI Variable", 9), relief="flat", bd=0,
                       padx=10, pady=5, cursor="hand2",
                       command=cmd).pack(side="left", padx=(0, 4))
 
@@ -11829,7 +12369,7 @@ class SynthexApp:
         sr = _ck.Frame(dlg, fg_color=BG)
         sr.pack(fill="x", padx=20, pady=(0, 16))
         _ck.Button(sr, text="Simpan Rekaman", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=8, cursor="hand2",
                   command=save_rec).pack(side="left")
         _ck.Button(sr, text="Batal",
@@ -11924,7 +12464,7 @@ class SynthexApp:
         threading.Thread(target=_run, daemon=True).start()
 
     def _show_playback_window(self, total, name=""):
-        win = ctk.CTkToplevel(self._root)
+        win = _DarkToplevel(self._root)
         win.withdraw()
         win.title("Playing...")
         win.geometry("220x195")
@@ -11937,14 +12477,14 @@ class SynthexApp:
             self._playback_stop.set()
         win.protocol("WM_DELETE_WINDOW", _on_playback_close)
 
-        _lbl(win, (name[:22] or "Playing Recording"), text_color=ACC, fg_color=CARD, font=("Segoe UI", 10, "bold")).pack(
+        _lbl(win, (name[:22] or "Playing Recording"), text_color=ACC, fg_color=CARD, font=("Segoe UI Variable", 10, "bold")).pack(
             pady=(12, 4), padx=12)
         step_var = tk.StringVar(value="Step 0 / {}".format(total))
         _ck.Label(win, textvariable=step_var, text_color=FG, fg_color=CARD,
-                 font=("Segoe UI", 9)).pack(padx=12)
+                 font=("Segoe UI Variable", 9)).pack(padx=12)
         desc_var = tk.StringVar(value="Preparing...")
         _ck.Label(win, textvariable=desc_var, text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 8), wraplength=196,
+                 font=("Segoe UI Variable", 8), wraplength=196,
                  justify="left").pack(padx=12, pady=(2, 6))
 
         pct_var = tk.StringVar(value="0%")
@@ -11967,11 +12507,11 @@ class SynthexApp:
                 pause_var.set("Resume")
 
         _ck.Button(btn_row, textvariable=pause_var, fg_color=YEL, text_color=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=8, pady=4, command=toggle_pause).pack(
             side="left", padx=(0, 4))
         _ck.Button(btn_row, text="Stop", fg_color=RED, text_color=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=8, pady=4,
                   command=self._playback_stop.set).pack(side="left")
 
@@ -12147,7 +12687,7 @@ class SynthexApp:
             return
         name = self._ud.recordings[idx].get("name", "")
         # Custom styled confirm dialog
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Hapus Rekaman")
         dlg.configure(fg_color=BG)
@@ -12162,15 +12702,15 @@ class SynthexApp:
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         _ck.Label(hdr, text="  Hapus Rekaman", fg_color=RED, text_color="white",
-                 font=("Segoe UI", 11, "bold")).pack(side="left", pady=10)
+                 font=("Segoe UI Variable", 11, "bold")).pack(side="left", pady=10)
 
         body = _ck.Frame(dlg, fg_color=BG, padx=24, pady=18)
         body.pack(fill="both", expand=True)
         _ck.Label(body,
-                 text='Yakin hapus rekaman ini?', fg_color=BG, text_color=FG, font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        _ck.Label(body, text='"{}"'.format(name), fg_color=BG, text_color=ACC2, font=("Segoe UI", 10, "italic"),
+                 text='Yakin hapus rekaman ini?', fg_color=BG, text_color=FG, font=("Segoe UI Variable", 10, "bold")).pack(anchor="w")
+        _ck.Label(body, text='"{}"'.format(name), fg_color=BG, text_color=ACC2, font=("Segoe UI Variable", 10, "italic"),
                  wraplength=320).pack(anchor="w", pady=(4, 12))
-        _ck.Label(body, text="Rekaman yang dihapus tidak bisa dipulihkan.", fg_color=BG, text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+        _ck.Label(body, text="Rekaman yang dihapus tidak bisa dipulihkan.", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         result = [False]
         btn_row = _ck.Frame(body, fg_color=BG)
@@ -12181,11 +12721,11 @@ class SynthexApp:
             dlg.destroy()
 
         _ck.Button(btn_row, text="Hapus", fg_color=RED, text_color="white",
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=18, pady=7, cursor="hand2",
                   command=_yes).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Batal", fg_color=CARD, text_color=FG,
-                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=dlg.destroy).pack(side="left")
 
@@ -12246,7 +12786,7 @@ class SynthexApp:
         Show a styled dialog to enter/edit a recording name.
         Returns the entered name string, or "" if cancelled.
         """
-        dlg = ctk.CTkToplevel(parent)
+        dlg = _DarkToplevel(parent)
         dlg.withdraw()
         dlg.title("Nama Rekaman")
         dlg.configure(fg_color=BG)
@@ -12261,20 +12801,20 @@ class SynthexApp:
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         _ck.Label(hdr, text="  Simpan Rekaman", fg_color=ACC, text_color="white",
-                 font=("Segoe UI", 12, "bold")).pack(side="left", pady=12, padx=4)
+                 font=("Segoe UI Variable", 12, "bold")).pack(side="left", pady=12, padx=4)
 
         # ── Body ──────────────────────────────────────────────────────
         body = _ck.Frame(dlg, fg_color=BG, padx=24, pady=20)
         body.pack(fill="both", expand=True)
 
         _ck.Label(body, text="Nama Rekaman", fg_color=BG, text_color=FG,
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
 
         # Entry with rounded-look border frame
         ef = _ck.Frame(body, fg_color=ACC, padx=1, pady=1)
         ef.pack(fill="x", pady=(4, 2))
         name_entry = _ck.Entry(ef, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                              relief="flat", font=("Segoe UI", 11),
+                              relief="flat", font=("Segoe UI Variable", 11),
                               bd=6)
         name_entry.pack(fill="x")
         if current_name:
@@ -12283,7 +12823,7 @@ class SynthexApp:
 
         _ck.Label(body,
                  text="Contoh: Login Admin, Isi Form Pesanan, Klik Tombol Beli", fg_color=BG, text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(2, 14))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(2, 14))
 
         # ── Buttons ───────────────────────────────────────────────────
         result = [""]
@@ -12303,11 +12843,11 @@ class SynthexApp:
             dlg.destroy()
 
         _ck.Button(btn_row, text="Simpan", fg_color=ACC, text_color="white",
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=20, pady=8, cursor="hand2",
                   command=_save).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Batal", fg_color=CARD, text_color=FG,
-                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10), relief="flat", bd=0,
                   padx=14, pady=8, cursor="hand2",
                   command=_cancel).pack(side="left")
 
@@ -12460,7 +13000,7 @@ class SynthexApp:
         self._tasks_tree.selection_set(iid)
         menu = tk.Menu(self._root, tearoff=0, bg=CARD, fg=FG,
                        activebackground=ACC, activeforeground=BG,
-                       font=("Segoe UI", 10))
+                       font=("Segoe UI Variable", 10))
         menu.add_command(label="Run Now",      command=self._run_selected_task)
         menu.add_command(label="Edit",         command=lambda: self._mb_open(
             parent=self._mb_list_view.master,
@@ -12540,7 +13080,7 @@ class SynthexApp:
             + '\n\nAre you sure you want to run it?'
         )
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Confirm Run")
         dlg.configure(fg_color=BG)
@@ -12550,10 +13090,10 @@ class SynthexApp:
         dlg.after(120, dlg.grab_set)
         dlg.attributes("-topmost", True)
 
-        _ck.Label(dlg, text='Run: "{}"'.format(task.get("name", "")), fg_color=BG, text_color=FG, font=("Segoe UI", 12, "bold"),
+        _ck.Label(dlg, text='Run: "{}"'.format(task.get("name", "")), fg_color=BG, text_color=FG, font=("Segoe UI Variable", 12, "bold"),
                  padx=20, pady=(14)).pack(anchor="w")
         _ck.Label(dlg, text=msg, fg_color=BG, text_color=MUT,
-                 font=("Segoe UI", 9), justify="left",
+                 font=("Segoe UI Variable", 9), justify="left",
                  padx=20).pack(anchor="w")
 
         result = [False]
@@ -12568,11 +13108,11 @@ class SynthexApp:
             dlg.destroy()
 
         _ck.Button(btn_row, text="Yes, Run", fg_color=GRN, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=16, pady=7, cursor="hand2",
                   command=_yes).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="Cancel", fg_color=CARD, text_color=FG,
-                  font=("Segoe UI", 10), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10), relief="flat", bd=0,
                   padx=16, pady=7, cursor="hand2",
                   command=_no).pack(side="left")
 
@@ -12592,7 +13132,7 @@ class SynthexApp:
         steps = task.get("steps", [])
         total = len(steps)
 
-        w = ctk.CTkToplevel(self._root)
+        w = _DarkToplevel(self._root)
         w.withdraw()
         w.title("Running: {}".format(task.get("name", "")))
         w.configure(fg_color=BG)
@@ -12600,10 +13140,10 @@ class SynthexApp:
         w.attributes("-topmost", True)
         w.geometry("440x340")
 
-        _ck.Label(w, text="Running: {}".format(task.get("name", "")), fg_color=BG, text_color=FG, font=("Segoe UI", 11, "bold"),
+        _ck.Label(w, text="Running: {}".format(task.get("name", "")), fg_color=BG, text_color=FG, font=("Segoe UI Variable", 11, "bold"),
                  padx=16, pady=10).pack(anchor="w")
 
-        step_lbl = _ck.Label(w, text="Preparing...", fg_color=BG, text_color=ACC, font=("Segoe UI", 10),
+        step_lbl = _ck.Label(w, text="Preparing...", fg_color=BG, text_color=ACC, font=("Segoe UI Variable", 10),
                             padx=16, anchor="w")
         step_lbl.pack(fill="x")
 
@@ -12630,7 +13170,7 @@ class SynthexApp:
             stop_btn.configure(state="disabled", text="Stopping...")
 
         stop_btn = _ck.Button(btn_row, text="Stop", fg_color=RED, text_color=BG,
-                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                              padx=12, pady=5, cursor="hand2", command=_stop)
         stop_btn.pack(side="left")
 
@@ -12795,7 +13335,7 @@ class SynthexApp:
 
     def _show_continuous_progress_panel(self, task: dict, stop_flag) -> dict:
         """Floating progress window for continuous bulk-order confirmation mode."""
-        w = ctk.CTkToplevel(self._root)
+        w = _DarkToplevel(self._root)
         w.withdraw()
         w.title("Bulk Order Confirmation")
         w.configure(fg_color=BG)
@@ -12807,8 +13347,8 @@ class SynthexApp:
         title_frame = _ck.Frame(w, fg_color=CARD, padx=12, pady=10)
         title_frame.pack(fill="x")
         _ck.Label(title_frame,
-                 text=task.get("name", "Bulk Order Confirmation"), fg_color=CARD, text_color=FG, font=("Segoe UI", 11, "bold")).pack(side="left")
-        loop_lbl = _ck.Label(title_frame, text="[● READY]", fg_color=CARD, text_color=GRN, font=("Segoe UI", 9, "bold"))
+                 text=task.get("name", "Bulk Order Confirmation"), fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 11, "bold")).pack(side="left")
+        loop_lbl = _ck.Label(title_frame, text="[● READY]", fg_color=CARD, text_color=GRN, font=("Segoe UI Variable", 9, "bold"))
         loop_lbl.pack(side="right")
 
         _ck.Frame(w, fg_color=MUT, height=1).pack(fill="x")
@@ -12816,7 +13356,7 @@ class SynthexApp:
         # ── This loop stats ───────────────────────────────────────────
         loop_frame = _ck.Frame(w, fg_color=BG, padx=14, pady=8)
         loop_frame.pack(fill="x")
-        _ck.Label(loop_frame, text="This loop:", fg_color=BG, text_color=MUT, font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        _ck.Label(loop_frame, text="This loop:", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 8, "bold")).pack(anchor="w")
 
         stats_vars = {
             "checked":    tk.StringVar(value="Checked: 0 orders"),
@@ -12829,14 +13369,14 @@ class SynthexApp:
         }
         for key, var in stats_vars.items():
             _ck.Label(loop_frame, textvariable=var, fg_color=BG, text_color=_stat_colors[key],
-                     font=("Segoe UI", 9)).pack(anchor="w", padx=(10, 0))
+                     font=("Segoe UI Variable", 9)).pack(anchor="w", padx=(10, 0))
 
         _ck.Frame(w, fg_color=MUT, height=1).pack(fill="x")
 
         # ── All-time totals ───────────────────────────────────────────
         totals_frame = _ck.Frame(w, fg_color=BG, padx=14, pady=8)
         totals_frame.pack(fill="x")
-        _ck.Label(totals_frame, text="All time totals:", fg_color=BG, text_color=MUT, font=("Segoe UI", 8, "bold")).pack(anchor="w")
+        _ck.Label(totals_frame, text="All time totals:", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 8, "bold")).pack(anchor="w")
 
         totals_vars = {
             "confirmed_total":   tk.StringVar(value="Confirmed: 0 orders"),
@@ -12848,7 +13388,7 @@ class SynthexApp:
         }
         for key, var in totals_vars.items():
             _ck.Label(totals_frame, textvariable=var, fg_color=BG, text_color=_tot_colors[key],
-                     font=("Segoe UI", 9)).pack(anchor="w", padx=(10, 0))
+                     font=("Segoe UI Variable", 9)).pack(anchor="w", padx=(10, 0))
 
         _ck.Frame(w, fg_color=MUT, height=1).pack(fill="x")
 
@@ -12871,7 +13411,7 @@ class SynthexApp:
         bottom.pack(fill="x")
 
         countdown_var = tk.StringVar(value="")
-        _ck.Label(bottom, textvariable=countdown_var, fg_color=BG, text_color=ACC, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 6))
+        _ck.Label(bottom, textvariable=countdown_var, fg_color=BG, text_color=ACC, font=("Segoe UI Variable", 9)).pack(anchor="w", pady=(0, 6))
 
         btn_row = _ck.Frame(bottom, fg_color=BG)
         btn_row.pack(fill="x")
@@ -12891,12 +13431,12 @@ class SynthexApp:
                 self._show_alert("Export Report", "No report data yet for today.")
 
         stop_btn = _ck.Button(btn_row, text="STOP", fg_color=RED, text_color=BG,
-                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                              padx=12, pady=5, cursor="hand2", command=_stop)
         stop_btn.pack(side="left", padx=(0, 8))
 
         _ck.Button(btn_row, text="Export Report", fg_color=CARD, text_color=FG,
-                  font=("Segoe UI", 9), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9), relief="flat", bd=0,
                   padx=12, pady=5, cursor="hand2",
                   command=_export).pack(side="left")
 
@@ -13138,7 +13678,7 @@ class SynthexApp:
 
             # ── window ───────────────────────────────────────────────────
             TOAST_W = 320
-            w = ctk.CTkToplevel(self._root)
+            w = _DarkToplevel(self._root)
             w.attributes("-topmost", True)
             w.attributes("-alpha", 0.0)
             w.configure(fg_color=card_col)
@@ -13161,14 +13701,14 @@ class SynthexApp:
             import textwrap
             wrapped = "\n".join(textwrap.wrap(message[:220], width=42))
             _ck.Label(top, text=wrapped, fg_color=card_col, text_color=FG,
-                     font=("Segoe UI", 9), justify="left",
+                     font=("Segoe UI Variable", 9), justify="left",
                      wraplength=230).pack(side="left", fill="x", expand=True, anchor="w")
 
             def _dismiss():
                 _toast_close(w)
 
             close_btn = _ck.Label(top, text="✕", fg_color=card_col, text_color=MUT,
-                                 font=("Segoe UI", 9), cursor="hand2")
+                                 font=("Segoe UI Variable", 9), cursor="hand2")
             close_btn.pack(side="right", anchor="n", padx=(4, 0))
             close_btn.bind("<Button-1>", lambda e: _dismiss())
             close_btn.bind("<Enter>", lambda e: close_btn.configure(text_color=FG))
@@ -13178,7 +13718,7 @@ class SynthexApp:
             if details:
                 _det = details
                 def _show_det():
-                    dw = ctk.CTkToplevel(self._root)
+                    dw = _DarkToplevel(self._root)
                     dw.withdraw()
                     dw.title("Error Details")
                     dw.configure(fg_color=BG)
@@ -13193,7 +13733,7 @@ class SynthexApp:
                     dw.deiconify()
                 det_row = _ck.Frame(inner, fg_color=card_col)
                 det_row.pack(fill="x", padx=12, pady=(0, 6))
-                _ck.Label(det_row, text="Lihat Detail →", fg_color=card_col, text_color=stripe_col, font=("Segoe UI", 8), cursor="hand2").pack(
+                _ck.Label(det_row, text="Lihat Detail →", fg_color=card_col, text_color=stripe_col, font=("Segoe UI Variable", 8), cursor="hand2").pack(
                     side="left").bind("<Button-1>", lambda e: _show_det())
 
             # action: make message clickable
@@ -13309,7 +13849,7 @@ class SynthexApp:
         accent = accent or RED
         result = tk.BooleanVar(value=False)
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()  # hide until fully built
         dlg.title("")
         dlg.resizable(False, False)
@@ -13321,29 +13861,29 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        _ck.Frame(dlg, fg_color=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        _ck.Frame(dlg, fg_color=accent, height=4).pack(fill="x")
         _ck.Label(dlg, text=title, fg_color="#0D0D14", text_color=FG,
-                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+                 font=("Segoe UI Variable", 14, "bold")).pack(pady=(22, 0))
         _ck.Label(dlg, text=message, fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 9), justify="center",
-                 wraplength=330).pack(pady=(8, 14))
-        _ck.Frame(dlg, fg_color=CARD, height=1).pack(fill="x", padx=24)
+                 font=("Segoe UI Variable", 10), justify="center",
+                 wraplength=340).pack(pady=(8, 16))
+        _ck.Frame(dlg, fg_color=CARD2, height=1).pack(fill="x", padx=24)
 
         btn_row = _ck.Frame(dlg, fg_color="#0D0D14")
-        btn_row.pack(pady=14)
+        btn_row.pack(pady=16)
 
         def _yes():
             result.set(True)
             dlg.destroy()
 
         _ck.Button(btn_row, text="  {}  ".format(confirm_text), fg_color=accent, text_color="white",
-                  relief="flat", font=("Segoe UI", 10, "bold"),
-                  cursor="hand2", command=_yes).pack(side="left", padx=(0, 8))
+                  relief="flat", font=("Segoe UI Variable", 11, "bold"),
+                  cursor="hand2", padx=16, pady=8, command=_yes).pack(side="left", padx=(0, 10))
         _ck.Button(btn_row, text="  {}  ".format(cancel_text), fg_color=CARD2, text_color=FG,
-                  relief="flat", font=("Segoe UI", 10),
-                  cursor="hand2", command=dlg.destroy).pack(side="left")
+                  relief="flat", font=("Segoe UI Variable", 11),
+                  cursor="hand2", padx=16, pady=8, command=dlg.destroy).pack(side="left")
 
-        dlg.update()
+        dlg.update_idletasks()
         dlg.deiconify()
         dlg.focus_force()
         dlg.after(120, dlg.grab_set)
@@ -13352,7 +13892,7 @@ class SynthexApp:
 
     def _show_force_download_dialog(self, tag: str, url: str):
         """Paksa update seperti game — tidak bisa di-close, download in-app, restart otomatis."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Synthex — Update Tersedia")
         dlg.configure(fg_color="#0D0D14")
@@ -13387,21 +13927,21 @@ class SynthexApp:
             pass
         title_wrap = _ck.Frame(hdr, fg_color="#0D0D14")
         title_wrap.pack(side="left")
-        _ck.Label(title_wrap, text="Synthex  {}  Tersedia".format(tag), fg_color="#0D0D14", text_color=ACC, font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        _ck.Label(title_wrap, text="Synthex  {}  Tersedia".format(tag), fg_color="#0D0D14", text_color=ACC, font=("Segoe UI Variable", 13, "bold")).pack(anchor="w")
         _ck.Label(title_wrap,
                  text="Versi kamu: v{}  →  {}".format(
-                     self.config.get("app.version", "?"), tag), fg_color="#0D0D14", text_color=MUT, font=("Segoe UI", 8)).pack(anchor="w")
+                     self.config.get("app.version", "?"), tag), fg_color="#0D0D14", text_color=MUT, font=("Segoe UI Variable", 8)).pack(anchor="w")
 
-        _ck.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.", fg_color="#0D0D14", text_color=FG, font=("Segoe UI", 9), justify="left").pack(anchor="w", pady=(0, 14))
+        _ck.Label(bd, text="Update wajib diinstal sebelum melanjutkan.\nSynthex akan restart otomatis setelah selesai.", fg_color="#0D0D14", text_color=FG, font=("Segoe UI Variable", 9), justify="left").pack(anchor="w", pady=(0, 14))
 
         status_var = tk.StringVar(value="Siap mengunduh…")
         _ck.Label(bd, textvariable=status_var, fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w")
+                 font=("Segoe UI Variable", 8)).pack(anchor="w")
 
         bar = ttk.Progressbar(bd, mode="determinate", length=400, maximum=100)
         bar.pack(anchor="w", pady=(4, 12))
 
-        btn = _ck.Button(bd, text="⬇  Download & Install Sekarang", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
+        btn = _ck.Button(bd, text="⬇  Download & Install Sekarang", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 10, "bold"),
                         relief="flat", bd=0, padx=18, pady=8, cursor="hand2")
         btn.pack(anchor="w")
 
@@ -13435,7 +13975,7 @@ class SynthexApp:
 
     def _show_force_update_dialog(self, min_ver: str):
         """Blocking dialog: user must update, cannot dismiss."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Update Diperlukan")
         dlg.configure(fg_color="#0D0D14")
@@ -13451,15 +13991,15 @@ class SynthexApp:
         bd = _ck.Frame(dlg, fg_color="#0D0D14", padx=28, pady=24)
         bd.pack(fill="both", expand=True)
         _ck.Label(bd, text="⚠ Update Wajib", fg_color="#0D0D14", text_color=RED,
-                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        _ck.Label(bd, text="Versi minimum yang diizinkan: v{}".format(min_ver), fg_color="#0D0D14", text_color=FG, font=("Segoe UI", 10)).pack(anchor="w", pady=(8,0))
+                 font=("Segoe UI Variable", 14, "bold")).pack(anchor="w")
+        _ck.Label(bd, text="Versi minimum yang diizinkan: v{}".format(min_ver), fg_color="#0D0D14", text_color=FG, font=("Segoe UI Variable", 10)).pack(anchor="w", pady=(8,0))
         _ck.Label(bd, text="Versi kamu saat ini terlalu lama dan tidak bisa digunakan.\n"
-                          "Download versi terbaru dari GitHub untuk melanjutkan.", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI", 9), justify="left").pack(
+                          "Download versi terbaru dari GitHub untuk melanjutkan.", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI Variable", 9), justify="left").pack(
             anchor="w", pady=(6,16))
         def _open_gh():
             import webbrowser
             webbrowser.open("https://github.com/Yohn18/synthex-releases/releases/latest")
-        _ck.Button(bd, text="⬇ Download Update", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
+        _ck.Button(bd, text="⬇ Download Update", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_open_gh).pack(anchor="w")
         dlg.update()
@@ -13467,7 +14007,7 @@ class SynthexApp:
 
     def _show_changelog_popup(self, cl: dict):
         """Show release notes popup (dismissable)."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Yang Baru di v{}".format(cl.get("version","")))
         dlg.configure(fg_color="#0D0D14")
@@ -13479,16 +14019,16 @@ class SynthexApp:
         bd = _ck.Frame(dlg, fg_color="#0D0D14", padx=24, pady=20)
         bd.pack(fill="both", expand=True)
         _ck.Label(bd, text="🎉 Update v{}".format(cl.get("version","")), fg_color="#0D0D14", text_color=GRN,
-                 font=("Segoe UI", 14, "bold")).pack(anchor="w")
+                 font=("Segoe UI Variable", 14, "bold")).pack(anchor="w")
         _ck.Label(bd, text="Berikut perubahan terbaru:", fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 8)).pack(anchor="w", pady=(4,8))
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(4,8))
         txt = _ck.ScrolledText(bd, fg_color=CARD, text_color=FG, relief="flat",
-                                        font=("Segoe UI", 9), height=10, wrap="word",
+                                        font=("Segoe UI Variable", 9), height=10, wrap="word",
                                         state="normal")
         txt.insert("1.0", cl.get("notes",""))
         txt.configure(state="disabled")
         txt.pack(fill="both", expand=True)
-        _ck.Button(bd, text="Mengerti, Lanjutkan", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
+        _ck.Button(bd, text="Mengerti, Lanjutkan", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=dlg.destroy).pack(anchor="e", pady=(12,0))
         dlg.update()
@@ -13497,7 +14037,7 @@ class SynthexApp:
 
     def _show_dm_popup(self, msgs: list, my_email: str, token: str):
         """Show unread DM messages from master."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Pesan dari Master")
         dlg.configure(fg_color="#0D0D14")
@@ -13508,7 +14048,7 @@ class SynthexApp:
         _ck.Frame(dlg, fg_color="#7C3AED", height=4).pack(fill="x")
         bd = _ck.Frame(dlg, fg_color="#0D0D14", padx=24, pady=18)
         bd.pack(fill="both", expand=True)
-        _ck.Label(bd, text="📬 {} Pesan Baru dari Admin".format(len(msgs)), fg_color="#0D0D14", text_color=ACC, font=("Segoe UI", 12, "bold")).pack(anchor="w")
+        _ck.Label(bd, text="📬 {} Pesan Baru dari Admin".format(len(msgs)), fg_color="#0D0D14", text_color=ACC, font=("Segoe UI Variable", 12, "bold")).pack(anchor="w")
         from datetime import datetime as _dt2
         msg_frame = _ck.Frame(bd, fg_color=CARD)
         msg_frame.pack(fill="both", expand=True, pady=(10,0))
@@ -13520,9 +14060,9 @@ class SynthexApp:
             mf.pack(fill="x")
             _ck.Frame(msg_frame, fg_color="#1c1c2e", height=1).pack(fill="x")
             _ck.Label(mf, text=t_str, fg_color=CARD, text_color=MUT,
-                     font=("Segoe UI", 7)).pack(anchor="w")
+                     font=("Segoe UI Variable", 7)).pack(anchor="w")
             _ck.Label(mf, text=m.get("message",""), fg_color=CARD, text_color=FG,
-                     font=("Segoe UI", 9), wraplength=380, justify="left").pack(anchor="w")
+                     font=("Segoe UI Variable", 9), wraplength=380, justify="left").pack(anchor="w")
         def _close():
             from modules.master_config import mark_dm_read
             for m in msgs:
@@ -13531,7 +14071,7 @@ class SynthexApp:
                         mark_dm_read(my_email, k, token),
                     daemon=True).start()
             dlg.destroy()
-        _ck.Button(bd, text="Tandai Sudah Dibaca", fg_color=ACC, text_color="white", font=("Segoe UI", 10, "bold"),
+        _ck.Button(bd, text="Tandai Sudah Dibaca", fg_color=ACC, text_color="white", font=("Segoe UI Variable", 10, "bold"),
                   relief="flat", bd=0, padx=18, pady=8, cursor="hand2",
                   command=_close).pack(anchor="e", pady=(12,0))
         dlg.update()
@@ -13545,7 +14085,7 @@ class SynthexApp:
             "error":   RED,
         }.get(kind, ACC)
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("")
         dlg.resizable(False, False)
@@ -13557,15 +14097,15 @@ class SynthexApp:
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        _ck.Frame(dlg, fg_color=accent, bd=0).place(x=0, y=0, width=W, height=3)
+        _ck.Frame(dlg, fg_color=accent, width=W, height=3).place(x=0, y=0)
         _ck.Label(dlg, text=title, fg_color="#0D0D14", text_color=FG,
-                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+                 font=("Segoe UI Variable", 13, "bold")).pack(pady=(24, 0))
         _ck.Label(dlg, text=message, fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 9), justify="center",
+                 font=("Segoe UI Variable", 9), justify="center",
                  wraplength=330).pack(pady=(8, 14))
         _ck.Frame(dlg, fg_color=CARD, height=1).pack(fill="x", padx=24)
         _ck.Button(dlg, text="  OK  ", fg_color=accent, text_color="white",
-                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  relief="flat", font=("Segoe UI Variable", 10, "bold"),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(pady=14)
 
@@ -13580,7 +14120,7 @@ class SynthexApp:
         """Custom dark-theme single-line input dialog. Returns string or None if cancelled."""
         result = [None]
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("")
         dlg.resizable(False, False)
@@ -13594,11 +14134,11 @@ class SynthexApp:
 
         _ck.Frame(dlg, fg_color=ACC, bd=0).place(x=0, y=0, width=W, height=3)
         _ck.Label(dlg, text=title, fg_color="#0D0D14", text_color=FG,
-                 font=("Segoe UI", 13, "bold")).pack(pady=(24, 0))
+                 font=("Segoe UI Variable", 13, "bold")).pack(pady=(24, 0))
         _ck.Label(dlg, text=prompt, fg_color="#0D0D14", text_color=MUT,
-                 font=("Segoe UI", 9)).pack(pady=(6, 4))
+                 font=("Segoe UI Variable", 9)).pack(pady=(6, 4))
         entry = _ck.Entry(dlg, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                         relief="flat", font=("Segoe UI", 10),
+                         relief="flat", font=("Segoe UI Variable", 10),
                          width=32, bd=6)
         entry.insert(0, initial)
         entry.pack(padx=24)
@@ -13616,11 +14156,11 @@ class SynthexApp:
         entry.bind("<Escape>", lambda e: dlg.destroy())
 
         _ck.Button(btn_row, text="  OK  ", fg_color=ACC, text_color="white",
-                  relief="flat", font=("Segoe UI", 10, "bold"),
+                  relief="flat", font=("Segoe UI Variable", 10, "bold"),
                   cursor="hand2", padx=12, pady=6,
                   command=_ok).pack(side="left", padx=(0, 8))
         _ck.Button(btn_row, text="  Batal  ", fg_color=CARD2, text_color=FG,
-                  relief="flat", font=("Segoe UI", 10),
+                  relief="flat", font=("Segoe UI Variable", 10),
                   cursor="hand2", padx=12, pady=6,
                   command=dlg.destroy).pack(side="left")
 
@@ -13868,7 +14408,7 @@ class SynthexApp:
         # Description
         _lbl(card,
              "Tambah beberapa akun Google (service account) untuk pakai di\n"
-             "beda spreadsheet atau beda Gmail.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9),
+             "beda spreadsheet atau beda Gmail.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9),
              justify="left").pack(anchor="w", pady=(0, 10))
 
         # Accounts list frame
@@ -13881,7 +14421,7 @@ class SynthexApp:
             accounts = _sc.list_accounts()
             if not accounts:
                 _lbl(list_frame,
-                     "Belum ada akun Google terhubung.", text_color=MUT, fg_color=CARD, font=("Segoe UI", 9)).pack(anchor="w")
+                     "Belum ada akun Google terhubung.", text_color=MUT, fg_color=CARD, font=("Segoe UI Variable", 9)).pack(anchor="w")
                 return
 
             # Header
@@ -13890,7 +14430,7 @@ class SynthexApp:
             for txt, w in [("Nama", 110), ("Service Account Email", 280),
                            ("Status", 70), ("Aksi", 120)]:
                 _ck.Label(hdr, text=txt, fg_color=SIDE, text_color=MUT,
-                         font=("Segoe UI", 8, "bold"),
+                         font=("Segoe UI Variable", 8, "bold"),
                          width=w // 8, anchor="w").pack(side="left", padx=4)
 
             for acc in accounts:
@@ -13899,7 +14439,7 @@ class SynthexApp:
 
                 # Name
                 name_lbl = _ck.Label(row, text=acc["name"], fg_color=BG, text_color=FG,
-                                    font=("Segoe UI", 9, "bold"),
+                                    font=("Segoe UI Variable", 9, "bold"),
                                     width=14, anchor="w")
                 name_lbl.pack(side="left", padx=(4, 0))
 
@@ -13910,7 +14450,7 @@ class SynthexApp:
                 _ck.Label(email_frame, text=email_txt[:38], fg_color=BG, text_color=GRN if acc["email"] else RED,
                          font=("Consolas", 8), anchor="w").pack(side="left")
                 _ck.Button(email_frame, text="copy", fg_color=BG, text_color=MUT,
-                          font=("Segoe UI", 7), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 7), relief="flat", bd=0,
                           cursor="hand2", padx=4,
                           command=lambda e=acc["email"]: [
                               self._root.clipboard_clear(),
@@ -13921,11 +14461,11 @@ class SynthexApp:
                 # Active badge
                 if acc["active"]:
                     _ck.Label(row, text=" AKTIF ", fg_color=GRN, text_color=BG,
-                             font=("Segoe UI", 7, "bold"),
+                             font=("Segoe UI Variable", 7, "bold"),
                              padx=4).pack(side="left", padx=(8, 0))
                 else:
                     _ck.Button(row, text="Aktifkan", fg_color=CARD, text_color=ACC,
-                              font=("Segoe UI", 8), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 8), relief="flat", bd=0,
                               padx=6, pady=2, cursor="hand2",
                               command=lambda n=acc["name"]: [
                                   _sc.set_active_account(n),
@@ -13936,7 +14476,7 @@ class SynthexApp:
 
                 # Delete
                 _ck.Button(row, text="Hapus", fg_color=CARD, text_color=RED,
-                          font=("Segoe UI", 8), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 8), relief="flat", bd=0,
                           padx=6, pady=2, cursor="hand2",
                           command=lambda n=acc["name"]: self._google_remove_account(
                               n, _refresh_accounts)
@@ -13947,12 +14487,12 @@ class SynthexApp:
         # Action buttons
         btn_row = _ck.Frame(card, fg_color=CARD)
         btn_row.pack(anchor="w", pady=(4, 0))
-        _ck.Button(btn_row, text="+ Tambah Akun Google", fg_color=ACC, text_color=BG, font=("Segoe UI", 9, "bold"),
+        _ck.Button(btn_row, text="+ Tambah Akun Google", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 9, "bold"),
                   relief="flat", bd=0, padx=14, pady=6, cursor="hand2",
                   command=lambda: self._show_sheets_setup_guide(
                       on_done=_refresh_accounts)
                   ).pack(side="left", padx=(0, 8))
-        _ck.Button(btn_row, text="Panduan Setup", fg_color=CARD, text_color=FG, font=("Segoe UI", 9),
+        _ck.Button(btn_row, text="Panduan Setup", fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 9),
                   relief="flat", bd=0, padx=10, pady=6, cursor="hand2",
                   command=lambda: self._show_sheets_setup_guide()
                   ).pack(side="left")
@@ -13974,7 +14514,7 @@ class SynthexApp:
         from tkinter import filedialog
         from modules.sheets import connector as _sc
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Setup Google Sheets — Panduan Langkah demi Langkah")
         dlg.geometry("560x500")
@@ -14085,9 +14625,9 @@ class SynthexApp:
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
         _ck.Label(hdr, text="  Panduan Setup Google Sheets", fg_color=ACC, text_color=BG,
-                 font=("Segoe UI", 12, "bold")).pack(side="left", pady=12)
+                 font=("Segoe UI Variable", 12, "bold")).pack(side="left", pady=12)
         _ck.Button(hdr, text="X", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=10, cursor="hand2",
                   command=dlg.destroy).pack(side="right", padx=8, pady=10)
 
@@ -14109,22 +14649,22 @@ class SynthexApp:
         nav.pack(fill="x", side="bottom")
 
         btn_prev = _ck.Button(nav, text="< Kembali", fg_color=SIDE, text_color=FG,
-                             font=("Segoe UI", 9), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9), relief="flat", bd=0,
                              padx=14, pady=6, cursor="hand2")
         btn_prev.pack(side="left", padx=16)
 
         step_lbl = _ck.Label(nav, text="", fg_color=CARD, text_color=MUT,
-                            font=("Segoe UI", 9))
+                            font=("Segoe UI Variable", 9))
         step_lbl.pack(side="left", expand=True)
 
         btn_close = _ck.Button(nav, text="Tutup", fg_color=SIDE, text_color=FG,
-                              font=("Segoe UI", 9), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 9), relief="flat", bd=0,
                               padx=14, pady=6, cursor="hand2",
                               command=dlg.destroy)
         btn_close.pack(side="right", padx=16)
 
         btn_next = _ck.Button(nav, text="Lanjut >", fg_color=ACC, text_color=BG,
-                             font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                             font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                              padx=14, pady=6, cursor="hand2")
         btn_next.pack(side="right", padx=(0, 8))
 
@@ -14152,21 +14692,21 @@ class SynthexApp:
             top_row = _ck.Frame(content_frame, fg_color=BG)
             top_row.pack(fill="x", pady=(8, 4))
             _ck.Label(top_row, text=step["icon"], fg_color=step["color"], text_color=BG,
-                     font=("Segoe UI", 11, "bold"), width=3, pady=4,
+                     font=("Segoe UI Variable", 11, "bold"), width=3, pady=4,
                      ).pack(side="left")
             _ck.Label(top_row, text="  " + step["title"], fg_color=BG, text_color=FG,
-                     font=("Segoe UI", 11, "bold"), anchor="w",
+                     font=("Segoe UI Variable", 11, "bold"), anchor="w",
                      ).pack(side="left", fill="x", expand=True)
 
             _ck.Frame(content_frame, fg_color=SIDE, height=1).pack(fill="x", pady=(4, 10))
 
             _ck.Label(content_frame, text=step["body"], fg_color=BG, text_color=MUT,
-                     font=("Segoe UI", 10), justify="left", anchor="nw",
+                     font=("Segoe UI Variable", 10), justify="left", anchor="nw",
                      wraplength=500).pack(anchor="w", fill="x")
 
             if step.get("btn_label"):
                 _ck.Button(content_frame, text=step["btn_label"], fg_color=step["color"], text_color=BG,
-                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                           padx=14, pady=7, cursor="hand2",
                           command=step["btn_cmd"]).pack(anchor="w", pady=(14, 0))
 
@@ -14174,14 +14714,14 @@ class SynthexApp:
                 up_row = _ck.Frame(content_frame, fg_color=BG)
                 up_row.pack(fill="x", pady=(12, 0))
                 _ck.Label(up_row, text="Nama akun (bebas):", fg_color=BG, text_color=MUT,
-                         font=("Segoe UI", 9)).pack(side="left")
+                         font=("Segoe UI Variable", 9)).pack(side="left")
                 _ck.Entry(up_row, textvariable=upload_name_var, fg_color=CARD, text_color=FG, insertbackground=ACC,
-                         font=("Segoe UI", 10), relief="flat",
+                         font=("Segoe UI Variable", 10), relief="flat",
                          bd=0, highlightthickness=1,
                          highlightbackground=SIDE, highlightcolor=ACC,
                          width=18).pack(side="left", padx=(8, 0))
 
-                status_up = _ck.Label(content_frame, textvariable=upload_status_var, fg_color=BG, text_color=GRN, font=("Segoe UI", 9),
+                status_up = _ck.Label(content_frame, textvariable=upload_status_var, fg_color=BG, text_color=GRN, font=("Segoe UI Variable", 9),
                                      wraplength=500, justify="left")
 
                 def _do_upload(s_lbl=status_up):
@@ -14206,7 +14746,7 @@ class SynthexApp:
                         upload_status_var.set("Gagal: {}".format(msg))
                         s_lbl.configure(text_color=RED)
 
-                _ck.Button(content_frame, text="Pilih File credentials.json", fg_color=ACC, text_color=BG, font=("Segoe UI", 10, "bold"),
+                _ck.Button(content_frame, text="Pilih File credentials.json", fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 10, "bold"),
                           relief="flat", bd=0, padx=16, pady=8,
                           cursor="hand2", command=_do_upload
                           ).pack(anchor="w", pady=(10, 0))
@@ -14222,7 +14762,7 @@ class SynthexApp:
                 share_f.pack(fill="x", pady=(14, 0))
                 _ck.Label(share_f,
                          text="Email service account (salin & tempel ke Share):", fg_color=CARD, text_color=YEL,
-                         font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                         font=("Segoe UI Variable", 9, "bold")).pack(anchor="w")
                 em_row = _ck.Frame(share_f, fg_color=CARD)
                 em_row.pack(fill="x", pady=(6, 0))
                 disp = email_show or "(belum ada akun - selesaikan langkah 5 dulu)"
@@ -14230,7 +14770,7 @@ class SynthexApp:
                          font=("Consolas", 10, "bold")).pack(side="left")
                 if email_show:
                     _ck.Button(em_row, text="Salin", fg_color=ACC, text_color=BG,
-                              font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                              font=("Segoe UI Variable", 8, "bold"), relief="flat", bd=0,
                               padx=10, pady=3, cursor="hand2",
                               command=lambda e=email_show: [
                                   self._root.clipboard_clear(),
@@ -14239,7 +14779,7 @@ class SynthexApp:
                               ]).pack(side="left", padx=(10, 0))
 
                 _ck.Button(content_frame, text="Buka Google Sheets sekarang", fg_color=GRN, text_color=BG,
-                          font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                           padx=14, pady=7, cursor="hand2",
                           command=lambda: webbrowser.open("https://sheets.google.com")
                           ).pack(anchor="w", pady=(14, 0))
@@ -14267,7 +14807,7 @@ class SynthexApp:
 
         templates = _load_templates()
         if not templates:
-            _lbl(f, "Tidak ada template ditemukan.", text_color=MUT, font=("Segoe UI", 10)).pack(padx=24, pady=20)
+            _lbl(f, "Tidak ada template ditemukan.", text_color=MUT, font=("Segoe UI Variable", 10)).pack(padx=24, pady=20)
             return f
 
         # Scrollable canvas
@@ -14319,17 +14859,17 @@ class SynthexApp:
             hrow.pack(fill="x")
             cont = tk.BooleanVar(value=tpl.get("continuous_mode", False))
             _lbl(hrow, tpl.get("name", ""), fg_color=CARD, text_color=FG,
-                 font=("Segoe UI", 12, "bold")).pack(side="left")
+                 font=("Segoe UI Variable", 12, "bold")).pack(side="left")
             if cont.get():
                 _ck.Label(hrow, text=" LOOP ", fg_color=YEL, text_color=BG,
-                         font=("Segoe UI", 7, "bold"),
+                         font=("Segoe UI Variable", 7, "bold"),
                          padx=4).pack(side="left", padx=(8, 0))
             steps_count = len(tpl.get("steps", []))
             _lbl(hrow, "  {} steps".format(steps_count), text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 9)).pack(side="left")
+                 font=("Segoe UI Variable", 9)).pack(side="left")
 
             _lbl(body, tpl.get("description", ""), text_color=MUT, fg_color=CARD,
-                 font=("Segoe UI", 9), justify="left").pack(
+                 font=("Segoe UI Variable", 9), justify="left").pack(
                 anchor="w", pady=(4, 8))
 
             # Step preview chips
@@ -14352,13 +14892,13 @@ class SynthexApp:
             btn_row.pack(anchor="w")
             _ck.Button(
                 btn_row, text="Load Template", fg_color=card_acc, text_color=BG,
-                font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                 padx=14, pady=5, cursor="hand2",
                 command=lambda t=tpl: self._mb_open_with_template(t)
             ).pack(side="left", padx=(0, 8))
             _ck.Button(
                 btn_row, text="Preview Steps", fg_color=CARD, text_color=FG,
-                font=("Segoe UI", 9), relief="flat", bd=0,
+                font=("Segoe UI Variable", 9), relief="flat", bd=0,
                 padx=10, pady=5, cursor="hand2",
                 command=lambda t=tpl: self._template_preview(t)
             ).pack(side="left")
@@ -14367,7 +14907,7 @@ class SynthexApp:
 
     def _template_preview(self, tpl):
         """Show a popup with all steps of a template."""
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Preview: {}".format(tpl.get("name", "")))
         dlg.geometry("560x480")
@@ -14375,8 +14915,8 @@ class SynthexApp:
         dlg.resizable(True, True)
 
         _lbl(dlg, tpl.get("name", ""),
-             font=("Segoe UI", 13, "bold")).pack(anchor="w", padx=20, pady=(16, 2))
-        _lbl(dlg, tpl.get("description", ""), text_color=MUT, font=("Segoe UI", 9)).pack(anchor="w", padx=20, pady=(0, 10))
+             font=("Segoe UI Variable", 13, "bold")).pack(anchor="w", padx=20, pady=(16, 2))
+        _lbl(dlg, tpl.get("description", ""), text_color=MUT, font=("Segoe UI Variable", 9)).pack(anchor="w", padx=20, pady=(0, 10))
         _ck.Frame(dlg, fg_color=SIDE, height=1).pack(fill="x", padx=20)
 
         lf = _ck.Frame(dlg, fg_color=CARD, padx=10, pady=10)
@@ -14401,7 +14941,7 @@ class SynthexApp:
         btn_f = _ck.Frame(dlg, fg_color=BG)
         btn_f.pack(fill="x", padx=20, pady=(0, 16))
         _ck.Button(btn_f, text="Load this Template", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 10, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 10, "bold"), relief="flat", bd=0,
                   padx=14, pady=7, cursor="hand2",
                   command=lambda: [dlg.destroy(),
                                    self._mb_open_with_template(tpl)]).pack(side="left")
@@ -14441,11 +14981,11 @@ class SynthexApp:
         for lv in ("ALL", "INFO", "WARNING", "ERROR"):
             _ck.Radiobutton(tb, text=lv, variable=level_var, value=lv, fg_color=BG, text_color=FG, selectcolor=CARD,
                            activebackground=BG, activeforeground=ACC,
-                           font=("Segoe UI", 8),
+                           font=("Segoe UI Variable", 8),
                            command=_apply_filter).pack(side="left", padx=(0, 8))
 
         _ck.Button(tb, text="Clear", fg_color=CARD, text_color=RED,
-                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 8, "bold"), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=lambda: [
                       lw.configure(state="normal"),
@@ -14453,7 +14993,7 @@ class SynthexApp:
                       lw.configure(state="disabled")
                   ]).pack(side="right")
         _ck.Button(tb, text="Copy All", fg_color=CARD, text_color=FG,
-                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=lambda: [
                       self._root.clipboard_clear(),
@@ -14516,11 +15056,11 @@ class SynthexApp:
                 self._show_toast("Gagal export: {}".format(ex), kind="error")
 
         _ck.Button(tb, text="Export CSV", fg_color=CARD, text_color=GRN,
-                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=_export_csv).pack(side="right", padx=(0, 4))
         _ck.Button(tb, text="Export TXT", fg_color=CARD, text_color=ACC,
-                  font=("Segoe UI", 8), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 8), relief="flat", bd=0,
                   padx=10, pady=3, cursor="hand2",
                   command=_export_txt).pack(side="right", padx=(0, 4))
 
@@ -14568,7 +15108,7 @@ class SynthexApp:
         f.bind("<Destroy>", _on_destroy)
 
         # Guide hint
-        _ck.Label(f, text="Logs dari semua modul (browser, sheets, scheduler, macro) muncul otomatis.", fg_color=BG, text_color=MUT, font=("Segoe UI", 7)).pack(padx=20, pady=(0, 4))
+        _ck.Label(f, text="Logs dari semua modul (browser, sheets, scheduler, macro) muncul otomatis.", fg_color=BG, text_color=MUT, font=("Segoe UI Variable", 7)).pack(padx=20, pady=(0, 4))
         return f
 
     # ================================================================
@@ -14715,7 +15255,7 @@ class SynthexApp:
 
         # ── Window ───────────────────────────────────────────────────────
         OW, PAD = 520, 12
-        ov = ctk.CTkToplevel(self._root)
+        ov = _DarkToplevel(self._root)
         ov.attributes("-topmost", True)
         ov.attributes("-alpha", 0.0)
         ov.configure(fg_color="#0A0A14")
@@ -14730,14 +15270,14 @@ class SynthexApp:
         s_row = _ck.Frame(body, fg_color="#0D0D18")
         s_row.pack(fill="x", padx=PAD, pady=(PAD, 0))
         _ck.Label(s_row, text="🔍", fg_color="#0D0D18", text_color=MUT,
-                 font=("Segoe UI", 11)).pack(side="left", padx=(0, 6))
+                 font=("Segoe UI Variable", 11)).pack(side="left", padx=(0, 6))
         _var = tk.StringVar()
         entry = _ck.Entry(s_row, textvariable=_var, fg_color="#0D0D18", text_color=FG,
-                         font=("Segoe UI", 12), relief="flat", bd=0,
+                         font=("Segoe UI Variable", 12), relief="flat", bd=0,
                          insertbackground=ACC, width=36)
         entry.pack(side="left", fill="x", expand=True, ipady=6)
         _ck.Label(s_row, text="Esc", fg_color="#1A1A28", text_color=MUT,
-                 font=("Segoe UI", 7), padx=5, pady=2).pack(side="right")
+                 font=("Segoe UI Variable", 7), padx=5, pady=2).pack(side="right")
 
         _ck.Frame(body, fg_color="#1c1c2e", height=1).pack(fill="x", pady=(PAD, 0))
 
@@ -14746,7 +15286,7 @@ class SynthexApp:
         results_frame.pack(fill="both", expand=True, pady=(0, PAD))
 
         # hint label (shown when empty results)
-        hint_lbl = _ck.Label(results_frame, text="Tidak ada hasil ditemukan.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI", 9))
+        hint_lbl = _ck.Label(results_frame, text="Tidak ada hasil ditemukan.", fg_color="#0D0D18", text_color=MUT, font=("Segoe UI Variable", 9))
 
         _rows: list = []      # list of (frame, key) for keyboard nav
         _sel  = [0]           # currently highlighted index
@@ -14807,14 +15347,14 @@ class SynthexApp:
                 tf = _ck.Frame(rf, fg_color="#0D0D18")
                 tf.pack(side="left", fill="x", expand=True, pady=6)
                 _ck.Label(tf, text=label, fg_color="#0D0D18", text_color=FG,
-                         font=("Segoe UI", 10, "bold"), anchor="w").pack(anchor="w")
+                         font=("Segoe UI Variable", 10, "bold"), anchor="w").pack(anchor="w")
                 if desc:
                     _ck.Label(tf, text=desc, fg_color="#0D0D18", text_color=MUT,
-                             font=("Segoe UI", 8), anchor="w").pack(anchor="w")
+                             font=("Segoe UI Variable", 8), anchor="w").pack(anchor="w")
 
                 # arrow hint
                 _ck.Label(rf, text="↵", fg_color="#0D0D18", text_color="#2A2A44",
-                         font=("Segoe UI", 10), padx=10).pack(side="right")
+                         font=("Segoe UI Variable", 10), padx=10).pack(side="right")
 
                 _rows.append((rf, key))
                 _cur_idx = len(_rows) - 1
@@ -14890,7 +15430,7 @@ class SynthexApp:
             "Butuh bantuan lebih? Hubungi Yohn18."
         ))
 
-        dlg = ctk.CTkToplevel(self._root)
+        dlg = _DarkToplevel(self._root)
         dlg.withdraw()
         dlg.title("Panduan - {}".format(page.capitalize()))
         dlg.geometry("480x400")
@@ -14902,16 +15442,16 @@ class SynthexApp:
         hdr = _ck.Frame(dlg, fg_color=ACC, height=42)
         hdr.pack(fill="x")
         hdr.pack_propagate(False)
-        _ck.Label(hdr, text="  Panduan: {}".format(page.upper()), fg_color=ACC, text_color=BG, font=("Segoe UI", 11, "bold")).pack(
+        _ck.Label(hdr, text="  Panduan: {}".format(page.upper()), fg_color=ACC, text_color=BG, font=("Segoe UI Variable", 11, "bold")).pack(
             side="left", pady=10)
         _ck.Button(hdr, text="X", fg_color=ACC, text_color=BG,
-                  font=("Segoe UI", 9, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI Variable", 9, "bold"), relief="flat", bd=0,
                   padx=10, cursor="hand2",
                   command=dlg.destroy).pack(side="right", pady=8, padx=8)
 
         # Content
         txt = _ck.ScrolledText(
-            dlg, fg_color=CARD, text_color=FG, font=("Segoe UI", 10),
+            dlg, fg_color=CARD, text_color=FG, font=("Segoe UI Variable", 10),
             relief="flat", wrap="word", padx=16, pady=12,
             state="normal")
         txt.pack(fill="both", expand=True, padx=10, pady=10)
@@ -14922,11 +15462,11 @@ class SynthexApp:
         nav_f = _ck.Frame(dlg, fg_color=BG)
         nav_f.pack(fill="x", padx=10, pady=(0, 10))
         _lbl(nav_f, "Panduan lain:", text_color=MUT, fg_color=BG,
-             font=("Segoe UI", 8)).pack(side="left", padx=(0, 6))
+             font=("Segoe UI Variable", 8)).pack(side="left", padx=(0, 6))
         for pg in ("home", "record", "spy", "schedule", "templates", "sheet", "logs"):
             if pg != page:
                 _ck.Button(nav_f, text=pg, fg_color=CARD, text_color=MUT,
-                          font=("Segoe UI", 7), relief="flat", bd=0,
+                          font=("Segoe UI Variable", 7), relief="flat", bd=0,
                           padx=6, pady=2, cursor="hand2",
                           command=lambda p=pg, d=dlg: [
                               d.destroy(), self._show("{}".format(p)),
@@ -14940,36 +15480,36 @@ class SynthexApp:
         if getattr(self, "_quit_open", False):
             return
         self._quit_open = True
-        dlg = ctk.CTkToplevel(self._root)
-        dlg.withdraw()  # hide until fully built
+
+        # Gunakan tk.Toplevel biasa (bukan CTkToplevel) agar tidak kena
+        # internal CTkToplevel Windows timer yang memanggil withdraw() setelah deiconify()
+        dlg = tk.Toplevel(self._root)
+        dlg.withdraw()
         dlg.title("Tutup Synthex")
         dlg.resizable(False, False)
-        dlg.configure(fg_color="#0D0D14")
+        dlg.configure(bg="#0D0D14")
         dlg.attributes("-topmost", True)
+        dlg.overrideredirect(False)
 
-        W, H = 360, 210
+        W, H = 380, 230
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
         dlg.geometry("{}x{}+{}+{}".format(W, H, (sw - W) // 2, (sh - H) // 2))
 
-        # Border frame
-        border = _ck.Frame(dlg, fg_color=ACC)
-        border.place(x=0, y=0, width=W, height=3)
+        tk.Frame(dlg, bg=RED, height=4).pack(fill="x")
 
-        # Icon + title
-        _ck.Label(dlg, text="✕", fg_color="#0D0D14", text_color=ACC,
-                 font=("Segoe UI", 22, "bold")).pack(pady=(22, 0))
+        _ck.Label(dlg, text="⚠", fg_color="#0D0D14", text_color=RED,
+                 font=("Segoe UI Variable", 28)).pack(pady=(20, 0))
         _ck.Label(dlg, text="Tutup Synthex?", fg_color="#0D0D14", text_color=FG,
-                 font=("Segoe UI", 13, "bold")).pack(pady=(6, 0))
-        _ck.Label(dlg, text="Kamu akan otomatis ter-logout\ndan semua proses akan dihentikan.", fg_color="#0D0D14", text_color=MUT, font=("Segoe UI", 9),
-                 justify="center").pack(pady=(6, 16))
+                 font=("Segoe UI Variable", 15, "bold")).pack(pady=(6, 0))
+        _ck.Label(dlg, text="Semua proses akan dihentikan\ndan kamu akan ter-logout otomatis.",
+                 fg_color="#0D0D14", text_color=MUT, font=("Segoe UI Variable", 10),
+                 justify="center").pack(pady=(6, 18))
 
-        # Separator
-        _ck.Frame(dlg, fg_color=CARD, height=1).pack(fill="x", padx=24)
+        tk.Frame(dlg, bg=CARD2, height=1).pack(fill="x", padx=28)
 
-        # Buttons
         btn_row = _ck.Frame(dlg, fg_color="#0D0D14")
-        btn_row.pack(pady=16)
+        btn_row.pack(pady=18)
 
         def _do_quit():
             dlg.destroy()
@@ -15027,25 +15567,20 @@ class SynthexApp:
             else:
                 _os._exit(0)
 
-        _ck.Button(btn_row, text="  Ya, Tutup  ", fg_color=RED, text_color="white", relief="flat", font=("Segoe UI", 10, "bold"),
-                  cursor="hand2", padx=14, pady=7,
-                  command=_do_quit).pack(side="left", padx=(0, 10))
+        _ck.Button(btn_row, text="  Ya, Tutup  ", fg_color=RED, text_color="white", relief="flat",
+                  font=("Segoe UI Variable", 11, "bold"),
+                  cursor="hand2", padx=18, pady=9,
+                  command=_do_quit).pack(side="left", padx=(0, 12))
         def _cancel():
             self._quit_open = False
             dlg.destroy()
 
         _ck.Button(btn_row, text="  Batal  ", fg_color=CARD2, text_color=FG,
-                  relief="flat", font=("Segoe UI", 10),
-                  cursor="hand2", padx=14, pady=7,
+                  relief="flat", font=("Segoe UI Variable", 11),
+                  cursor="hand2", padx=18, pady=9,
                   command=_cancel).pack(side="left")
 
         dlg.protocol("WM_DELETE_WINDOW", _cancel)
-        try:
-            dlg.update()
-            dlg.deiconify()
-            dlg.focus_force()
-            # Delay grab_set agar window sudah terrender sepenuhnya di Windows
-            # Immediate grab_set pada CTkToplevel yang belum render → dialog blank + freeze
-            dlg.after(120, dlg.grab_set)
-        except Exception:
-            self._quit_open = False
+        dlg.update_idletasks()
+        dlg.deiconify()
+        dlg.focus_force()
