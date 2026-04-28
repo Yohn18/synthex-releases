@@ -167,7 +167,38 @@ class UserData:
 def _lbl(parent, text, text_color=FG, fg_color="transparent", font=("Segoe UI", 11), **kw):
     return _ck.Label(parent, text=text, text_color=text_color, fg_color=fg_color, font=font, **kw)
 
-_bg_pending: dict = {}
+_bg_pending:  dict = {}
+_cfg_pending: dict = {}
+
+
+def _debounced_configure(canvas, inner_wid, delay=25):
+    """Return (on_canvas_resize, on_frame_resize) handlers dengan debounce.
+    Mencegah bbox/itemconfig dipanggil setiap piksel saat window di-resize."""
+    k_cv = ("cv", id(canvas))
+    k_fr = ("fr", id(canvas))
+
+    def _on_canvas(e, _c=canvas, _w=inner_wid):
+        prev = _cfg_pending.get(k_cv)
+        if prev:
+            try: _c.after_cancel(prev)
+            except Exception: pass
+        _cfg_pending[k_cv] = _c.after(delay, lambda: (
+            _cfg_pending.pop(k_cv, None),
+            _c.itemconfig(_w, width=_c.winfo_width()) if _c.winfo_exists() else None
+        ))
+
+    def _on_frame(e, _c=canvas):
+        prev = _cfg_pending.get(k_fr)
+        if prev:
+            try: _c.after_cancel(prev)
+            except Exception: pass
+        _cfg_pending[k_fr] = _c.after(delay, lambda: (
+            _cfg_pending.pop(k_fr, None),
+            _c.configure(scrollregion=_c.bbox("all")) if _c.winfo_exists() else None
+        ))
+
+    return _on_canvas, _on_frame
+
 
 def _deep_bg(widget, color):
     """Set fg_color on widget and all children. Debounced per widget to avoid
@@ -716,9 +747,8 @@ class SynthexApp:
 
         dlg.update()
         dlg.deiconify()
-
-        dlg.grab_set()
         dlg.focus_force()
+        dlg.after(120, dlg.grab_set)
 
     def run(self):
         self._start_tray()
@@ -1004,9 +1034,9 @@ class SynthexApp:
         _side_sb.config(command=_side_cv.yview)
         _side_inner = _ck.Frame(_side_cv, fg_color=SIDE)
         _side_win = _side_cv.create_window((0, 0), window=_side_inner, anchor="nw")
-        _side_inner.bind("<Configure>", lambda e: _side_cv.configure(
-            scrollregion=_side_cv.bbox("all")))
-        _side_cv.bind("<Configure>", lambda e: _side_cv.itemconfig(_side_win, width=e.width))
+        _side_on_cv, _side_on_fr = _debounced_configure(_side_cv, _side_win)
+        _side_inner.bind("<Configure>", _side_on_fr)
+        _side_cv.bind("<Configure>", _side_on_cv)
         _side_cv.bind("<MouseWheel>", lambda e: _side_cv.yview_scroll(
             int(-1*(e.delta/120)), "units"))
 
@@ -1410,8 +1440,9 @@ class SynthexApp:
         sb.config(command=cv.yview)
         body = _ck.Frame(cv, fg_color=BG)
         _wid = cv.create_window((0, 0), window=body, anchor="nw")
-        body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
-        cv.bind("<Configure>", lambda e: cv.itemconfig(_wid, width=e.width))
+        _home_on_cv, _home_on_fr = _debounced_configure(cv, _wid)
+        body.bind("<Configure>", _home_on_fr)
+        cv.bind("<Configure>", _home_on_cv)
         def _home_scroll(e, _cv=cv):
             try:
                 if _cv.winfo_exists() and _cv.winfo_ismapped():
@@ -15003,7 +15034,12 @@ class SynthexApp:
                   command=_cancel).pack(side="left")
 
         dlg.protocol("WM_DELETE_WINDOW", _cancel)
-        dlg.update()
-        dlg.deiconify()
-        dlg.grab_set()
-        dlg.focus_force()
+        try:
+            dlg.update()
+            dlg.deiconify()
+            dlg.focus_force()
+            # Delay grab_set agar window sudah terrender sepenuhnya di Windows
+            # Immediate grab_set pada CTkToplevel yang belum render → dialog blank + freeze
+            dlg.after(120, dlg.grab_set)
+        except Exception:
+            self._quit_open = False
