@@ -167,13 +167,33 @@ class UserData:
 def _lbl(parent, text, text_color=FG, fg_color="transparent", font=("Segoe UI", 11), **kw):
     return _ck.Label(parent, text=text, text_color=text_color, fg_color=fg_color, font=font, **kw)
 
+_bg_pending: dict = {}
+
 def _deep_bg(widget, color):
+    """Set fg_color on widget and all children. Debounced per widget to avoid
+    blocking scroll events when hover fires rapidly during fast scrolling."""
+    wid = id(widget)
+    prev = _bg_pending.get(wid)
+    if prev:
+        try:
+            widget.after_cancel(prev)
+        except Exception:
+            pass
+    def _apply(w=widget, c=color):
+        _bg_pending.pop(wid, None)
+        try:
+            w.configure(fg_color=c)
+        except Exception:
+            pass
+        for child in w.winfo_children():
+            try:
+                child.configure(fg_color=c)
+            except Exception:
+                pass
     try:
-        widget.configure(fg_color=color)
+        _bg_pending[wid] = widget.after(16, _apply)
     except Exception:
         pass
-    for child in widget.winfo_children():
-        _deep_bg(child, color)
 
 def _card(parent, title=""):
     f = _ck.Frame(parent, fg_color=CARD)
@@ -1392,8 +1412,13 @@ class SynthexApp:
         _wid = cv.create_window((0, 0), window=body, anchor="nw")
         body.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
         cv.bind("<Configure>", lambda e: cv.itemconfig(_wid, width=e.width))
-        cv.bind_all("<MouseWheel>", lambda e: cv.yview_scroll(
-            int(-1 * (e.delta / 120)), "units"))
+        def _home_scroll(e, _cv=cv):
+            try:
+                if _cv.winfo_exists() and _cv.winfo_ismapped():
+                    _cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            except Exception:
+                pass
+        cv.bind_all("<MouseWheel>", _home_scroll)
 
         # ── helper: hover card effect ────────────────────────────────────────
         def _card_hover(widget, children, bg_on, bg_off, border_on=None,
@@ -8754,8 +8779,13 @@ class SynthexApp:
                        lambda e: msg_cv.configure(scrollregion=msg_cv.bbox("all")))
         msg_cv.bind("<Configure>",
                     lambda e: msg_cv.itemconfig(_mwid, width=e.width))
-        msg_cv.bind_all("<MouseWheel>",
-                        lambda e: msg_cv.yview_scroll(int(-1*(e.delta/120)), "units"))
+        def _blog_scroll(e, _cv=msg_cv):
+            try:
+                if _cv.winfo_exists() and _cv.winfo_ismapped():
+                    _cv.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            except Exception:
+                pass
+        msg_cv.bind_all("<MouseWheel>", _blog_scroll)
 
         # Status / loading label
         _status = tk.StringVar(value="Memuat pesan…")
