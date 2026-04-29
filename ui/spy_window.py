@@ -15,17 +15,7 @@ from tkinter import messagebox
 from core.logger import get_logger
 
 # ── Palette ──────────────────────────────────────────────────────────────────
-BG    = "#0A0A0F"
-CARD  = "#12121A"
-CARD2 = "#1A1A28"
-ACC   = "#6C4AFF"
-ACC2  = "#4A9EFF"
-FG    = "#E0DFFF"
-MUT   = "#555575"
-GRN   = "#4CAF88"
-RED   = "#F06070"
-YEL   = "#F0C060"
-BORD  = "#2A2A44"
+from ui.palette import BG, CARD, CARD2, ACC, ACC2, FG, MUT, GRN, RED, YEL, BORD
 
 SAVED_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                           "..", "data", "spy_coords.json")
@@ -512,7 +502,7 @@ class FloatingSpyWindow:
             f = tk.Frame(win, bg=CARD, padx=8, pady=5)
             f.pack(fill="x", padx=4, pady=(4, 0))
             tk.Label(f, text=label, bg=CARD, fg=ACC2,
-                     font=("Segoe UI", 7, "bold")).pack(anchor="w")
+                     font=("Segoe UI", 8, "bold")).pack(anchor="w")
             tk.Frame(f, bg=BORD, height=1).pack(fill="x", pady=(2, 4))
             return f
 
@@ -520,9 +510,9 @@ class FloatingSpyWindow:
             row = tk.Frame(parent, bg=CARD)
             row.pack(fill="x", pady=1)
             tk.Label(row, text="{:<9}".format(label), bg=CARD, fg=MUT,
-                     font=("Consolas", 8), width=10, anchor="w").pack(side="left")
+                     font=("Consolas", 9), width=10, anchor="w").pack(side="left")
             tk.Label(row, textvariable=var, bg=CARD, fg=fg,
-                     font=("Consolas", 9), anchor="w",
+                     font=("Consolas", 10), anchor="w",
                      wraplength=190).pack(side="left", fill="x", expand=True)
             return row
 
@@ -537,11 +527,11 @@ class FloatingSpyWindow:
         crow = tk.Frame(ms, bg=CARD)
         crow.pack(fill="x", pady=1)
         tk.Label(crow, text="{:<9}".format("Color"), bg=CARD, fg=MUT,
-                 font=("Consolas", 8), width=10, anchor="w").pack(side="left")
+                 font=("Consolas", 9), width=10, anchor="w").pack(side="left")
         tk.Label(crow, textvariable=self._v_color, bg=CARD, fg=FG,
-                 font=("Consolas", 9), anchor="w").pack(side="left")
-        self._color_swatch = tk.Label(crow, text="   ", bg="#000000",
-                                      relief="flat", width=3)
+                 font=("Consolas", 10), anchor="w").pack(side="left")
+        self._color_swatch = tk.Label(crow, text="    ", bg="#000000",
+                                      relief="groove", width=4)
         self._color_swatch.pack(side="left", padx=(6, 0))
 
         # ── Window ────────────────────────────────────────────────────────────
@@ -570,15 +560,15 @@ class FloatingSpyWindow:
         eq = tk.Frame(ef, bg=CARD)
         eq.pack(fill="x", pady=(4, 0))
         tk.Button(eq, text="COPY CSS", bg=CARD2, fg=ACC2,
-                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=6, pady=3, cursor="hand2",
                   command=self._copy_css).pack(side="left", padx=(0, 4))
         tk.Button(eq, text="COPY TEXT", bg=CARD2, fg=FG,
-                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=6, pady=3, cursor="hand2",
                   command=self._copy_text).pack(side="left", padx=(0, 4))
         tk.Button(eq, text="BUAT STEP", bg=ACC, fg="#FFFFFF",
-                  font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
+                  font=("Segoe UI", 8, "bold"), relief="flat", bd=0,
                   padx=6, pady=3, cursor="hand2",
                   command=self._copy_as_step).pack(side="left")
 
@@ -586,17 +576,17 @@ class FloatingSpyWindow:
         sf = tk.Frame(win, bg=CARD2, padx=8, pady=6)
         sf.pack(fill="x", padx=4, pady=(6, 0))
         tk.Label(sf, text="Save Coordinate", bg=CARD2, fg=ACC2,
-                 font=("Segoe UI", 7, "bold")).pack(anchor="w")
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w")
         tk.Frame(sf, bg=BORD, height=1).pack(fill="x", pady=(2, 4))
 
         name_row = tk.Frame(sf, bg=CARD2)
         name_row.pack(fill="x")
         tk.Label(name_row, text="Name:", bg=CARD2, fg=MUT,
-                 font=("Consolas", 8)).pack(side="left")
+                 font=("Consolas", 9)).pack(side="left")
         self._name_var = tk.StringVar()
         name_entry = tk.Entry(name_row, textvariable=self._name_var,
                               bg=CARD, fg=FG, insertbackground=ACC,
-                              font=("Consolas", 9), relief="flat",
+                              font=("Consolas", 10), relief="flat",
                               bd=4, highlightthickness=1,
                               highlightbackground=BORD,
                               highlightcolor=ACC)
@@ -627,9 +617,9 @@ class FloatingSpyWindow:
         list_hdr = tk.Frame(lf, bg=CARD)
         list_hdr.pack(fill="x")
         tk.Label(list_hdr, text="Saved Coordinates", bg=CARD, fg=ACC2,
-                 font=("Segoe UI", 7, "bold")).pack(side="left")
+                 font=("Segoe UI", 8, "bold")).pack(side="left")
         tk.Button(list_hdr, text="DELETE ALL", bg=CARD, fg=RED,
-                  font=("Segoe UI", 7), relief="flat", bd=0,
+                  font=("Segoe UI", 8), relief="flat", bd=0,
                   cursor="hand2", command=self._delete_all).pack(side="right")
         tk.Frame(lf, bg=BORD, height=1).pack(fill="x", pady=(2, 3))
 
@@ -644,7 +634,7 @@ class FloatingSpyWindow:
         self._listbox = tk.Listbox(
             list_frame,
             bg=CARD, fg=FG, selectbackground=ACC, selectforeground="#FFFFFF",
-            font=("Consolas", 8), relief="flat", bd=0,
+            font=("Consolas", 9), relief="flat", bd=0,
             highlightthickness=0, activestyle="none",
             yscrollcommand=sb.set)
         self._listbox.pack(side="left", fill="both", expand=True)
@@ -654,7 +644,7 @@ class FloatingSpyWindow:
         self._listbox.bind("<<ListboxSelect>>", self._on_list_sel)
 
         tk.Label(lf, text="Klik: detail  |  Double: copy CSS/XY  |  Kanan: menu",
-                 bg=CARD, fg=MUT, font=("Segoe UI", 7)).pack(pady=(3, 0))
+                 bg=CARD, fg=MUT, font=("Segoe UI", 8)).pack(pady=(3, 0))
 
         # ── Detail panel ────────────────────────────────────────────────
         self._detail_frame = tk.Frame(win, bg=CARD2, padx=6, pady=4,
@@ -662,12 +652,12 @@ class FloatingSpyWindow:
         self._detail_frame.pack(fill="x", padx=4, pady=(0, 2))
         self._detail_frame.pack_propagate(False)
         tk.Label(self._detail_frame, text="Klik item untuk lihat detail",
-                 bg=CARD2, fg=MUT, font=("Segoe UI", 7)).pack(anchor="w")
+                 bg=CARD2, fg=MUT, font=("Segoe UI", 8)).pack(anchor="w")
 
         # ── Status ────────────────────────────────────────────────────────────
         self._v_status = tk.StringVar(value="Hover to inspect")
         tk.Label(win, textvariable=self._v_status,
-                 bg=BG, fg=MUT, font=("Segoe UI", 7),
+                 bg=BG, fg=MUT, font=("Segoe UI", 8),
                  wraplength=self.W - 10).pack(pady=(2, 4))
 
         self._refresh_list()
@@ -940,9 +930,9 @@ class FloatingSpyWindow:
             row = tk.Frame(self._detail_frame, bg=CARD2)
             row.pack(fill="x", pady=1)
             tk.Label(row, text="{:<7}".format(label), bg=CARD2, fg=MUT,
-                     font=("Consolas", 7), width=8, anchor="w").pack(side="left")
+                     font=("Consolas", 8), width=8, anchor="w").pack(side="left")
             tk.Label(row, text=str(val)[:36], bg=CARD2, fg=FG,
-                     font=("Consolas", 7), anchor="w").pack(side="left", fill="x", expand=True)
+                     font=("Consolas", 8), anchor="w").pack(side="left", fill="x", expand=True)
 
     def _on_list_sel(self, event):
         sel = self._listbox.curselection()

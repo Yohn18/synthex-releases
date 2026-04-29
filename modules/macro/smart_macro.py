@@ -328,6 +328,10 @@ class SmartMacro:
         if t == "scrape_url":
             return self._run_scrape_url(step, variables)
 
+        # -- PowerShell Agent ----------------------------------------------
+        if t == "run_powershell":
+            return self._run_powershell(step, variables)
+
         self.logger.warning(f"Unknown step type: {t}")
         return f"unknown: {t}"
 
@@ -527,6 +531,49 @@ class SmartMacro:
         variables[var] = text
         self.logger.info("scrape_url → {%s} = %s…", var, text[:60])
         return "Scraped {} chars → {{{}}}".format(len(text), var)
+
+    # ------------------------------------------------------------------ #
+    #  PowerShell Agent                                                    #
+    # ------------------------------------------------------------------ #
+
+    def _run_powershell(self, step: dict, variables: dict) -> str:
+        """
+        Execute a run_powershell step.
+        mode="auto"   → Haiku generates PS command from natural-language task
+        mode="manual" → task field IS the raw PowerShell command
+        """
+        from modules.ps_agent import run_task
+
+        # Resolve {variables} in task string
+        raw_task = step.get("task", "").strip()
+        task = raw_task
+        for k, v in variables.items():
+            task = task.replace("{" + k + "}", str(v))
+
+        if not task:
+            raise ValueError("run_powershell: field 'task' kosong")
+
+        mode    = step.get("mode", "auto")
+        timeout = int(step.get("timeout", 30) or 30)
+        var     = step.get("var", "ps_output") or "ps_output"
+
+        self.logger.info("PowerShell [%s]: %s…", mode, task[:60])
+
+        result = run_task(task, mode=mode, timeout=timeout)
+
+        output = result.get("output", "")
+        error  = result.get("error", "")
+        cmd    = result.get("command", task)
+
+        variables[var] = output or error or "(no output)"
+
+        if result.get("ok"):
+            self.logger.info("PS OK → {%s} = %s…", var, output[:60])
+            return "[PS] {} → {{{}}}: {}…".format(
+                cmd[:40], var, output[:50])
+        else:
+            self.logger.warning("PS Error: %s", error[:100])
+            return "[PS ERROR] {}: {}".format(cmd[:40], error[:80])
 
     # ------------------------------------------------------------------ #
     #  Bulk Order Confirmation                                             #

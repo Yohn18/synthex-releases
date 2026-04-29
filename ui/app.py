@@ -77,6 +77,7 @@ _STEP_ICONS = {
     "notify":                       "[!]",
     "ai_prompt":                    "[AI]",
     "scrape_url":                   "[SC]",
+    "run_powershell":               "[PS]",
     "sheet_get_pending_rows":       "[P]",
     "web_get_order_list":           "[O]",
     "validate_and_confirm_orders":  "[V]",
@@ -387,6 +388,8 @@ def _step_label(step):
         step.get("prompt","")[:40], step.get("var","ai_result"))
     if t == "scrape_url":       return "🌐 Scrape: {} → {{{}}}".format(
         step.get("url","")[:40], step.get("var","scraped_text"))
+    if t == "run_powershell":   return "[PS] {} ({}) → {{{}}}".format(
+        step.get("task","")[:35], step.get("mode","auto"), step.get("var","ps_output"))
     return t or "(empty step)"
 
 
@@ -2597,6 +2600,7 @@ class SynthexApp:
             ("notify",           "Notify"),
             ("ai_prompt",        "🤖 AI Prompt"),
             ("scrape_url",       "🌐 Scrape URL"),
+            ("run_powershell",   "[PS] PowerShell"),
         ]
         display_names = [d for _, d in TYPE_OPTIONS]
         type_to_key   = {d: k for k, d in TYPE_OPTIONS}
@@ -2923,6 +2927,57 @@ class SynthexApp:
             _lbl(parent,
                  "Hasil tersimpan di {scraped_text} — bisa dipakai di step AI Prompt, "
                  "Write Sheet, atau If Contains berikutnya.", text_color=MUT, fg_color=BG, font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
+
+        elif step_type == "run_powershell":
+            info_fr = _ck.Frame(parent, fg_color="#0A0A1A", padx=10, pady=6)
+            info_fr.pack(fill="x", pady=(0, 10))
+            _ck.Label(info_fr,
+                      text="Haiku (AI murah) generate command → PowerShell eksekusi → simpan output ke variabel.",
+                      fg_color="#0A0A1A", text_color=ACC2,
+                      font=("Segoe UI Variable", 8)).pack(anchor="w")
+
+            # Task / command field
+            _field("Task / Command",  "task", existing.get("task", ""),
+                   multiline=True, height=3,
+                   helper="mode=auto: tulis task natural language, Haiku generate command-nya.\n"
+                          "mode=manual: tulis langsung PowerShell command.\n"
+                          "Dukung {variabel} dari step sebelumnya.")
+
+            # Mode selector
+            mode_row = _ck.Frame(parent, fg_color=BG)
+            mode_row.pack(fill="x", pady=(0, 10))
+            _lbl(mode_row, "Mode:", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 8))
+            mode_var = tk.StringVar(value=existing.get("mode", "auto"))
+            for val, lbl in [("auto", "auto (AI generate)"), ("manual", "manual (raw command)")]:
+                tk.Radiobutton(mode_row, text=lbl, variable=mode_var,
+                               value=val, fg=FG, bg=BG, selectcolor=CARD,
+                               activebackground=BG, activeforeground=ACC,
+                               font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 12))
+            self._mb_field_vars["mode"] = mode_var
+
+            # Var + timeout row
+            bt_row = _ck.Frame(parent, fg_color=BG)
+            bt_row.pack(fill="x", pady=(0, 10))
+            _lbl(bt_row, "Simpan output ke:", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 6))
+            ps_var = tk.StringVar(value=existing.get("var", "ps_output"))
+            _ck.Entry(bt_row, textvariable=ps_var, fg_color=CARD, text_color=FG,
+                      insertbackground=FG, relief="flat",
+                      font=("Segoe UI Variable", 9), width=16).pack(side="left")
+            self._mb_field_vars["var"] = ps_var
+            _lbl(bt_row, "  Timeout (s):", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(12, 4))
+            to_var = tk.StringVar(value=str(existing.get("timeout", 30)))
+            _ck.Entry(bt_row, textvariable=to_var, fg_color=CARD, text_color=FG,
+                      insertbackground=FG, relief="flat",
+                      font=("Segoe UI Variable", 9), width=5).pack(side="left")
+            self._mb_field_vars["timeout"] = to_var
+
+            _lbl(parent,
+                 "Output tersimpan di {ps_output} — bisa dipakai di step AI Prompt, "
+                 "If Contains, Write Sheet, dll.", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
 
         else:
             _field("Value / Selector", "value", existing.get("value",""))
