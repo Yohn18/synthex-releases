@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.66",
-  "min_version": "1.3.66",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.66/Synthex.exe",
-  "changelog": "1.3.66: Wireless ADB+history+autodiscover+ping, Device Monitor+storage+alert+screenshot, System Settings+darmode+DND+rotation+reboot, App Manager+uninstall+backup+perms, App Launcher+keyboard+clipboard, UI Inspector+overlay+macro record, Logcat+color+save+crash detect, ADB Shell Terminal, SMS Reader, Screen Mirror Lite",
+  "latest_version": "1.3.67",
+  "min_version": "1.3.67",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.67/Synthex.exe",
+  "changelog": "1.3.67: Fix Remote page blank (NameError BORD), semua fitur baru Remote aktif kembali",
   "maintenance": false,
   "maintenance_msg": ""
 }

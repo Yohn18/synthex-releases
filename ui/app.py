@@ -7935,7 +7935,7 @@ class SynthexApp:
         _ck.Label(mon_sec, text="Preview Layar HP", fg_color=CARD, text_color=MUT,
                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(4, 2))
         mon_canvas = tk.Canvas(mon_sec, bg="#08080F", width=160, height=90,
-                               highlightthickness=1, highlightbackground=BORD)
+                               highlightthickness=1, highlightbackground="#1c1c2e")
         mon_canvas.pack(anchor="w", pady=(0, 6))
         _mon_photo = [None]
         _mon_ss_timer = [None]
@@ -8813,7 +8813,7 @@ class SynthexApp:
         _ck.Label(uiinsp_sec, text="Screenshot Overlay", fg_color=CARD, text_color=FG,
                  font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
         overlay_canvas = tk.Canvas(uiinsp_sec, bg="#08080F", width=320, height=180,
-                                   highlightthickness=1, highlightbackground=BORD,
+                                   highlightthickness=1, highlightbackground="#1c1c2e",
                                    cursor="crosshair")
         overlay_canvas.pack(anchor="w", pady=(0, 4))
         _overlay_photo = [None]
@@ -9361,7 +9361,7 @@ class SynthexApp:
         _QUALITY_MAP = {"240p": (320, 180), "360p": (480, 270),
                         "480p": (640, 360), "720p": (960, 540)}
         mirror_canvas = tk.Canvas(mirror_sec, bg="#030308", width=480, height=270,
-                                  highlightthickness=1, highlightbackground=BORD,
+                                  highlightthickness=1, highlightbackground="#1c1c2e",
                                   cursor="crosshair")
         mirror_canvas.pack(anchor="w", pady=(0, 6))
         _mirror_photo = [None]
