@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.60",
-  "min_version": "1.3.60",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.60/Synthex.exe",
-  "changelog": "1.3.60: PowerShell Agent (Haiku AI generate command otomatis), unified design palette, font readability fix di Spy Window, step [PS] baru di macro builder",
+  "latest_version": "1.3.61",
+  "min_version": "1.3.61",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.61/Synthex.exe",
+  "changelog": "1.3.61: Halaman Remote lebih ramah pengguna (scroll mouse wheel, bagian teknikal disembunyikan), PowerShell Agent (Haiku AI), unified design palette, font lebih besar di Spy Window",
   "maintenance": false,
   "maintenance_msg": ""
 }
