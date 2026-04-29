@@ -8439,10 +8439,21 @@ class SynthexApp:
             "openai": "#10A37F", "anthropic": "#C76B3A",
             "groq": "#F55036",   "gemini": "#4285F4",
         }
-        _ck.Label(top_bar,
-                 text=" {} ".format(provider.upper()), fg_color=_prov_colors.get(provider, ACC), text_color="white",
-                 font=("Segoe UI", 9, "bold"),
-                 padx=6, pady=3).pack(side="left")
+
+        _cur_provider = [provider]  # mutable ref so closures can update
+        _prov_var = tk.StringVar(value=provider)
+
+        # Provider Combobox (live switcher)
+        prov_cb = tk.OptionMenu(top_bar, _prov_var,
+                                *list(_PROV_MODELS.keys()))
+        prov_cb.configure(bg=_prov_colors.get(provider, ACC), fg="white",
+                          relief="flat", bd=0, activebackground=CARD2,
+                          activeforeground=FG, font=("Segoe UI", 9, "bold"),
+                          highlightthickness=0, padx=8, pady=3)
+        prov_cb["menu"].configure(bg=CARD2, fg=FG, relief="flat",
+                                  activebackground=ACC, activeforeground="white",
+                                  font=("Segoe UI", 9))
+        prov_cb.pack(side="left")
 
         # Model switcher (OptionMenu styled dark)
         model_om = tk.OptionMenu(top_bar, _model_var, *_m_list,
@@ -8455,6 +8466,25 @@ class SynthexApp:
                                    activebackground=ACC, activeforeground="white",
                                    font=("Segoe UI", 9))
         model_om.pack(side="left", padx=(6, 0))
+
+        def _on_provider_change(*_):
+            new_prov = _prov_var.get()
+            _cur_provider[0] = new_prov
+            self.config.set("ai.provider", new_prov)
+            self.config.save()
+            # Update button color
+            prov_cb.configure(bg=_prov_colors.get(new_prov, ACC))
+            # Refresh model list
+            new_models = list(_PROV_MODELS.get(new_prov, ["default"]))
+            _model_var.set(new_models[0])
+            menu = model_om["menu"]
+            menu.delete(0, "end")
+            for m in new_models:
+                menu.add_command(label=m,
+                                 command=lambda v=m: (_model_var.set(v), _on_model_change()))
+            _on_model_change()
+
+        _prov_var.trace_add("write", _on_provider_change)
 
         if not api_key:
             _ck.Label(top_bar,
@@ -8470,7 +8500,7 @@ class SynthexApp:
                 return
             lines = []
             for m in _history:
-                who = "Kamu" if m["role"] == "user" else provider.upper()
+                who = "Kamu" if m["role"] == "user" else _cur_provider[0].upper()
                 ts  = m.get("ts", "")
                 lines.append("[{} {}]\n{}".format(who, ts, m["content"]))
             try:
@@ -8604,7 +8634,7 @@ class SynthexApp:
             bubble_fg = "white" if is_user else FG
             anchor    = "e"    if is_user else "w"
             padx_l    = (80, 16) if is_user else (16, 80)
-            name      = "Kamu" if is_user else provider.upper()
+            name      = "Kamu" if is_user else _cur_provider[0].upper()
             name_fg   = ACC2   if is_user else MUT
 
             row = _ck.Frame(msg_body, fg_color=BG)
@@ -8767,8 +8797,8 @@ class SynthexApp:
 
                     resp = call_ai(
                         prompt=actual,
-                        provider=provider,
-                        api_key=api_key,
+                        provider=_cur_provider[0],
+                        api_key=self.config.get("ai.api_key", "").strip(),
                         model=_model_var.get() or None,
                         max_tokens=max_tokens,
                         system_prompt=sys_prompt,
@@ -9618,18 +9648,17 @@ class SynthexApp:
 
         # Provider row
         pr_row = _ck.Frame(aic, fg_color=CARD)
-        pr_row.pack(fill="x", pady=(0, 6))
+        pr_row.pack(fill="x", pady=(0, 8))
         _ck.Label(pr_row, text="Provider:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
-        _prov_disp = [PROVIDER_LABELS[PROVIDER_NAMES.index(
-            self.config.get("ai.provider", "openai")
-            if self.config.get("ai.provider", "openai") in PROVIDER_NAMES
-            else "openai")]]
+                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 10))
+        _cur_prov = self.config.get("ai.provider", "openai")
+        _prov_disp = PROVIDER_LABELS[PROVIDER_NAMES.index(_cur_prov)
+                                     if _cur_prov in PROVIDER_NAMES else 0]
         _prov_mb = _ck.Combobox(pr_row, values=PROVIDER_LABELS,
-                                state="readonly", width=24,
-                                font=("Segoe UI", 10))
-        _prov_mb.set(_prov_disp[0])
-        _prov_mb.pack(side="left")
+                                state="readonly", width=22,
+                                font=("Segoe UI", 12))
+        _prov_mb.set(_prov_disp)
+        _prov_mb.pack(side="left", ipady=4)
 
         def _on_prov_change(*_):
             idx = PROVIDER_LABELS.index(_prov_mb.get())
@@ -9638,50 +9667,61 @@ class SynthexApp:
 
         # API Key row
         key_row = _ck.Frame(aic, fg_color=CARD)
-        key_row.pack(fill="x", pady=(0, 6))
+        key_row.pack(fill="x", pady=(0, 8))
         _ck.Label(key_row, text="API Key:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
-        _key_entry = _ck.Entry(key_row, textvariable=_ai_key_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                              relief="flat", font=("Segoe UI", 10), show="*",
-                              width=34)
-        _key_entry.pack(side="left")
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 4))
+        key_inner = _ck.Frame(key_row, fg_color=CARD)
+        key_inner.pack(fill="x")
+        _key_entry = _ck.Entry(key_inner, textvariable=_ai_key_var,
+                               fg_color=CARD2, text_color=FG,
+                               insertbackground=FG, relief="flat",
+                               font=("Segoe UI", 12), show="*")
+        _key_entry.pack(side="left", fill="x", expand=True, ipady=9)
         _show_key = [False]
         def _toggle_show():
             _show_key[0] = not _show_key[0]
             _key_entry.configure(show="" if _show_key[0] else "*")
-        _ck.Button(key_row, text="👁", fg_color=CARD2, text_color=MUT,
+        _ck.Button(key_inner, text="Lihat", fg_color=CARD2, text_color=MUT,
                   relief="flat", bd=0, font=("Segoe UI", 10),
-                  padx=4, cursor="hand2",
-                  command=_toggle_show).pack(side="left", padx=(4, 0))
+                  padx=8, pady=4, cursor="hand2",
+                  command=_toggle_show).pack(side="left", padx=(6, 0))
 
-        # Model + max tokens row
+        # Model row
         mod_row = _ck.Frame(aic, fg_color=CARD)
-        mod_row.pack(fill="x", pady=(0, 6))
-        _ck.Label(mod_row, text="Model (opsional):", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 8))
-        _ck.Entry(mod_row, textvariable=_ai_model_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 10),
-                 width=22).pack(side="left")
-        _ck.Label(mod_row, text="  Max tokens:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(side="left", padx=(8, 4))
-        _ck.Entry(mod_row, textvariable=_ai_tokens_var, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                 relief="flat", font=("Segoe UI", 10), width=6).pack(side="left")
+        mod_row.pack(fill="x", pady=(0, 8))
+        _ck.Label(mod_row, text="Model (opsional — kosong = default):",
+                 fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 4))
+        _ck.Entry(mod_row, textvariable=_ai_model_var, fg_color=CARD2,
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 12)).pack(fill="x", ipady=9)
+
+        # Max tokens row
+        tok_row = _ck.Frame(aic, fg_color=CARD)
+        tok_row.pack(fill="x", pady=(0, 8))
+        _ck.Label(tok_row, text="Max Tokens:", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 10))
+        _ck.Entry(tok_row, textvariable=_ai_tokens_var, fg_color=CARD2,
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 12), width=8).pack(side="left", ipady=9)
 
         # System prompt
-        _ck.Label(aic, text="System Prompt default:", fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
-        _sys_txt = _ck.Text(aic, fg_color=CARD2, text_color=FG, insertbackground=FG,
-                           relief="flat", font=("Segoe UI", 10),
-                           height=2, wrap="word")
+        _ck.Label(aic, text="System Prompt default:", fg_color=CARD,
+                 text_color=MUT, font=("Segoe UI", 11, "bold")).pack(
+            anchor="w", pady=(0, 4))
+        _sys_txt = _ck.Text(aic, fg_color=CARD2, text_color=FG,
+                           insertbackground=FG, relief="flat",
+                           font=("Segoe UI", 12), height=3, wrap="word",
+                           padx=10, pady=8)
         _sys_txt.insert("1.0", _ai_sys_var.get())
-        _sys_txt.pack(fill="x", pady=(0, 8))
+        _sys_txt.pack(fill="x", pady=(0, 10))
 
         # Buttons row
         ai_btn_row = _ck.Frame(aic, fg_color=CARD)
         ai_btn_row.pack(anchor="w", pady=(0, 4))
         _ai_status = tk.StringVar(value="")
         _ck.Label(aic, textvariable=_ai_status, fg_color=CARD, text_color=MUT,
-                 font=("Segoe UI", 9)).pack(anchor="w")
+                 font=("Segoe UI", 10)).pack(anchor="w")
 
         def _save_ai():
             self.config.set("ai.provider", _ai_provider_var.get())
