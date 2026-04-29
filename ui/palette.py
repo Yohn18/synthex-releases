@@ -16,7 +16,7 @@ PRP   = "#9d5cf6"
 BLUE  = "#06b6d4"
 BORD  = "#1c1c2e"
 
-FONT_SM   = ("Segoe UI Variable", 9)
-FONT_MD   = ("Segoe UI Variable", 11)
-FONT_LG   = ("Segoe UI Variable", 13, "bold")
-FONT_MONO = ("Consolas", 10)
+FONT_SM   = ("Segoe UI", 10)
+FONT_MD   = ("Segoe UI", 12)
+FONT_LG   = ("Segoe UI", 13, "bold")
+FONT_MONO = ("Consolas", 11)

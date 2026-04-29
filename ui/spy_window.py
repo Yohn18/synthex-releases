@@ -510,7 +510,7 @@ class FloatingSpyWindow:
             row = tk.Frame(parent, bg=CARD)
             row.pack(fill="x", pady=1)
             tk.Label(row, text="{:<9}".format(label), bg=CARD, fg=MUT,
-                     font=("Consolas", 9), width=10, anchor="w").pack(side="left")
+                     font=("Consolas", 10), width=10, anchor="w").pack(side="left")
             tk.Label(row, textvariable=var, bg=CARD, fg=fg,
                      font=("Consolas", 10), anchor="w",
                      wraplength=190).pack(side="left", fill="x", expand=True)
@@ -527,7 +527,7 @@ class FloatingSpyWindow:
         crow = tk.Frame(ms, bg=CARD)
         crow.pack(fill="x", pady=1)
         tk.Label(crow, text="{:<9}".format("Color"), bg=CARD, fg=MUT,
-                 font=("Consolas", 9), width=10, anchor="w").pack(side="left")
+                 font=("Consolas", 10), width=10, anchor="w").pack(side="left")
         tk.Label(crow, textvariable=self._v_color, bg=CARD, fg=FG,
                  font=("Consolas", 10), anchor="w").pack(side="left")
         self._color_swatch = tk.Label(crow, text="    ", bg="#000000",
@@ -582,7 +582,7 @@ class FloatingSpyWindow:
         name_row = tk.Frame(sf, bg=CARD2)
         name_row.pack(fill="x")
         tk.Label(name_row, text="Name:", bg=CARD2, fg=MUT,
-                 font=("Consolas", 9)).pack(side="left")
+                 font=("Consolas", 10)).pack(side="left")
         self._name_var = tk.StringVar()
         name_entry = tk.Entry(name_row, textvariable=self._name_var,
                               bg=CARD, fg=FG, insertbackground=ACC,
@@ -634,7 +634,7 @@ class FloatingSpyWindow:
         self._listbox = tk.Listbox(
             list_frame,
             bg=CARD, fg=FG, selectbackground=ACC, selectforeground="#FFFFFF",
-            font=("Consolas", 9), relief="flat", bd=0,
+            font=("Consolas", 10), relief="flat", bd=0,
             highlightthickness=0, activestyle="none",
             yscrollcommand=sb.set)
         self._listbox.pack(side="left", fill="both", expand=True)
