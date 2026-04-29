@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.65",
-  "min_version": "1.3.65",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.65/Synthex.exe",
-  "changelog": "1.3.65: Wireless ADB (pair+connect), Device Monitor real-time (baterai/RAM/CPU/suhu/WiFi), System Settings Control (brightness/volume/GPS/airplane), App Manager (list/stop/clear/install APK), App Launcher (package/URL/shortcut), UI Inspector (dump elemen+tap), Logcat Viewer real-time",
+  "latest_version": "1.3.66",
+  "min_version": "1.3.66",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.66/Synthex.exe",
+  "changelog": "1.3.66: Wireless ADB+history+autodiscover+ping, Device Monitor+storage+alert+screenshot, System Settings+darmode+DND+rotation+reboot, App Manager+uninstall+backup+perms, App Launcher+keyboard+clipboard, UI Inspector+overlay+macro record, Logcat+color+save+crash detect, ADB Shell Terminal, SMS Reader, Screen Mirror Lite",
   "maintenance": false,
   "maintenance_msg": ""
 }

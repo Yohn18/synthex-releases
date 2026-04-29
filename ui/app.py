@@ -7680,7 +7680,109 @@ class SynthexApp:
         _ck.Button(wifi_btn_row, text="Disconnect", fg_color=CARD2, text_color=MUT,
                   font=("Segoe UI", 10), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
-                  command=_wifi_disconnect).pack(side="left")
+                  command=_wifi_disconnect).pack(side="left", padx=(0, 8))
+
+        def _wifi_ping():
+            import subprocess as _sp
+            ip = wifi_ip_var.get().strip()
+            if not ip: wifi_stat_var.set("Isi IP dulu"); return
+            wifi_stat_var.set("Ping {}...".format(ip))
+            def _bg():
+                try:
+                    r = _sp.run(["ping", "-n", "1", "-w", "1000", ip],
+                                capture_output=True, text=True, timeout=5)
+                    ok = r.returncode == 0
+                    msg = "Ping OK — {} reachable".format(ip) if ok else "Ping FAILED — {} tidak merespons".format(ip)
+                    clr = GRN if ok else RED
+                    if self._root: self._root.after(0, lambda: [wifi_stat_var.set(msg),
+                        wifi_ping_btn.configure(text_color=clr)])
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        wifi_ping_btn = _ck.Button(wifi_btn_row, text="🏓 Ping", fg_color=CARD2, text_color=MUT,
+                                   font=("Segoe UI", 10), padx=10, pady=6,
+                                   relief="flat", bd=0, cursor="hand2", command=_wifi_ping)
+        wifi_ping_btn.pack(side="left", padx=(0, 8))
+
+        def _wifi_autodiscover():
+            import subprocess as _sp, socket as _sock
+            wifi_stat_var.set("Scan LAN...")
+            def _bg():
+                found = []
+                try:
+                    local_ip = _sock.gethostbyname(_sock.gethostname())
+                    prefix = ".".join(local_ip.split(".")[:3]) + "."
+                    import concurrent.futures as _cf
+                    def _check(i):
+                        ip = prefix + str(i)
+                        try:
+                            r = _sp.run(["adb", "connect", ip + ":5555"],
+                                        capture_output=True, text=True, timeout=2)
+                            if "connected" in r.stdout.lower():
+                                return ip
+                        except Exception:
+                            pass
+                        return None
+                    with _cf.ThreadPoolExecutor(max_workers=30) as ex:
+                        for res in ex.map(_check, range(1, 255)):
+                            if res: found.append(res)
+                except Exception as e:
+                    found = []
+                def _upd():
+                    if found:
+                        wifi_ip_var.set(found[0])
+                        wifi_stat_var.set("Ditemukan: " + ", ".join(found))
+                        _wifi_save_history(found[0])
+                    else:
+                        wifi_stat_var.set("Tidak ada HP ADB di LAN")
+                if self._root: self._root.after(0, _upd)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        _ck.Button(wifi_btn_row, text="🔍 Auto-Scan", fg_color="#1A2A1A", text_color=GRN,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wifi_autodiscover).pack(side="left")
+
+        # Riwayat koneksi
+        _ck.Label(wifi_sec, text="Riwayat Koneksi", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(8, 2))
+        wifi_hist_lb = tk.Listbox(wifi_sec, bg=CARD2, fg=FG, selectbackground=ACC,
+                                  selectforeground="white", relief="flat", bd=0,
+                                  font=("Consolas", 10), height=3)
+        wifi_hist_lb.pack(fill="x", pady=(0, 4))
+
+        _wifi_history = self.config.get("remote.wifi_history", [])
+        if isinstance(_wifi_history, str): _wifi_history = []
+        for _h in _wifi_history:
+            wifi_hist_lb.insert(tk.END, _h)
+
+        def _wifi_save_history(ip):
+            hist = list(self.config.get("remote.wifi_history", []) or [])
+            if ip not in hist:
+                hist.insert(0, ip)
+                hist = hist[:10]
+                self.config.set("remote.wifi_history", hist)
+                self.config.save()
+                wifi_hist_lb.delete(0, tk.END)
+                for h in hist: wifi_hist_lb.insert(tk.END, h)
+
+        def _wifi_load_from_hist(e=None):
+            sel = wifi_hist_lb.curselection()
+            if sel:
+                ip = wifi_hist_lb.get(sel[0])
+                wifi_ip_var.set(ip)
+
+        wifi_hist_lb.bind("<<ListboxSelect>>", _wifi_load_from_hist)
+        wifi_hist_lb.bind("<Double-Button-1>", lambda e: _wifi_connect())
+
+        def _wifi_connect_and_save():
+            ip = wifi_ip_var.get().strip()
+            _wifi_connect()
+            if ip: _wifi_save_history(ip)
+
+        # override connect button to also save history
+        wifi_btn_row.winfo_children()[0].configure(command=_wifi_connect_and_save)
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — Device Monitor
@@ -7728,6 +7830,164 @@ class SynthexApp:
                 return devs[0] if devs else None
             return None
 
+        # Row 3 — storage + network speed
+        row3 = _ck.Frame(mon_grid, fg_color=CARD)
+        row3.pack(fill="x")
+        mon_store_var = _mk_tile(row3, "Storage")
+        mon_net_var   = _mk_tile(row3, "Net Speed")
+        mon_uptime_var= _mk_tile(row3, "Uptime")
+        mon_android_var=_mk_tile(row3, "Android")
+
+        def _mon_fetch_ext():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            def _run2(cmd):
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell"] + cmd,
+                                capture_output=True, text=True, timeout=6)
+                    return r.stdout.strip()
+                except Exception: return ""
+            def _bg2():
+                # Storage
+                df_out = _run2(["df", "/sdcard"])
+                store_val = "—"
+                for line in df_out.splitlines():
+                    if "/sdcard" in line or "sdcard" in line.lower():
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            try:
+                                used = int(parts[2]) // 1024
+                                avail = int(parts[3]) // 1024
+                                store_val = "{}M free".format(avail)
+                            except Exception: pass
+                        break
+                # Network speed (rx bytes delta)
+                net_out = _run2(["cat", "/proc/net/dev"])
+                net_val = "—"
+                import re as _ren
+                total_rx = 0
+                for line in net_out.splitlines():
+                    m = _ren.match(r'\s*(\w+):\s+(\d+)', line)
+                    if m and m.group(1) not in ("lo",):
+                        total_rx += int(m.group(2))
+                if total_rx > 0:
+                    net_val = "{:.0f} KB".format(total_rx / 1024)
+                # Uptime
+                up_out = _run2(["cat", "/proc/uptime"])
+                up_val = "—"
+                try:
+                    secs = float(up_out.split()[0])
+                    h, m2 = int(secs // 3600), int((secs % 3600) // 60)
+                    up_val = "{}h {}m".format(h, m2)
+                except Exception: pass
+                # Android version
+                android_val = _run2(["getprop", "ro.build.version.release"])
+
+                if self._root:
+                    self._root.after(0, lambda: [
+                        mon_store_var.set(store_val),
+                        mon_net_var.set(net_val),
+                        mon_uptime_var.set(up_val),
+                        mon_android_var.set("Android " + android_val[:6] if android_val else "—"),
+                    ])
+            _thr.Thread(target=_bg2, daemon=True).start()
+
+        # Alert threshold config
+        alert_row = _ck.Frame(mon_sec, fg_color=CARD)
+        alert_row.pack(fill="x", pady=(6, 4))
+        _ck.Label(alert_row, text="Alert jika baterai <", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        mon_alert_bat_var = tk.StringVar(value=str(self.config.get("monitor.alert_bat", "20")))
+        _ck.Entry(alert_row, textvariable=mon_alert_bat_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 10), width=40).pack(side="left", padx=(4, 2), ipady=3)
+        _ck.Label(alert_row, text="% atau suhu >", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+        mon_alert_temp_var = tk.StringVar(value=str(self.config.get("monitor.alert_temp", "45")))
+        _ck.Entry(alert_row, textvariable=mon_alert_temp_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 10), width=40).pack(side="left", padx=(4, 2), ipady=3)
+        _ck.Label(alert_row, text="°C", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(side="left")
+
+        def _check_alerts(bat_pct_str, temp_str):
+            try:
+                bat_pct = int(bat_pct_str.replace("%","").replace("⚡","").strip())
+                alert_bat = int(mon_alert_bat_var.get() or "20")
+                if bat_pct < alert_bat:
+                    from tkinter import messagebox as _mb2
+                    _mb2.showwarning("Synthex Monitor", "Baterai HP rendah: {}%".format(bat_pct))
+            except Exception: pass
+            try:
+                temp = float(temp_str.replace("°C","").strip())
+                alert_temp = float(mon_alert_temp_var.get() or "45")
+                if temp > alert_temp:
+                    from tkinter import messagebox as _mb2
+                    _mb2.showwarning("Synthex Monitor", "Suhu HP tinggi: {}°C".format(temp))
+            except Exception: pass
+
+        mon_stat_var = tk.StringVar(value="Monitor tidak aktif")
+        _ck.Label(mon_sec, textvariable=mon_stat_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9, "italic")).pack(anchor="w", pady=(0, 2))
+
+        # Mini screenshot preview
+        _ck.Label(mon_sec, text="Preview Layar HP", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(4, 2))
+        mon_canvas = tk.Canvas(mon_sec, bg="#08080F", width=160, height=90,
+                               highlightthickness=1, highlightbackground=BORD)
+        mon_canvas.pack(anchor="w", pady=(0, 6))
+        _mon_photo = [None]
+        _mon_ss_timer = [None]
+        _mon_ss_running = [False]
+
+        def _mon_screenshot():
+            import subprocess as _sp, io as _io
+            serial = _get_serial()
+            if not serial: return
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "exec-out", "screencap", "-p"],
+                                capture_output=True, timeout=8)
+                    if r.returncode == 0 and r.stdout:
+                        from PIL import Image as _Img, ImageTk as _ITk
+                        img = _Img.open(_io.BytesIO(r.stdout))
+                        img.thumbnail((160, 90), _Img.LANCZOS)
+                        photo = _ITk.PhotoImage(img)
+                        def _upd():
+                            _mon_photo[0] = photo
+                            mon_canvas.delete("all")
+                            mon_canvas.create_image(80, 45, image=photo)
+                        if self._root: self._root.after(0, _upd)
+                except Exception: pass
+                if _mon_ss_running[0] and self._root:
+                    _mon_ss_timer[0] = self._root.after(4000, _mon_screenshot)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _mon_start():
+            _mon_running[0] = True
+            _mon_ss_running[0] = True
+            _mon_fetch()
+            _mon_fetch_ext()
+            _mon_screenshot()
+            mon_start_btn.configure(text="⏹ Stop Monitor", fg_color=RED,
+                                    command=_mon_stop)
+
+        def _mon_stop():
+            _mon_running[0] = False
+            _mon_ss_running[0] = False
+            if _mon_timer[0]:
+                try: self._root.after_cancel(_mon_timer[0])
+                except Exception: pass
+            if _mon_ss_timer[0]:
+                try: self._root.after_cancel(_mon_ss_timer[0])
+                except Exception: pass
+            mon_stat_var.set("Monitor dihentikan")
+            mon_start_btn.configure(text="▶ Mulai Monitor", fg_color=GRN,
+                                    command=_mon_start)
+
+        # Patch original _mon_fetch to also call ext + check alerts
+        _orig_mon_bg = None
         def _mon_fetch():
             import subprocess as _sp
             serial = _get_serial()
@@ -7739,35 +7999,24 @@ class SynthexApp:
                     r = _sp.run(["adb", "-s", serial, "shell"] + cmd,
                                 capture_output=True, text=True, timeout=6)
                     return r.stdout.strip()
-                except Exception:
-                    return ""
-
+                except Exception: return ""
             def _bg():
-                # Battery
                 bat_out = _run(["dumpsys", "battery"])
                 bat_pct, bat_chg = "—", ""
                 for line in bat_out.splitlines():
                     if "level:" in line: bat_pct = line.split(":")[1].strip() + "%"
                     if "status: 2" in line: bat_chg = " ⚡"
                 bat_val = bat_pct + bat_chg
-
-                # RAM
                 ram_out = _run(["dumpsys", "meminfo"])
                 ram_val = "—"
                 for line in ram_out.splitlines():
                     if "Used RAM:" in line or "Total RAM:" in line:
-                        ram_val = line.split(":", 1)[1].strip().split(" ")[0]
-                        break
-
-                # CPU (berat, ambil dari top 1x)
+                        ram_val = line.split(":", 1)[1].strip().split(" ")[0]; break
                 cpu_out = _run(["top", "-n", "1", "-d", "1"])
                 cpu_val = "—"
                 for line in cpu_out.splitlines():
                     if "cpu" in line.lower() and "%" in line:
-                        cpu_val = line.strip()[:24]
-                        break
-
-                # Suhu
+                        cpu_val = line.strip()[:24]; break
                 temp_out = _run(["dumpsys", "thermalservice"])
                 temp_val = "—"
                 for line in temp_out.splitlines():
@@ -7776,77 +8025,41 @@ class SynthexApp:
                         if len(parts) >= 2:
                             try:
                                 t = float(parts[-1].rstrip("}").strip())
-                                if 20 < t < 80:
-                                    temp_val = "{:.1f}°C".format(t)
-                                    break
-                            except ValueError:
-                                pass
-
-                # WiFi / Network
+                                if 20 < t < 80: temp_val = "{:.1f}°C".format(t); break
+                            except ValueError: pass
+                import re as _re2
                 net_type = _run(["getprop", "gsm.network.type"]).strip()
                 ssid_out = _run(["dumpsys", "wifi"])
                 ssid_val = ""
                 for line in ssid_out.splitlines():
                     if "mWifiInfo" in line and "SSID" in line:
-                        import re as _re2
                         m = _re2.search(r'SSID: ([^,]+)', line)
-                        if m: ssid_val = m.group(1).strip()
-                        break
+                        if m: ssid_val = m.group(1).strip(); break
                 wifi_val = (ssid_val or net_type or "—")[:22]
-
-                # Screen brightness
                 bright_out = _run(["settings", "get", "system", "screen_brightness"])
-                try:
-                    pct = int(int(bright_out.strip()) / 255 * 100)
-                    screen_val = "{}%".format(pct)
-                except Exception:
-                    screen_val = "—"
-
-                # Volume media
+                try: screen_val = "{}%".format(int(int(bright_out.strip()) / 255 * 100))
+                except Exception: screen_val = "—"
                 vol_out = _run(["dumpsys", "audio"])
                 vol_val = "—"
                 for line in vol_out.splitlines():
                     if "STREAM_MUSIC" in line and "Current:" in line:
-                        import re as _re3
-                        m = _re3.search(r'headset\): (\d+)', line)
-                        if not m: m = _re3.search(r'Current: (\d+)', line)
+                        m = _re2.search(r'headset\): (\d+)', line)
+                        if not m: m = _re2.search(r'Current: (\d+)', line)
                         if m: vol_val = m.group(1); break
-
-                # Model
                 model_val = _run(["getprop", "ro.product.model"])
-
                 if self._root:
                     self._root.after(0, lambda: [
-                        mon_bat_var.set(bat_val),
-                        mon_ram_var.set(ram_val[:12]),
-                        mon_cpu_var.set(cpu_val[:18]),
-                        mon_temp_var.set(temp_val),
-                        mon_wifi_var.set(wifi_val),
-                        mon_screen_var.set(screen_val),
-                        mon_vol_var.set(vol_val),
-                        mon_model_var.set(model_val[:20]),
+                        mon_bat_var.set(bat_val), mon_ram_var.set(ram_val[:12]),
+                        mon_cpu_var.set(cpu_val[:18]), mon_temp_var.set(temp_val),
+                        mon_wifi_var.set(wifi_val), mon_screen_var.set(screen_val),
+                        mon_vol_var.set(vol_val), mon_model_var.set(model_val[:20]),
                         mon_stat_var.set("Update: " + __import__("datetime").datetime.now().strftime("%H:%M:%S")),
+                        _check_alerts(bat_val, temp_val),
                     ])
-
+                _mon_fetch_ext()
             _thr.Thread(target=_bg, daemon=True).start()
-
             if _mon_running[0] and self._root:
                 _mon_timer[0] = self._root.after(5000, _mon_fetch)
-
-        def _mon_start():
-            _mon_running[0] = True
-            _mon_fetch()
-            mon_start_btn.configure(text="⏹ Stop Monitor", fg_color=RED,
-                                    command=_mon_stop)
-
-        def _mon_stop():
-            _mon_running[0] = False
-            if _mon_timer[0]:
-                try: self._root.after_cancel(_mon_timer[0])
-                except Exception: pass
-            mon_stat_var.set("Monitor dihentikan")
-            mon_start_btn.configure(text="▶ Mulai Monitor", fg_color=GRN,
-                                    command=_mon_start)
 
         mon_start_btn = _ck.Button(mon_sec, text="▶ Mulai Monitor", fg_color=GRN,
                                    text_color="white", font=("Segoe UI", 10, "bold"),
@@ -7966,6 +8179,106 @@ class SynthexApp:
                       command=lambda m=ms, l=label: _shell_set(
                           "system", "screen_off_timeout", m, "Timeout: " + l)
                       ).pack(side="left", padx=(0, 4))
+
+        # Toggle baris 2: dark mode, rotation, DND, font size, hotspot
+        _ck.Label(sysset_sec, text="Lanjutan", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 4))
+        toggle_row2 = _ck.Frame(sysset_sec, fg_color=CARD)
+        toggle_row2.pack(anchor="w", pady=(0, 4))
+
+        def _dark_mode(on):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: sysset_stat_var.set("HP tidak terhubung"); return
+            val = "yes" if on else "no"
+            _sp.Popen(["adb", "-s", serial, "shell", "cmd", "uimode", "night", val])
+            sysset_stat_var.set("Dark mode {}".format("ON" if on else "OFF"))
+            if self._root: self._root.after(2500, lambda: sysset_stat_var.set(""))
+
+        def _rotation(lock):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            val = "0" if lock else "1"
+            _sp.Popen(["adb", "-s", serial, "shell", "settings", "put", "system",
+                       "accelerometer_rotation", val])
+            sysset_stat_var.set("Rotation {}".format("LOCKED" if lock else "AUTO"))
+            if self._root: self._root.after(2500, lambda: sysset_stat_var.set(""))
+
+        def _dnd(on):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            val = "1" if on else "0"
+            _sp.Popen(["adb", "-s", serial, "shell", "settings", "put", "global",
+                       "zen_mode", val])
+            sysset_stat_var.set("Do Not Disturb {}".format("ON" if on else "OFF"))
+            if self._root: self._root.after(2500, lambda: sysset_stat_var.set(""))
+
+        def _bat_saver(on):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            val = "1" if on else "0"
+            _sp.Popen(["adb", "-s", serial, "shell", "settings", "put", "global",
+                       "low_power", val])
+            sysset_stat_var.set("Battery Saver {}".format("ON" if on else "OFF"))
+            if self._root: self._root.after(2500, lambda: sysset_stat_var.set(""))
+
+        _adv_toggles = [
+            ("🌙 Dark ON",      lambda: _dark_mode(True)),
+            ("☀ Dark OFF",     lambda: _dark_mode(False)),
+            ("🔒 Lock Rot",    lambda: _rotation(True)),
+            ("🔄 Auto Rot",    lambda: _rotation(False)),
+            ("🔕 DND ON",      lambda: _dnd(True)),
+            ("🔔 DND OFF",     lambda: _dnd(False)),
+            ("🔋 BatSave ON",  lambda: _bat_saver(True)),
+            ("🔋 BatSave OFF", lambda: _bat_saver(False)),
+        ]
+        for label, cmd in _adv_toggles:
+            _ck.Button(toggle_row2, text=label, fg_color=CARD2, text_color=FG,
+                      font=("Segoe UI", 9), padx=8, pady=6,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=cmd).pack(side="left", padx=(0, 4))
+
+        # Font size row
+        font_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        font_row.pack(anchor="w", pady=(4, 2))
+        _ck.Label(font_row, text="Font Size HP:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        for fs_label, fs_val in [("Kecil", 0.85), ("Normal", 1.0), ("Besar", 1.15), ("X-Besar", 1.3)]:
+            _ck.Button(font_row, text=fs_label, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=8, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda v=fs_val, l=fs_label: _shell_set(
+                          "system", "font_scale", v, "Font size: " + l)
+                      ).pack(side="left", padx=(0, 4))
+
+        # Reboot menu
+        _ck.Label(sysset_sec, text="Reboot", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 4))
+        reboot_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        reboot_row.pack(anchor="w", pady=(0, 4))
+
+        def _reboot(mode=""):
+            import subprocess as _sp
+            from tkinter import messagebox as _mbc
+            serial = _get_serial()
+            if not serial: sysset_stat_var.set("HP tidak terhubung"); return
+            lbl = {"": "Normal", "recovery": "Recovery", "bootloader": "Bootloader", "fastboot": "Fastboot"}
+            if not _mbc.askyesno("Reboot HP", "Reboot ke {}?".format(lbl.get(mode, mode))): return
+            cmd = ["adb", "-s", serial, "reboot"]
+            if mode: cmd.append(mode)
+            _sp.Popen(cmd)
+            sysset_stat_var.set("Rebooting ke {}...".format(lbl.get(mode, mode)))
+
+        for rb_label, rb_mode in [("🔁 Reboot", ""), ("🔧 Recovery", "recovery"),
+                                   ("🔓 Bootloader", "bootloader"), ("⚡ Fastboot", "fastboot")]:
+            _ck.Button(reboot_row, text=rb_label, fg_color="#2A0A0A", text_color=RED,
+                      font=("Segoe UI", 9, "bold"), padx=10, pady=6,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda m=rb_mode: _reboot(m)
+                      ).pack(side="left", padx=(0, 6))
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — App Manager
@@ -8103,6 +8416,111 @@ class SynthexApp:
                   relief="flat", bd=0, cursor="hand2",
                   command=_install_apk).pack(side="left", padx=(0, 6))
 
+        # Baris 2: Uninstall + Backup APK + Permissions
+        appmgr_btn_row2 = _ck.Frame(appmgr_sec, fg_color=CARD)
+        appmgr_btn_row2.pack(anchor="w", pady=(4, 4))
+
+        def _uninstall_app():
+            import subprocess as _sp
+            from tkinter import messagebox as _mbu
+            pkg = _selected_pkg()
+            serial = _get_serial()
+            if not pkg: appmgr_stat_var.set("Pilih app dulu"); return
+            if not serial: appmgr_stat_var.set("HP tidak terhubung"); return
+            if not _mbu.askyesno("Uninstall", "Uninstall {}?".format(pkg)): return
+            appmgr_stat_var.set("Uninstall {}...".format(pkg))
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell", "pm", "uninstall", pkg],
+                                capture_output=True, text=True, timeout=30)
+                    out = (r.stdout + r.stderr).strip()[:100]
+                    def _upd():
+                        appmgr_stat_var.set(out)
+                        if "Success" in out:
+                            _thr.Thread(target=_load_apps, daemon=True).start()
+                    if self._root: self._root.after(0, _upd)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _backup_apk():
+            import subprocess as _sp
+            from tkinter import filedialog as _fd2
+            pkg = _selected_pkg()
+            serial = _get_serial()
+            if not pkg: appmgr_stat_var.set("Pilih app dulu"); return
+            if not serial: appmgr_stat_var.set("HP tidak terhubung"); return
+            save_path = _fd2.asksaveasfilename(
+                defaultextension=".apk",
+                filetypes=[("APK", "*.apk")],
+                initialfile=pkg.split(".")[-1] + ".apk")
+            if not save_path: return
+            appmgr_stat_var.set("Backup APK {}...".format(pkg))
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell", "pm", "path", pkg],
+                                capture_output=True, text=True, timeout=10)
+                    apk_path = r.stdout.strip().replace("package:", "")
+                    if not apk_path: raise Exception("Path APK tidak ditemukan")
+                    r2 = _sp.run(["adb", "-s", serial, "pull", apk_path, save_path],
+                                 capture_output=True, text=True, timeout=60)
+                    out = (r2.stdout + r2.stderr).strip()[:100]
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set("Tersimpan: " + save_path))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _show_permissions():
+            import subprocess as _sp
+            pkg = _selected_pkg()
+            serial = _get_serial()
+            if not pkg: appmgr_stat_var.set("Pilih app dulu"); return
+            if not serial: return
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell", "dumpsys", "package", pkg],
+                                capture_output=True, text=True, timeout=15)
+                    perms = [l.strip() for l in r.stdout.splitlines()
+                             if "android.permission" in l and "granted" in l.lower()]
+                    text = "\n".join(perms[:30]) or "Tidak ada permission"
+                    def _show():
+                        from tkinter import simpledialog as _sd
+                        win = tk.Toplevel(self._root)
+                        win.title("Permissions — " + pkg)
+                        win.configure(bg=CARD)
+                        tk.Text(win, bg=CARD2, fg=FG, font=("Consolas", 9),
+                                relief="flat", wrap="word"
+                                ).pack(fill="both", expand=True, padx=10, pady=10)
+                        win.winfo_children()[-1].insert("1.0", text)
+                        win.winfo_children()[-1].config(state="disabled")
+                    if self._root: self._root.after(0, _show)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _sort_apps(by="name"):
+            if by == "name":
+                _all_packages.sort()
+            _filter_apps()
+            appmgr_stat_var.set("Sorted by {}".format(by))
+
+        _ck.Button(appmgr_btn_row2, text="🗑 Uninstall", fg_color="#3A0A0A", text_color=RED,
+                  font=("Segoe UI", 9, "bold"), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_uninstall_app).pack(side="left", padx=(0, 6))
+        _ck.Button(appmgr_btn_row2, text="💾 Backup APK", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_backup_apk).pack(side="left", padx=(0, 6))
+        _ck.Button(appmgr_btn_row2, text="🔑 Permissions", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_show_permissions).pack(side="left", padx=(0, 6))
+        _ck.Button(appmgr_btn_row2, text="A↓ Sort", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 9), padx=8, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: _sort_apps("name")).pack(side="left")
+
         # ══════════════════════════════════════════════════════════════
         # SECTION — App Launcher
         # ══════════════════════════════════════════════════════════════
@@ -8166,12 +8584,94 @@ class SynthexApp:
                 import subprocess as _sp
                 serial = _get_serial()
                 if not serial: return
-                _sp.Popen(["adb", "-s", serial, "shell", "am", "start",
-                           "-a", a])
+                _sp.Popen(["adb", "-s", serial, "shell", "am", "start", "-a", a])
             _ck.Button(launch_btn_row, text=label, fg_color=CARD2, text_color=MUT,
                       font=("Segoe UI", 9), padx=8, pady=6,
                       relief="flat", bd=0, cursor="hand2",
                       command=_sh).pack(side="left", padx=(0, 4))
+
+        # Input teks ke HP
+        _ck.Label(launch_sec, text="Ketik ke HP", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(10, 2))
+        type_row = _ck.Frame(launch_sec, fg_color=CARD)
+        type_row.pack(fill="x", pady=(0, 4))
+        type_var = tk.StringVar()
+        _ck.Entry(type_row, textvariable=type_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11)).pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+
+        def _type_text():
+            import subprocess as _sp
+            serial = _get_serial()
+            text = type_var.get()
+            if not serial or not text: return
+            safe = text.replace(" ", "%s").replace("'", "")
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "text", safe])
+            launch_stat_var.set("Dikirim: " + text[:40])
+            if self._root: self._root.after(2000, lambda: launch_stat_var.set(""))
+
+        _ck.Button(type_row, text="⌨ Kirim Teks", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_type_text).pack(side="left")
+
+        # Clipboard sync
+        _ck.Label(launch_sec, text="Clipboard Sync", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
+        clip_row = _ck.Frame(launch_sec, fg_color=CARD)
+        clip_row.pack(anchor="w", pady=(0, 4))
+
+        def _push_clipboard():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: launch_stat_var.set("HP tidak terhubung"); return
+            try:
+                text = self._root.clipboard_get()
+            except Exception:
+                launch_stat_var.set("Clipboard kosong"); return
+            safe = text.replace("'", "").replace('"', "")[:200]
+            _sp.Popen(["adb", "-s", serial, "shell", "am", "broadcast",
+                       "-a", "clipper.set", "-e", "text", safe])
+            launch_stat_var.set("Clipboard dikirim ke HP: " + safe[:30])
+            if self._root: self._root.after(2500, lambda: launch_stat_var.set(""))
+
+        def _pull_clipboard():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: launch_stat_var.set("HP tidak terhubung"); return
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell", "am", "broadcast",
+                                 "-a", "clipper.get"],
+                                capture_output=True, text=True, timeout=5)
+                    out = r.stdout.strip()
+                    if self._root:
+                        self._root.clipboard_clear()
+                        self._root.clipboard_append(out)
+                        self._root.after(0, lambda: launch_stat_var.set("Clipboard HP: " + out[:60]))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: launch_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _recent_apps():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "keyevent", "187"])
+            launch_stat_var.set("Recent Apps dibuka")
+
+        _ck.Button(clip_row, text="→ PC ke HP", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_push_clipboard).pack(side="left", padx=(0, 6))
+        _ck.Button(clip_row, text="← HP ke PC", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_pull_clipboard).pack(side="left", padx=(0, 6))
+        _ck.Button(clip_row, text="📋 Recent Apps", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_recent_apps).pack(side="left")
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — UI Inspector
@@ -8275,7 +8775,177 @@ class SynthexApp:
         _ck.Button(uiinsp_btn_row, text="👆 Tap Elemen", fg_color=CARD2, text_color=FG,
                   font=("Segoe UI", 10), padx=12, pady=6,
                   relief="flat", bd=0, cursor="hand2",
-                  command=_uiinsp_tap_selected).pack(side="left")
+                  command=_uiinsp_tap_selected).pack(side="left", padx=(0, 8))
+
+        # Find by text
+        _ck.Label(uiinsp_sec, text="Cari & Tap by Teks", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
+        findtap_row = _ck.Frame(uiinsp_sec, fg_color=CARD)
+        findtap_row.pack(fill="x", pady=(0, 4))
+        findtap_var = tk.StringVar()
+        _ck.Entry(findtap_row, textvariable=findtap_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=200).pack(side="left", ipady=5, padx=(0, 8))
+
+        def _findtap():
+            import subprocess as _sp, re as _re5
+            target = findtap_var.get().strip().lower()
+            serial = _get_serial()
+            if not target or not serial: return
+            matched = [l for l in _uiinsp_lines if target in l.lower()]
+            if not matched:
+                uiinsp_stat_var.set("Tidak ditemukan: " + target); return
+            line = matched[0]
+            m = _re5.search(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', line)
+            if not m:
+                uiinsp_stat_var.set("Bounds tidak ada di elemen ini"); return
+            x = (int(m.group(1)) + int(m.group(3))) // 2
+            y = (int(m.group(2)) + int(m.group(4))) // 2
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "tap", str(x), str(y)])
+            uiinsp_stat_var.set("Tap '{}' → ({}, {})".format(target, x, y))
+
+        _ck.Button(findtap_row, text="🎯 Find & Tap", fg_color=GRN, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_findtap).pack(side="left")
+
+        # Screenshot overlay
+        _ck.Label(uiinsp_sec, text="Screenshot Overlay", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(8, 2))
+        overlay_canvas = tk.Canvas(uiinsp_sec, bg="#08080F", width=320, height=180,
+                                   highlightthickness=1, highlightbackground=BORD,
+                                   cursor="crosshair")
+        overlay_canvas.pack(anchor="w", pady=(0, 4))
+        _overlay_photo = [None]
+        _overlay_scale = [1.0]
+
+        def _uiinsp_screenshot_overlay():
+            import subprocess as _sp, io as _io, xml.etree.ElementTree as _ET2, tempfile as _tf2, re as _re6
+            serial = _get_serial()
+            if not serial: uiinsp_stat_var.set("HP tidak terhubung"); return
+            uiinsp_stat_var.set("Ambil screenshot + UI dump...")
+            def _bg():
+                try:
+                    # Screenshot
+                    r = _sp.run(["adb", "-s", serial, "exec-out", "screencap", "-p"],
+                                capture_output=True, timeout=10)
+                    if not r.stdout: raise Exception("Screenshot gagal")
+                    from PIL import Image as _Im2, ImageTk as _ITk2, ImageDraw as _ID
+                    img = _Im2.open(_io.BytesIO(r.stdout)).convert("RGB")
+                    sw, sh = img.size
+                    img_sm = img.copy()
+                    img_sm.thumbnail((320, 180), _Im2.LANCZOS)
+                    dw, dh = img_sm.size
+                    scale_x = dw / sw
+                    scale_y = dh / sh
+                    _overlay_scale[0] = (scale_x, scale_y)
+                    # UI dump
+                    remote = "/sdcard/synthex_ui2.xml"
+                    _sp.run(["adb", "-s", serial, "shell", "uiautomator", "dump", remote],
+                            capture_output=True, timeout=15)
+                    with _tf2.NamedTemporaryFile(suffix=".xml", delete=False) as tmp2:
+                        local2 = tmp2.name
+                    _sp.run(["adb", "-s", serial, "pull", remote, local2],
+                            capture_output=True, timeout=10)
+                    draw = _ID.Draw(img_sm)
+                    bounds_list = []
+                    try:
+                        tree2 = _ET2.parse(local2)
+                        import os as _os2; _os2.unlink(local2)
+                        for node in tree2.iter():
+                            if node.get("clickable") == "true":
+                                bnds = node.get("bounds", "")
+                                m = _re6.match(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', bnds)
+                                if m:
+                                    x1 = int(int(m.group(1)) * scale_x)
+                                    y1 = int(int(m.group(2)) * scale_y)
+                                    x2 = int(int(m.group(3)) * scale_x)
+                                    y2 = int(int(m.group(4)) * scale_y)
+                                    draw.rectangle([x1,y1,x2,y2], outline="#7c3aed", width=2)
+                                    bounds_list.append((x1,y1,x2,y2,
+                                                        node.get("text",""),
+                                                        int(m.group(1)),int(m.group(2)),
+                                                        int(m.group(3)),int(m.group(4))))
+                    except Exception: pass
+                    photo = _ITk2.PhotoImage(img_sm)
+                    def _upd():
+                        _overlay_photo[0] = photo
+                        overlay_canvas.config(width=dw, height=dh)
+                        overlay_canvas.delete("all")
+                        overlay_canvas.create_image(dw//2, dh//2, image=photo)
+                        uiinsp_stat_var.set("Overlay: {} elemen clickable".format(len(bounds_list)))
+                    if self._root: self._root.after(0, _upd)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: uiinsp_stat_var.set("Error: " + str(e)[:80]))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _overlay_click(e):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            sx, sy = _overlay_scale[0] if isinstance(_overlay_scale[0], tuple) else (1,1)
+            real_x = int(e.x / sx) if sx else e.x
+            real_y = int(e.y / sy) if sy else e.y
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "tap", str(real_x), str(real_y)])
+            uiinsp_stat_var.set("Tap overlay → ({}, {})".format(real_x, real_y))
+
+        overlay_canvas.bind("<Button-1>", _overlay_click)
+
+        # Generate macro from taps
+        _tap_macro_steps = []
+        _recording_taps = [False]
+
+        def _toggle_record_taps():
+            _recording_taps[0] = not _recording_taps[0]
+            if _recording_taps[0]:
+                _tap_macro_steps.clear()
+                rec_btn.configure(text="⏹ Stop Record", fg_color=RED)
+                uiinsp_stat_var.set("Recording tap... klik elemen di overlay")
+            else:
+                rec_btn.configure(text="⏺ Record Taps", fg_color=ACC2)
+                uiinsp_stat_var.set("{} step direkam".format(len(_tap_macro_steps)))
+
+        def _overlay_record_click(e):
+            _overlay_click(e)
+            if _recording_taps[0]:
+                sx, sy = _overlay_scale[0] if isinstance(_overlay_scale[0], tuple) else (1,1)
+                real_x = int(e.x / sx) if sx else e.x
+                real_y = int(e.y / sy) if sy else e.y
+                _tap_macro_steps.append({"type": "tap", "x": real_x, "y": real_y, "delay": 500})
+                uiinsp_stat_var.set("Recorded {} taps".format(len(_tap_macro_steps)))
+
+        overlay_canvas.bind("<Button-1>", _overlay_record_click)
+
+        def _save_tap_macro():
+            import json as _js
+            from tkinter import filedialog as _fd3, simpledialog as _sd2
+            if not _tap_macro_steps:
+                uiinsp_stat_var.set("Belum ada tap direkam"); return
+            name = _sd2.askstring("Nama Macro", "Nama macro:", parent=self._root)
+            if not name: return
+            import os as _os3
+            macro_dir = _os3.path.join("macros")
+            _os3.makedirs(macro_dir, exist_ok=True)
+            path = _os3.path.join(macro_dir, name.replace(" ", "_") + ".json")
+            macro_data = {"name": name, "steps": _tap_macro_steps}
+            with open(path, "w") as fp: _js.dump(macro_data, fp, indent=2)
+            uiinsp_stat_var.set("Macro disimpan: " + path)
+
+        overlay_btn_row = _ck.Frame(uiinsp_sec, fg_color=CARD)
+        overlay_btn_row.pack(anchor="w", pady=(0, 4))
+        _ck.Button(overlay_btn_row, text="📸 Screenshot Overlay", fg_color=ACC2, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_uiinsp_screenshot_overlay).pack(side="left", padx=(0, 8))
+        rec_btn = _ck.Button(overlay_btn_row, text="⏺ Record Taps", fg_color=ACC2, text_color="white",
+                             font=("Segoe UI", 10), padx=10, pady=6,
+                             relief="flat", bd=0, cursor="hand2",
+                             command=_toggle_record_taps)
+        rec_btn.pack(side="left", padx=(0, 8))
+        _ck.Button(overlay_btn_row, text="💾 Simpan Macro", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_save_tap_macro).pack(side="left")
 
         # ══════════════════════════════════════════════════════════════
         # SECTION — Logcat Viewer
@@ -8306,19 +8976,48 @@ class SynthexApp:
                               insertbackground=FG, state="disabled")
         logcat_text.pack(fill="x", pady=(0, 6))
 
+        # Color tags
+        logcat_text.tag_configure("E", foreground="#f87171")
+        logcat_text.tag_configure("W", foreground="#f59e0b")
+        logcat_text.tag_configure("I", foreground="#7DF080")
+        logcat_text.tag_configure("D", foreground="#64748b")
+        logcat_text.tag_configure("V", foreground="#4a4a6a")
+        logcat_text.tag_configure("CRASH", foreground="#ff4444", background="#2a0000")
+
         _logcat_proc = [None]
         _logcat_running = [False]
+        _logcat_lines_buf = []
+        _crash_alert_shown = [False]
 
         def _logcat_append(line):
             logcat_text.config(state="normal")
-            logcat_text.insert(tk.END, line + "\n")
+            _logcat_lines_buf.append(line)
+            # Determine color tag
+            tag = "I"
+            import re as _re7
+            m = _re7.match(r'[\d\-\s:\.]+\s+([EWDVI])/', line)
+            if m: tag = m.group(1)
+            if "FATAL EXCEPTION" in line or "FATAL" in line:
+                tag = "CRASH"
+                if not _crash_alert_shown[0]:
+                    _crash_alert_shown[0] = True
+                    if self._root:
+                        self._root.after(0, lambda: _crash_alert(line))
+            pos = logcat_text.index(tk.END)
+            logcat_text.insert(tk.END, line + "\n", tag)
             logcat_text.see(tk.END)
             logcat_text.config(state="disabled")
-            lines = int(logcat_text.index("end-1c").split(".")[0])
-            if lines > 500:
+            cur_lines = int(logcat_text.index("end-1c").split(".")[0])
+            if cur_lines > 600:
                 logcat_text.config(state="normal")
                 logcat_text.delete("1.0", "100.0")
                 logcat_text.config(state="disabled")
+                _logcat_lines_buf[:] = _logcat_lines_buf[-500:]
+
+        def _crash_alert(line):
+            from tkinter import messagebox as _mbc2
+            _mbc2.showerror("CRASH DETECTED", "FATAL EXCEPTION:\n" + line[:200])
+            _crash_alert_shown[0] = False
 
         def _logcat_start():
             import subprocess as _sp
@@ -8328,6 +9027,7 @@ class SynthexApp:
             if _logcat_running[0]:
                 return
             _logcat_running[0] = True
+            _logcat_lines_buf.clear()
             logcat_text.config(state="normal")
             logcat_text.delete("1.0", tk.END)
             logcat_text.config(state="disabled")
@@ -8365,6 +9065,50 @@ class SynthexApp:
             logcat_start_btn.configure(text="▶ Mulai Logcat", fg_color=GRN,
                                        command=_logcat_start)
 
+        def _logcat_save():
+            from tkinter import filedialog as _fd4
+            if not _logcat_lines_buf:
+                return
+            path = _fd4.asksaveasfilename(
+                defaultextension=".txt",
+                filetypes=[("Text", "*.txt"), ("Log", "*.log")],
+                initialfile="logcat_{}.txt".format(
+                    __import__("datetime").datetime.now().strftime("%Y%m%d_%H%M%S")))
+            if not path: return
+            with open(path, "w", encoding="utf-8") as fp:
+                fp.write("\n".join(_logcat_lines_buf))
+            logcat_highlight_var.set("Tersimpan: " + path)
+            if self._root: self._root.after(3000, lambda: logcat_highlight_var.set(""))
+
+        # Highlight keyword
+        logcat_hl_row = _ck.Frame(logcat_sec, fg_color=CARD)
+        logcat_hl_row.pack(fill="x", pady=(0, 4))
+        _ck.Label(logcat_hl_row, text="Highlight:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 6))
+        logcat_hl_var = tk.StringVar()
+        _ck.Entry(logcat_hl_row, textvariable=logcat_hl_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 10), width=160).pack(side="left", ipady=4)
+
+        def _logcat_highlight(*_):
+            kw = logcat_hl_var.get()
+            logcat_text.tag_remove("HL", "1.0", tk.END)
+            if not kw: return
+            logcat_text.tag_configure("HL", background="#7c3aed", foreground="white")
+            start = "1.0"
+            while True:
+                pos = logcat_text.search(kw, start, stopindex=tk.END, nocase=True)
+                if not pos: break
+                end = "{}+{}c".format(pos, len(kw))
+                logcat_text.tag_add("HL", pos, end)
+                start = end
+
+        logcat_hl_var.trace_add("write", _logcat_highlight)
+
+        logcat_highlight_var = tk.StringVar(value="")
+        _ck.Label(logcat_sec, textvariable=logcat_highlight_var, fg_color=CARD,
+                 text_color=GRN, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 2))
+
         logcat_btn_row = _ck.Frame(logcat_sec, fg_color=CARD)
         logcat_btn_row.pack(anchor="w")
         logcat_start_btn = _ck.Button(logcat_btn_row, text="▶ Mulai Logcat",
@@ -8379,8 +9123,326 @@ class SynthexApp:
                   command=lambda: [
                       logcat_text.config(state="normal"),
                       logcat_text.delete("1.0", tk.END),
-                      logcat_text.config(state="disabled")
-                  ]).pack(side="left")
+                      logcat_text.config(state="disabled"),
+                      _logcat_lines_buf.clear()
+                  ]).pack(side="left", padx=(0, 8))
+        _ck.Button(logcat_btn_row, text="💾 Simpan Log", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_logcat_save).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — ADB Shell Terminal
+        # ══════════════════════════════════════════════════════════════
+        shell_sec = _sec("ADB Shell Terminal", accent="#0A0A1A",
+                         subtitle="Jalankan command ADB shell langsung dari Synthex")
+
+        shell_out = tk.Text(shell_sec, bg="#030308", fg="#00FF88", relief="flat",
+                            font=("Consolas", 10), height=10, wrap="word",
+                            insertbackground=FG, state="disabled")
+        shell_out.pack(fill="x", pady=(0, 6))
+        shell_out.tag_configure("ERR", foreground="#f87171")
+        shell_out.tag_configure("CMD", foreground="#7c3aed")
+        shell_out.tag_configure("OK",  foreground="#00FF88")
+
+        _shell_history = []
+        _shell_hist_idx = [0]
+
+        shell_inp_row = _ck.Frame(shell_sec, fg_color=CARD)
+        shell_inp_row.pack(fill="x", pady=(0, 4))
+        _ck.Label(shell_inp_row, text="$", fg_color=CARD, text_color=GRN,
+                 font=("Consolas", 12, "bold")).pack(side="left", padx=(0, 6))
+        shell_var = tk.StringVar()
+        shell_entry = _ck.Entry(shell_inp_row, textvariable=shell_var, fg_color="#060610",
+                               text_color=GRN, insertbackground=GRN, relief="flat",
+                               font=("Consolas", 11))
+        shell_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+
+        def _shell_write(text, tag="OK"):
+            shell_out.config(state="normal")
+            shell_out.insert(tk.END, text + "\n", tag)
+            shell_out.see(tk.END)
+            shell_out.config(state="disabled")
+
+        def _shell_run(e=None):
+            import subprocess as _sp
+            cmd = shell_var.get().strip()
+            if not cmd: return
+            serial = _get_serial()
+            _shell_write("$ " + cmd, "CMD")
+            _shell_history.append(cmd)
+            _shell_hist_idx[0] = len(_shell_history)
+            shell_var.set("")
+            if cmd.startswith("adb "):
+                full_cmd = cmd.split()
+            elif serial:
+                full_cmd = ["adb", "-s", serial, "shell"] + cmd.split()
+            else:
+                _shell_write("HP tidak terhubung", "ERR"); return
+            def _bg():
+                try:
+                    r = _sp.run(full_cmd, capture_output=True, text=True, timeout=30)
+                    out = r.stdout.strip() or r.stderr.strip()
+                    tag = "ERR" if r.returncode != 0 else "OK"
+                    if self._root: self._root.after(0, lambda: _shell_write(out[:2000] or "(no output)", tag))
+                except Exception as ex:
+                    if self._root: self._root.after(0, lambda: _shell_write(str(ex), "ERR"))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _shell_hist_up(e):
+            if _shell_history and _shell_hist_idx[0] > 0:
+                _shell_hist_idx[0] -= 1
+                shell_var.set(_shell_history[_shell_hist_idx[0]])
+            return "break"
+
+        def _shell_hist_down(e):
+            if _shell_hist_idx[0] < len(_shell_history) - 1:
+                _shell_hist_idx[0] += 1
+                shell_var.set(_shell_history[_shell_hist_idx[0]])
+            else:
+                shell_var.set("")
+            return "break"
+
+        shell_entry.bind("<Return>", _shell_run)
+        shell_entry.bind("<Up>", _shell_hist_up)
+        shell_entry.bind("<Down>", _shell_hist_down)
+
+        shell_btn_row = _ck.Frame(shell_sec, fg_color=CARD)
+        shell_btn_row.pack(anchor="w", pady=(0, 4))
+        _ck.Button(shell_btn_row, text="▶ Run", fg_color=GRN, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_shell_run).pack(side="left", padx=(0, 8))
+        _ck.Button(shell_btn_row, text="🧹 Clear", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: [shell_out.config(state="normal"),
+                                   shell_out.delete("1.0", tk.END),
+                                   shell_out.config(state="disabled")]
+                  ).pack(side="left", padx=(0, 8))
+
+        _shell_quick = [("ls /sdcard", "ls /sdcard"), ("ps aux", "ps aux"),
+                        ("ip addr", "ip addr"), ("df", "df"),
+                        ("getprop", "getprop"), ("whoami", "whoami")]
+        for ql, qc in _shell_quick:
+            _ck.Button(shell_btn_row, text=ql, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=6, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda c=qc: [shell_var.set(c), _shell_run()]
+                      ).pack(side="left", padx=(0, 4))
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — SMS & Notifikasi Reader
+        # ══════════════════════════════════════════════════════════════
+        sms_sec = _sec("SMS & Notifikasi", accent="#1A0A1A",
+                       subtitle="Baca SMS dan notifikasi dari HP via ADB")
+
+        sms_text = tk.Text(sms_sec, bg=CARD2, fg=FG, relief="flat",
+                           font=("Segoe UI", 10), height=8, wrap="word",
+                           insertbackground=FG, state="disabled")
+        sms_text.pack(fill="x", pady=(0, 6))
+
+        sms_stat_var = tk.StringVar(value="")
+        _ck.Label(sms_sec, textvariable=sms_stat_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
+
+        def _read_notifications():
+            import subprocess as _sp, re as _re8
+            serial = _get_serial()
+            if not serial: sms_stat_var.set("HP tidak terhubung"); return
+            sms_stat_var.set("Membaca notifikasi...")
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell",
+                                 "dumpsys", "notification", "--noredact"],
+                                capture_output=True, text=True, timeout=15)
+                    lines = r.stdout.splitlines()
+                    entries = []
+                    cur_pkg, cur_text = "", ""
+                    for line in lines:
+                        if "NotificationRecord" in line:
+                            if cur_pkg and cur_text:
+                                entries.append("[{}]\n{}\n".format(cur_pkg, cur_text))
+                            cur_pkg = _re8.search(r'pkg=(\S+)', line)
+                            cur_pkg = cur_pkg.group(1) if cur_pkg else ""
+                            cur_text = ""
+                        elif "android.title=" in line or "android.text=" in line:
+                            cur_text += line.strip() + "\n"
+                    if cur_pkg and cur_text:
+                        entries.append("[{}]\n{}\n".format(cur_pkg, cur_text))
+                    result = "\n".join(entries[-20:]) if entries else "Tidak ada notifikasi aktif"
+                    def _upd():
+                        sms_text.config(state="normal")
+                        sms_text.delete("1.0", tk.END)
+                        sms_text.insert("1.0", result)
+                        sms_text.config(state="disabled")
+                        sms_stat_var.set("{} notifikasi ditemukan".format(len(entries)))
+                    if self._root: self._root.after(0, _upd)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: sms_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _read_sms():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: sms_stat_var.set("HP tidak terhubung"); return
+            sms_stat_var.set("Membaca SMS...")
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell", "content", "query",
+                                 "--uri", "content://sms/inbox",
+                                 "--projection", "address:body:date"],
+                                capture_output=True, text=True, timeout=15)
+                    lines = r.stdout.strip()
+                    if not lines:
+                        lines = "Tidak ada SMS atau permission ditolak.\nPastikan app SMS default dapat diakses."
+                    def _upd():
+                        sms_text.config(state="normal")
+                        sms_text.delete("1.0", tk.END)
+                        sms_text.insert("1.0", lines[:3000])
+                        sms_text.config(state="disabled")
+                        sms_stat_var.set("SMS inbox dibaca")
+                    if self._root: self._root.after(0, _upd)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: sms_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        sms_btn_row = _ck.Frame(sms_sec, fg_color=CARD)
+        sms_btn_row.pack(anchor="w")
+        _ck.Button(sms_btn_row, text="🔔 Baca Notifikasi", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_read_notifications).pack(side="left", padx=(0, 8))
+        _ck.Button(sms_btn_row, text="💬 Baca SMS Inbox", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 10), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_read_sms).pack(side="left", padx=(0, 8))
+        _ck.Button(sms_btn_row, text="🧹 Clear", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: [sms_text.config(state="normal"),
+                                   sms_text.delete("1.0", tk.END),
+                                   sms_text.config(state="disabled")]
+                  ).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Screen Mirror Lite
+        # ══════════════════════════════════════════════════════════════
+        mirror_sec = _sec("Screen Mirror Lite", accent="#0A2A2A",
+                          subtitle="Preview layar HP tanpa scrcpy — via ADB screencap loop")
+
+        _ck.Label(mirror_sec,
+                 text="Mirror sederhana berbasis screenshot loop — latensi ~1-2 detik.\n"
+                      "Klik pada canvas untuk tap di koordinat yang sama di HP.",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI", 9),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+
+        mirror_quality_var = tk.StringVar(value="360p")
+        mirror_fps_var = tk.StringVar(value="1")
+        mq_row = _ck.Frame(mirror_sec, fg_color=CARD)
+        mq_row.pack(anchor="w", pady=(0, 8))
+        _ck.Label(mq_row, text="Kualitas:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+        for q in ["240p", "360p", "480p", "720p"]:
+            _ck.Button(mq_row, text=q, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=8, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda v=q: mirror_quality_var.set(v)
+                      ).pack(side="left", padx=(0, 4))
+        _ck.Label(mq_row, text="FPS:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(12, 6))
+        for fps in ["0.5", "1", "2"]:
+            _ck.Button(mq_row, text=fps, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=6, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda v=fps: mirror_fps_var.set(v)
+                      ).pack(side="left", padx=(0, 4))
+
+        _QUALITY_MAP = {"240p": (320, 180), "360p": (480, 270),
+                        "480p": (640, 360), "720p": (960, 540)}
+        mirror_canvas = tk.Canvas(mirror_sec, bg="#030308", width=480, height=270,
+                                  highlightthickness=1, highlightbackground=BORD,
+                                  cursor="crosshair")
+        mirror_canvas.pack(anchor="w", pady=(0, 6))
+        _mirror_photo = [None]
+        _mirror_running = [False]
+        _mirror_timer = [None]
+        _mirror_real_size = [1920, 1080]
+
+        def _mirror_tap(e):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial: return
+            cw = mirror_canvas.winfo_width()
+            ch = mirror_canvas.winfo_height()
+            rw, rh = _mirror_real_size
+            rx = int(e.x / cw * rw)
+            ry = int(e.y / ch * rh)
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "tap", str(rx), str(ry)])
+
+        mirror_canvas.bind("<Button-1>", _mirror_tap)
+
+        mirror_stat_var = tk.StringVar(value="Mirror tidak aktif")
+        _ck.Label(mirror_sec, textvariable=mirror_stat_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9, "italic")).pack(anchor="w", pady=(0, 4))
+
+        def _mirror_frame():
+            import subprocess as _sp, io as _io, time as _ti
+            serial = _get_serial()
+            if not serial or not _mirror_running[0]: return
+            t0 = _ti.time()
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "exec-out", "screencap", "-p"],
+                                capture_output=True, timeout=8)
+                    if r.returncode == 0 and r.stdout:
+                        from PIL import Image as _Im3, ImageTk as _ITk3
+                        img = _Im3.open(_io.BytesIO(r.stdout))
+                        _mirror_real_size[0], _mirror_real_size[1] = img.size
+                        w, h = _QUALITY_MAP.get(mirror_quality_var.get(), (480, 270))
+                        img.thumbnail((w, h), _Im3.LANCZOS)
+                        photo = _ITk3.PhotoImage(img)
+                        elapsed = _ti.time() - t0
+                        def _upd():
+                            _mirror_photo[0] = photo
+                            iw, ih = img.size
+                            mirror_canvas.config(width=iw, height=ih)
+                            mirror_canvas.delete("all")
+                            mirror_canvas.create_image(iw//2, ih//2, image=photo)
+                            mirror_stat_var.set("{:.1f}s/frame  ({} × {})".format(
+                                elapsed, _mirror_real_size[0], _mirror_real_size[1]))
+                        if self._root: self._root.after(0, _upd)
+                except Exception as ex:
+                    if self._root: self._root.after(0, lambda: mirror_stat_var.set("Error: " + str(ex)[:60]))
+                # Schedule next frame
+                if _mirror_running[0] and self._root:
+                    try:
+                        delay = max(100, int(1000 / float(mirror_fps_var.get())))
+                    except Exception:
+                        delay = 1000
+                    _mirror_timer[0] = self._root.after(delay, _mirror_frame)
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _mirror_start():
+            _mirror_running[0] = True
+            _mirror_frame()
+            mirror_start_btn.configure(text="⏹ Stop Mirror", fg_color=RED,
+                                       command=_mirror_stop)
+
+        def _mirror_stop():
+            _mirror_running[0] = False
+            if _mirror_timer[0]:
+                try: self._root.after_cancel(_mirror_timer[0])
+                except Exception: pass
+            mirror_stat_var.set("Mirror dihentikan")
+            mirror_start_btn.configure(text="▶ Mulai Mirror", fg_color=GRN,
+                                       command=_mirror_start)
+
+        mirror_start_btn = _ck.Button(mirror_sec, text="▶ Mulai Mirror", fg_color=GRN,
+                                      text_color="white", font=("Segoe UI", 10, "bold"),
+                                      padx=14, pady=6, relief="flat", bd=0, cursor="hand2",
+                                      command=_mirror_start)
+        mirror_start_btn.pack(anchor="w")
 
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
