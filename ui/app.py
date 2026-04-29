@@ -78,6 +78,7 @@ _STEP_ICONS = {
     "ai_prompt":                    "[AI]",
     "scrape_url":                   "[SC]",
     "run_powershell":               "[PS]",
+    "ocr_image":                    "[OCR]",
     "sheet_get_pending_rows":       "[P]",
     "web_get_order_list":           "[O]",
     "validate_and_confirm_orders":  "[V]",
@@ -390,6 +391,8 @@ def _step_label(step):
         step.get("url","")[:40], step.get("var","scraped_text"))
     if t == "run_powershell":   return "[PS] {} ({}) → {{{}}}".format(
         step.get("task","")[:35], step.get("mode","auto"), step.get("var","ps_output"))
+    if t == "ocr_image":        return "[OCR] {} → {{{}}}".format(
+        step.get("image_path","screenshot")[:35], step.get("var","ocr_text"))
     return t or "(empty step)"
 
 
@@ -2601,6 +2604,7 @@ class SynthexApp:
             ("ai_prompt",        "🤖 AI Prompt"),
             ("scrape_url",       "🌐 Scrape URL"),
             ("run_powershell",   "[PS] PowerShell"),
+            ("ocr_image",        "[OCR] OCR Gambar"),
         ]
         display_names = [d for _, d in TYPE_OPTIONS]
         type_to_key   = {d: k for k, d in TYPE_OPTIONS}
@@ -2976,6 +2980,36 @@ class SynthexApp:
 
             _lbl(parent,
                  "Output tersimpan di {ps_output} — bisa dipakai di step AI Prompt, "
+                 "If Contains, Write Sheet, dll.", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
+
+        elif step_type == "ocr_image":
+            info_fr = _ck.Frame(parent, fg_color="#0A1810", padx=10, pady=6)
+            info_fr.pack(fill="x", pady=(0, 10))
+            _ck.Label(info_fr,
+                      text="Ekstrak teks dari gambar / screenshot menggunakan AI Vision — tanpa Tesseract.",
+                      fg_color="#0A1810", text_color=GRN,
+                      font=("Segoe UI Variable", 8)).pack(anchor="w")
+
+            _field("Path gambar", "image_path", existing.get("image_path", ""),
+                   helper="Kosongkan untuk screenshot otomatis layar kamu sekarang. "
+                          "Dukung {variabel} dari step sebelumnya.")
+
+            _field("Bahasa (opsional)", "language", existing.get("language", ""),
+                   helper="Contoh: Indonesian, English. Kosong = otomatis.")
+
+            sv_row = _ck.Frame(parent, fg_color=BG)
+            sv_row.pack(fill="x", pady=(0, 10))
+            _lbl(sv_row, "Simpan teks sebagai:", text_color=MUT, fg_color=BG,
+                 font=("Segoe UI Variable", 9)).pack(side="left", padx=(0, 8))
+            ocr_var = tk.StringVar(value=existing.get("var", "ocr_text"))
+            _ck.Entry(sv_row, textvariable=ocr_var, fg_color=CARD, text_color=FG,
+                     insertbackground=FG, relief="flat",
+                     font=("Segoe UI Variable", 9), width=18).pack(side="left")
+            self._mb_field_vars["var"] = ocr_var
+
+            _lbl(parent,
+                 "Hasil OCR tersimpan di {ocr_text} — bisa dipakai di step AI Prompt, "
                  "If Contains, Write Sheet, dll.", text_color=MUT, fg_color=BG,
                  font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 8))
 
@@ -7201,6 +7235,338 @@ class SynthexApp:
 
         guide_btn.configure(command=_toggle_guide)
         guide_btn.pack(anchor="w", padx=0)
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — File Manager HP
+        # ══════════════════════════════════════════════════════════════
+        fm_sec = _sec("File Manager HP", accent="#0A1A2A",
+                      subtitle="Browse, unduh & upload file dari HP via ADB")
+
+        _ck.Label(fm_sec,
+                 text="Sambungkan HP via USB atau WiFi ADB, lalu browse file seperti Explorer.",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+
+        fm_path_var = tk.StringVar(value="/sdcard")
+        fm_stat_var = tk.StringVar(value="")
+        fm_store_var = tk.StringVar(value="")
+
+        fm_path_row = _ck.Frame(fm_sec, fg_color=CARD)
+        fm_path_row.pack(fill="x", pady=(0, 6))
+        _ck.Label(fm_path_row, text="Path:", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI Variable", 9)).pack(side="left")
+        fm_path_entry = _ck.Entry(fm_path_row, textvariable=fm_path_var, fg_color="#16162a",
+                                  text_color=FG, insertbackground=FG, relief="flat",
+                                  font=("Consolas", 9), bd=4)
+        fm_path_entry.pack(side="left", fill="x", expand=True, padx=6)
+
+        fm_list_frame = _ck.Frame(fm_sec, fg_color="#080D14")
+        fm_list_frame.pack(fill="x", pady=(0, 4))
+
+        fm_lb = tk.Listbox(fm_list_frame, bg="#080D14", fg=FG, selectbackground=ACC,
+                           selectforeground="white", relief="flat", bd=0,
+                           font=("Consolas", 9), height=10, activestyle="none")
+        fm_sb2 = _ck.Scrollbar(fm_list_frame, orient="vertical", command=fm_lb.yview)
+        fm_sb2.pack(side="right", fill="y")
+        fm_lb.pack(fill="both", expand=True, padx=0)
+        fm_lb.configure(yscrollcommand=fm_sb2.set)
+
+        _fm_entries = []
+
+        def _fm_serial():
+            devs = list(_card_widgets.keys())
+            return devs[0] if devs else None
+
+        def _fm_refresh(path=None):
+            serial = _fm_serial()
+            if not serial or not self._adb:
+                fm_stat_var.set("Tidak ada perangkat terhubung")
+                return
+            try:
+                from modules.phone_files import PhoneFileManager
+                mgr = PhoneFileManager(self._adb)
+                if path is None:
+                    path = fm_path_var.get().strip() or "/sdcard"
+                fm_path_var.set(path)
+                entries = mgr.ls(serial, path)
+                _fm_entries.clear()
+                _fm_entries.extend(entries)
+                fm_lb.delete(0, "end")
+                for e in entries:
+                    prefix = "[D] " if e["is_dir"] else "    "
+                    size_s = "  {:.0f}K".format(e["size"] / 1024) if e["size"] > 0 else ""
+                    fm_lb.insert("end", "{}{}{}".format(prefix, e["name"], size_s))
+                storage = mgr.get_storage_info(serial)
+                fm_store_var.set("Storage: {:.1f}/{:.1f} GB  ({:.1f} GB bebas)".format(
+                    storage["used_gb"], storage["total_gb"], storage["free_gb"]))
+                fm_stat_var.set("")
+            except Exception as ex:
+                fm_stat_var.set("Error: {}".format(str(ex)[:80]))
+
+        def _fm_open(event=None):
+            sel = fm_lb.curselection()
+            if not sel or not _fm_entries:
+                return
+            entry = _fm_entries[sel[0]]
+            if entry["is_dir"]:
+                _thr.Thread(target=lambda: (
+                    _fm_refresh(entry["path"]) if self._root else None
+                ), daemon=True).start()
+
+        def _fm_go_up():
+            cur = fm_path_var.get().rstrip("/")
+            parent_path = "/".join(cur.split("/")[:-1]) or "/"
+            _thr.Thread(target=lambda: _fm_refresh(parent_path), daemon=True).start()
+
+        def _fm_pull():
+            sel = fm_lb.curselection()
+            if not sel or not _fm_entries:
+                fm_stat_var.set("Pilih file dulu")
+                return
+            entry = _fm_entries[sel[0]]
+            if entry["is_dir"]:
+                fm_stat_var.set("Pilih file (bukan folder)")
+                return
+            serial = _fm_serial()
+            if not serial or not self._adb:
+                fm_stat_var.set("Tidak ada perangkat")
+                return
+            from tkinter import filedialog as _fd
+            save_dir = _fd.askdirectory(title="Simpan ke folder")
+            if not save_dir:
+                return
+            def _bg():
+                try:
+                    from modules.phone_files import PhoneFileManager
+                    mgr = PhoneFileManager(self._adb)
+                    local = mgr.pull(serial, entry["path"], save_dir,
+                                     progress_cb=lambda m: (
+                                         self._root.after(0, lambda msg=m: fm_stat_var.set(msg))
+                                         if self._root else None))
+                    if self._root:
+                        self._root.after(0, lambda: fm_stat_var.set("Selesai: {}".format(local)))
+                except Exception as ex:
+                    if self._root:
+                        self._root.after(0, lambda: fm_stat_var.set("Gagal: {}".format(ex)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _fm_push():
+            serial = _fm_serial()
+            if not serial or not self._adb:
+                fm_stat_var.set("Tidak ada perangkat")
+                return
+            from tkinter import filedialog as _fd
+            local_file = _fd.askopenfilename(title="Pilih file untuk upload ke HP")
+            if not local_file:
+                return
+            remote_dir = fm_path_var.get()
+            def _bg():
+                try:
+                    from modules.phone_files import PhoneFileManager
+                    mgr = PhoneFileManager(self._adb)
+                    remote = mgr.push(serial, local_file, remote_dir,
+                                      progress_cb=lambda m: (
+                                          self._root.after(0, lambda msg=m: fm_stat_var.set(msg))
+                                          if self._root else None))
+                    if self._root:
+                        self._root.after(0, lambda: (fm_stat_var.set("Upload selesai: {}".format(remote)),
+                                                     _fm_refresh()))
+                except Exception as ex:
+                    if self._root:
+                        self._root.after(0, lambda: fm_stat_var.set("Gagal: {}".format(ex)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        fm_path_entry.bind("<Return>", lambda e: _thr.Thread(
+            target=_fm_refresh, daemon=True).start())
+        fm_lb.bind("<Double-1>", _fm_open)
+
+        fm_btn_row = _ck.Frame(fm_sec, fg_color=CARD)
+        fm_btn_row.pack(fill="x", pady=(0, 6))
+        for txt, cmd, clr in [
+            ("  Buka", _fm_open, "#1A3A1A"),
+            ("  Naik", _fm_go_up, "#1A1A3A"),
+            ("Refresh", lambda: _thr.Thread(target=_fm_refresh, daemon=True).start(), CARD2),
+            ("Unduh", _fm_pull, "#1A2A0A"),
+            ("Upload", _fm_push, "#0A1A2A"),
+        ]:
+            _ck.Button(fm_btn_row, text=txt, fg_color=clr, text_color=FG,
+                      font=("Segoe UI Variable", 8, "bold"), padx=10, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=cmd).pack(side="left", padx=(0, 4))
+
+        _ck.Label(fm_sec, textvariable=fm_store_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI Variable", 8)).pack(anchor="w", pady=(0, 2))
+        _ck.Label(fm_sec, textvariable=fm_stat_var, fg_color=CARD, text_color=YEL,
+                 font=("Segoe UI Variable", 8)).pack(anchor="w")
+
+        # Backup Foto subsection
+        _ck.Frame(fm_sec, fg_color="#1A1A2A", height=1).pack(fill="x", pady=(10, 8))
+        bk_hdr = _ck.Frame(fm_sec, fg_color=CARD)
+        bk_hdr.pack(fill="x", pady=(0, 6))
+        _ck.Label(bk_hdr, text="Backup Foto Otomatis", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+        _ck.Label(bk_hdr,
+                 text="  Salin foto DCIM ke PC — hanya file baru yang belum ada",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8)).pack(side="left")
+
+        bk_stat_var = tk.StringVar(value="")
+        _ck.Label(fm_sec, textvariable=bk_stat_var, fg_color=CARD, text_color=GRN,
+                 font=("Segoe UI Variable", 8), wraplength=560).pack(anchor="w", pady=(0, 4))
+
+        _bk_instance = [None]
+
+        def _bk_start():
+            serial = _fm_serial()
+            if not serial or not self._adb:
+                bk_stat_var.set("Tidak ada perangkat terhubung")
+                return
+            if _bk_instance[0] and _bk_instance[0]._running:
+                bk_stat_var.set("Backup sudah berjalan...")
+                return
+            from modules.phone_files import PhotoBackup
+            _bk_instance[0] = PhotoBackup(self._adb)
+
+            def _prog(msg):
+                if self._root:
+                    self._root.after(0, lambda m=msg: bk_stat_var.set(m))
+
+            def _done(result):
+                summary = "Backup selesai — disalin: {}, dilewati: {}, gagal: {}".format(
+                    result.get("copied", 0), result.get("skipped", 0), result.get("failed", 0))
+                if self._root:
+                    self._root.after(0, lambda: bk_stat_var.set(summary))
+
+            _bk_instance[0].backup(serial, progress_cb=_prog, done_cb=_done)
+            bk_stat_var.set("Memulai backup...")
+
+        def _bk_stop():
+            if _bk_instance[0]:
+                _bk_instance[0].stop()
+                bk_stat_var.set("Backup dihentikan.")
+
+        bk_btn_row = _ck.Frame(fm_sec, fg_color=CARD)
+        bk_btn_row.pack(anchor="w")
+        _ck.Button(bk_btn_row, text="  Mulai Backup Foto", fg_color="#16803C", text_color="white",
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_bk_start).pack(side="left", padx=(0, 8))
+        _ck.Button(bk_btn_row, text="Stop", fg_color="#1c1c2e", text_color=MUT,
+                  font=("Segoe UI Variable", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_bk_stop).pack(side="left")
+        _ck.Label(fm_sec,
+                 text="Foto disimpan ke: Pictures/Synthex Backup",
+                 fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI Variable", 8)).pack(
+            anchor="w", pady=(4, 0))
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — WhatsApp Auto-Reply Bot
+        # ══════════════════════════════════════════════════════════════
+        wa_sec = _sec("WhatsApp Auto-Reply Bot", accent="#0A2A10",
+                      subtitle="AI balas pesan WA otomatis via ADB + AI (Haiku)")
+
+        _ck.Label(wa_sec,
+                 text="Bot monitor notifikasi WA di HP, generate balasan via AI, lalu kirim otomatis.",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 9),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+
+        _wa_bot_inst = [None]
+        wa_stat_var  = tk.StringVar(value="Bot tidak aktif")
+        wa_dot       = _ck.Label(wa_sec, text="●", fg_color=CARD, text_color=MUT,
+                                  font=("Segoe UI Variable", 14))
+        wa_dot.pack(side="top", anchor="w")
+
+        wa_dot_row = _ck.Frame(wa_sec, fg_color=CARD)
+        wa_dot_row.pack(fill="x", pady=(0, 6))
+        _ck.Label(wa_dot_row, textvariable=wa_stat_var, fg_color=CARD, text_color=FG,
+                 font=("Segoe UI Variable", 9, "bold")).pack(side="left", padx=(0, 8))
+
+        wa_log_var = tk.StringVar(value="")
+        _ck.Label(wa_sec, textvariable=wa_log_var, fg_color=CARD, text_color=GRN,
+                 font=("Segoe UI Variable", 8), wraplength=560).pack(anchor="w", pady=(0, 4))
+
+        wa_ctx_frame = _ck.Frame(wa_sec, fg_color=CARD)
+        wa_ctx_frame.pack(fill="x", pady=(0, 6))
+        _ck.Label(wa_ctx_frame, text="Konteks AI (opsional):", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI Variable", 9)).pack(side="left")
+        wa_ctx_var = tk.StringVar(value=self.config.get("wa_bot.context", ""))
+        _ck.Entry(wa_ctx_frame, textvariable=wa_ctx_var, fg_color="#16162a", text_color=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9),
+                 bd=4).pack(side="left", fill="x", expand=True, padx=6)
+
+        wa_wl_frame = _ck.Frame(wa_sec, fg_color=CARD)
+        wa_wl_frame.pack(fill="x", pady=(0, 6))
+        _ck.Label(wa_wl_frame, text="Whitelist nama (opsional, pisah koma):", fg_color=CARD,
+                 text_color=MUT, font=("Segoe UI Variable", 9)).pack(side="left")
+        wa_wl_var = tk.StringVar(value=", ".join(self.config.get("wa_bot.whitelist", [])))
+        _ck.Entry(wa_wl_frame, textvariable=wa_wl_var, fg_color="#16162a", text_color=FG,
+                 insertbackground=FG, relief="flat", font=("Segoe UI Variable", 9),
+                 bd=4).pack(side="left", fill="x", expand=True, padx=6)
+
+        def _wa_serial():
+            devs = list(_card_widgets.keys())
+            return devs[0] if devs else None
+
+        def _wa_start():
+            serial = _wa_serial()
+            if not serial or not self._adb:
+                wa_stat_var.set("Tidak ada perangkat terhubung")
+                return
+            if _wa_bot_inst[0] and _wa_bot_inst[0].running:
+                wa_stat_var.set("Bot sudah aktif")
+                return
+            from modules.wa_bot import WABot
+            bot = WABot(self._adb)
+            ctx = wa_ctx_var.get().strip()
+            wl_raw = wa_wl_var.get().strip()
+            whitelist = [x.strip() for x in wl_raw.split(",") if x.strip()] if wl_raw else []
+            bot.config["context"]   = ctx
+            bot.config["whitelist"] = whitelist
+            self.config.set("wa_bot.context", ctx)
+            self.config.set("wa_bot.whitelist", whitelist)
+            self.config.save()
+
+            def _on_reply(sender, msg, reply):
+                log = "Balasan ke {}: {}".format(sender, reply[:60])
+                if self._root:
+                    self._root.after(0, lambda m=log: wa_log_var.set(m))
+
+            def _on_error(err):
+                if self._root:
+                    self._root.after(0, lambda m=err: wa_log_var.set("Error: {}".format(m[:60])))
+
+            bot.on_reply = _on_reply
+            bot.on_error = _on_error
+            _wa_bot_inst[0] = bot
+            bot.start(serial)
+            wa_stat_var.set("Bot aktif — memantau notifikasi WA...")
+            if self._root:
+                wa_dot.configure(text_color=GRN)
+
+        def _wa_stop():
+            if _wa_bot_inst[0]:
+                _wa_bot_inst[0].stop()
+                _wa_bot_inst[0] = None
+            wa_stat_var.set("Bot tidak aktif")
+            wa_dot.configure(text_color=MUT)
+            wa_log_var.set("")
+
+        wa_btn_row = _ck.Frame(wa_sec, fg_color=CARD)
+        wa_btn_row.pack(anchor="w", pady=(4, 0))
+        _ck.Button(wa_btn_row, text="  Aktifkan Bot", fg_color="#16803C", text_color="white",
+                  font=("Segoe UI Variable", 9, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wa_start).pack(side="left", padx=(0, 8))
+        _ck.Button(wa_btn_row, text="Stop Bot", fg_color="#1c1c2e", text_color=MUT,
+                  font=("Segoe UI Variable", 9), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wa_stop).pack(side="left")
+
+        _ck.Label(wa_sec,
+                 text="Bot butuh akses notifikasi ADB. Pastikan HP dalam status unlock & ADB aktif.\n"
+                      "AI yang digunakan: provider & key dari Settings → AI Integration.",
+                 fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI Variable", 8),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
 
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():

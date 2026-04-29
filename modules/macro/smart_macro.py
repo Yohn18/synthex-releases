@@ -332,6 +332,10 @@ class SmartMacro:
         if t == "run_powershell":
             return self._run_powershell(step, variables)
 
+        # -- OCR -----------------------------------------------------------
+        if t == "ocr_image":
+            return self._run_ocr_image(step, variables)
+
         self.logger.warning(f"Unknown step type: {t}")
         return f"unknown: {t}"
 
@@ -574,6 +578,42 @@ class SmartMacro:
         else:
             self.logger.warning("PS Error: %s", error[:100])
             return "[PS ERROR] {}: {}".format(cmd[:40], error[:80])
+
+    # ------------------------------------------------------------------ #
+    #  OCR Image                                                          #
+    # ------------------------------------------------------------------ #
+
+    def _run_ocr_image(self, step: dict, variables: dict) -> str:
+        from modules.vision.ocr import extract_text, screenshot_and_ocr
+        import os as _os, json as _json
+
+        _root = _os.path.dirname(_os.path.dirname(_os.path.dirname(
+            _os.path.abspath(__file__))))
+        try:
+            with open(_os.path.join(_root, "config.json"), encoding="utf-8") as _f:
+                _cfg = _json.load(_f).get("ai", {})
+        except Exception:
+            _cfg = {}
+
+        api_key  = _cfg.get("api_key", "")
+        provider = _cfg.get("provider", "anthropic")
+        model    = step.get("model", "") or _cfg.get("model", "")
+        language = step.get("language", "")
+        var      = step.get("var", "ocr_text") or "ocr_text"
+
+        image_path = step.get("image_path", "").strip()
+        if image_path:
+            text = extract_text(image_path, api_key=api_key, provider=provider,
+                                model=model, language=language)
+            self.logger.info("OCR %s → %s…", image_path[:40], text[:60])
+            result_desc = "OCR {} → {{{}}}".format(image_path[:30], var)
+        else:
+            text, path = screenshot_and_ocr(api_key=api_key, provider=provider, model=model)
+            self.logger.info("OCR screenshot %s → %s…", path[:40], text[:60])
+            result_desc = "OCR screenshot → {{{}}}".format(var)
+
+        variables[var] = text
+        return "{}: {}…".format(result_desc, text[:60])
 
     # ------------------------------------------------------------------ #
     #  Bulk Order Confirmation                                             #
