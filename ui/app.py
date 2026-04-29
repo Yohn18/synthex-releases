@@ -7568,6 +7568,820 @@ class SynthexApp:
                  fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI", 9),
                  wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
 
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Wireless ADB (Android 11+)
+        # ══════════════════════════════════════════════════════════════
+        wifi_sec = _sec("Wireless ADB", accent="#0A2A1A",
+                        subtitle="Hubungkan HP via WiFi tanpa kabel (Android 11+)")
+
+        _ck.Label(wifi_sec,
+                 text="Aktifkan Wireless Debugging di HP: Pengaturan → Opsi Developer → Wireless Debugging\n"
+                      "Kemudian pair dengan PIN atau langsung connect via IP:Port.",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI", 10),
+                 wraplength=560, justify="left").pack(anchor="w", pady=(0, 10))
+
+        wifi_row1 = _ck.Frame(wifi_sec, fg_color=CARD)
+        wifi_row1.pack(fill="x", pady=(0, 6))
+        _ck.Label(wifi_row1, text="IP HP:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+        wifi_ip_var = tk.StringVar(value=self.config.get("remote.last_ip", "192.168.1."))
+        _ck.Entry(wifi_row1, textvariable=wifi_ip_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=150).pack(side="left", ipady=5)
+        _ck.Label(wifi_row1, text="Port:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(12, 6))
+        wifi_port_var = tk.StringVar(value=self.config.get("remote.last_port", "5555"))
+        _ck.Entry(wifi_row1, textvariable=wifi_port_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=70).pack(side="left", ipady=5)
+
+        wifi_row2 = _ck.Frame(wifi_sec, fg_color=CARD)
+        wifi_row2.pack(fill="x", pady=(0, 6))
+        _ck.Label(wifi_row2, text="Pair IP:Port:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+        wifi_pair_var = tk.StringVar(value="192.168.1.:37000")
+        _ck.Entry(wifi_row2, textvariable=wifi_pair_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=160).pack(side="left", ipady=5)
+        _ck.Label(wifi_row2, text="PIN:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(12, 6))
+        wifi_pin_var = tk.StringVar()
+        _ck.Entry(wifi_row2, textvariable=wifi_pin_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=80).pack(side="left", ipady=5)
+
+        wifi_stat_var = tk.StringVar(value="")
+        _ck.Label(wifi_sec, textvariable=wifi_stat_var, fg_color=CARD, text_color=GRN,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 6))
+
+        def _wifi_pair():
+            import subprocess as _sp
+            pair_addr = wifi_pair_var.get().strip()
+            pin = wifi_pin_var.get().strip()
+            if not pair_addr or not pin:
+                wifi_stat_var.set("Isi pair IP:Port dan PIN dulu"); return
+            wifi_stat_var.set("Pairing...")
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "pair", pair_addr, pin],
+                                capture_output=True, text=True, timeout=15)
+                    out = (r.stdout + r.stderr).strip()
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(out[:120]))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _wifi_connect():
+            import subprocess as _sp
+            ip = wifi_ip_var.get().strip()
+            port = wifi_port_var.get().strip()
+            if not ip:
+                wifi_stat_var.set("Isi IP HP dulu"); return
+            addr = "{}:{}".format(ip, port)
+            wifi_stat_var.set("Menghubungkan ke {}...".format(addr))
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "connect", addr],
+                                capture_output=True, text=True, timeout=15)
+                    out = (r.stdout + r.stderr).strip()
+                    self.config.set("remote.last_ip", ip)
+                    self.config.set("remote.last_port", port)
+                    self.config.save()
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(out[:120]))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _wifi_disconnect():
+            import subprocess as _sp
+            ip = wifi_ip_var.get().strip()
+            port = wifi_port_var.get().strip()
+            addr = "{}:{}".format(ip, port)
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "disconnect", addr],
+                                capture_output=True, text=True, timeout=10)
+                    out = (r.stdout + r.stderr).strip()
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(out[:120]))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: wifi_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        wifi_btn_row = _ck.Frame(wifi_sec, fg_color=CARD)
+        wifi_btn_row.pack(anchor="w", pady=(0, 4))
+        _ck.Button(wifi_btn_row, text="🔗 Connect", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wifi_connect).pack(side="left", padx=(0, 8))
+        _ck.Button(wifi_btn_row, text="🔐 Pair", fg_color="#0A4A2A", text_color="white",
+                  font=("Segoe UI", 10), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wifi_pair).pack(side="left", padx=(0, 8))
+        _ck.Button(wifi_btn_row, text="Disconnect", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_wifi_disconnect).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Device Monitor
+        # ══════════════════════════════════════════════════════════════
+        mon_sec = _sec("Device Monitor", accent="#1A1A0A",
+                       subtitle="Baterai, RAM, CPU, suhu, jaringan — live dari HP")
+
+        _mon_running = [False]
+        _mon_timer   = [None]
+
+        mon_grid = _ck.Frame(mon_sec, fg_color=CARD)
+        mon_grid.pack(fill="x", pady=(0, 8))
+
+        def _mk_tile(parent, label):
+            tile = _ck.Frame(parent, fg_color=CARD2)
+            tile.pack(side="left", expand=True, fill="x", padx=4, pady=4)
+            _ck.Label(tile, text=label, fg_color=CARD2, text_color=MUT,
+                     font=("Segoe UI", 9, "bold")).pack(pady=(8, 2))
+            val_var = tk.StringVar(value="—")
+            _ck.Label(tile, textvariable=val_var, fg_color=CARD2, text_color=FG,
+                     font=("Segoe UI", 13, "bold")).pack(pady=(0, 8))
+            return val_var
+
+        row1 = _ck.Frame(mon_grid, fg_color=CARD)
+        row1.pack(fill="x")
+        row2 = _ck.Frame(mon_grid, fg_color=CARD)
+        row2.pack(fill="x")
+
+        mon_bat_var   = _mk_tile(row1, "Baterai")
+        mon_ram_var   = _mk_tile(row1, "RAM")
+        mon_cpu_var   = _mk_tile(row1, "CPU")
+        mon_temp_var  = _mk_tile(row1, "Suhu")
+        mon_wifi_var  = _mk_tile(row2, "WiFi / Network")
+        mon_screen_var= _mk_tile(row2, "Layar")
+        mon_vol_var   = _mk_tile(row2, "Volume")
+        mon_model_var = _mk_tile(row2, "Model HP")
+
+        mon_stat_var = tk.StringVar(value="Monitor tidak aktif")
+        _ck.Label(mon_sec, textvariable=mon_stat_var, fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9, "italic")).pack(anchor="w", pady=(0, 6))
+
+        def _get_serial():
+            if self._adb and self._adb.available:
+                devs = self._adb.list_devices()
+                return devs[0] if devs else None
+            return None
+
+        def _mon_fetch():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial:
+                mon_stat_var.set("Tidak ada HP terhubung")
+                return
+            def _run(cmd):
+                try:
+                    r = _sp.run(["adb", "-s", serial, "shell"] + cmd,
+                                capture_output=True, text=True, timeout=6)
+                    return r.stdout.strip()
+                except Exception:
+                    return ""
+
+            def _bg():
+                # Battery
+                bat_out = _run(["dumpsys", "battery"])
+                bat_pct, bat_chg = "—", ""
+                for line in bat_out.splitlines():
+                    if "level:" in line: bat_pct = line.split(":")[1].strip() + "%"
+                    if "status: 2" in line: bat_chg = " ⚡"
+                bat_val = bat_pct + bat_chg
+
+                # RAM
+                ram_out = _run(["dumpsys", "meminfo"])
+                ram_val = "—"
+                for line in ram_out.splitlines():
+                    if "Used RAM:" in line or "Total RAM:" in line:
+                        ram_val = line.split(":", 1)[1].strip().split(" ")[0]
+                        break
+
+                # CPU (berat, ambil dari top 1x)
+                cpu_out = _run(["top", "-n", "1", "-d", "1"])
+                cpu_val = "—"
+                for line in cpu_out.splitlines():
+                    if "cpu" in line.lower() and "%" in line:
+                        cpu_val = line.strip()[:24]
+                        break
+
+                # Suhu
+                temp_out = _run(["dumpsys", "thermalservice"])
+                temp_val = "—"
+                for line in temp_out.splitlines():
+                    if "mValue" in line or "Temperature{" in line:
+                        parts = line.strip().split("=")
+                        if len(parts) >= 2:
+                            try:
+                                t = float(parts[-1].rstrip("}").strip())
+                                if 20 < t < 80:
+                                    temp_val = "{:.1f}°C".format(t)
+                                    break
+                            except ValueError:
+                                pass
+
+                # WiFi / Network
+                net_type = _run(["getprop", "gsm.network.type"]).strip()
+                ssid_out = _run(["dumpsys", "wifi"])
+                ssid_val = ""
+                for line in ssid_out.splitlines():
+                    if "mWifiInfo" in line and "SSID" in line:
+                        import re as _re2
+                        m = _re2.search(r'SSID: ([^,]+)', line)
+                        if m: ssid_val = m.group(1).strip()
+                        break
+                wifi_val = (ssid_val or net_type or "—")[:22]
+
+                # Screen brightness
+                bright_out = _run(["settings", "get", "system", "screen_brightness"])
+                try:
+                    pct = int(int(bright_out.strip()) / 255 * 100)
+                    screen_val = "{}%".format(pct)
+                except Exception:
+                    screen_val = "—"
+
+                # Volume media
+                vol_out = _run(["dumpsys", "audio"])
+                vol_val = "—"
+                for line in vol_out.splitlines():
+                    if "STREAM_MUSIC" in line and "Current:" in line:
+                        import re as _re3
+                        m = _re3.search(r'headset\): (\d+)', line)
+                        if not m: m = _re3.search(r'Current: (\d+)', line)
+                        if m: vol_val = m.group(1); break
+
+                # Model
+                model_val = _run(["getprop", "ro.product.model"])
+
+                if self._root:
+                    self._root.after(0, lambda: [
+                        mon_bat_var.set(bat_val),
+                        mon_ram_var.set(ram_val[:12]),
+                        mon_cpu_var.set(cpu_val[:18]),
+                        mon_temp_var.set(temp_val),
+                        mon_wifi_var.set(wifi_val),
+                        mon_screen_var.set(screen_val),
+                        mon_vol_var.set(vol_val),
+                        mon_model_var.set(model_val[:20]),
+                        mon_stat_var.set("Update: " + __import__("datetime").datetime.now().strftime("%H:%M:%S")),
+                    ])
+
+            _thr.Thread(target=_bg, daemon=True).start()
+
+            if _mon_running[0] and self._root:
+                _mon_timer[0] = self._root.after(5000, _mon_fetch)
+
+        def _mon_start():
+            _mon_running[0] = True
+            _mon_fetch()
+            mon_start_btn.configure(text="⏹ Stop Monitor", fg_color=RED,
+                                    command=_mon_stop)
+
+        def _mon_stop():
+            _mon_running[0] = False
+            if _mon_timer[0]:
+                try: self._root.after_cancel(_mon_timer[0])
+                except Exception: pass
+            mon_stat_var.set("Monitor dihentikan")
+            mon_start_btn.configure(text="▶ Mulai Monitor", fg_color=GRN,
+                                    command=_mon_start)
+
+        mon_start_btn = _ck.Button(mon_sec, text="▶ Mulai Monitor", fg_color=GRN,
+                                   text_color="white", font=("Segoe UI", 10, "bold"),
+                                   padx=14, pady=6, relief="flat", bd=0, cursor="hand2",
+                                   command=_mon_start)
+        mon_start_btn.pack(anchor="w")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — System Settings Control
+        # ══════════════════════════════════════════════════════════════
+        sysset_sec = _sec("System Settings", accent="#2A0A1A",
+                          subtitle="Brightness, volume, WiFi, GPS, airplane mode dari PC")
+
+        # Brightness slider
+        _ck.Label(sysset_sec, text="Brightness", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 2))
+        bright_var = tk.IntVar(value=128)
+        bright_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        bright_row.pack(fill="x", pady=(0, 8))
+        bright_lbl = _ck.Label(bright_row, text="50%", fg_color=CARD, text_color=ACC2,
+                               font=("Segoe UI", 10, "bold"), width=40)
+        bright_lbl.pack(side="right")
+
+        def _set_bright(val):
+            import subprocess as _sp
+            v = int(float(val))
+            bright_var.set(v)
+            pct = int(v / 255 * 100)
+            bright_lbl.configure(text="{}%".format(pct))
+            serial = _get_serial()
+            if serial:
+                _sp.Popen(["adb", "-s", serial, "shell", "settings", "put",
+                           "system", "screen_brightness", str(v)])
+
+        bright_scale = tk.Scale(bright_row, from_=0, to=255, orient="horizontal",
+                               variable=bright_var, bg=CARD, fg=FG, troughcolor=CARD2,
+                               highlightthickness=0, bd=0, command=_set_bright,
+                               showvalue=False)
+        bright_scale.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        # Volume slider
+        _ck.Label(sysset_sec, text="Volume Media", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 2))
+        vol_ctrl_var = tk.IntVar(value=8)
+        vol_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        vol_row.pack(fill="x", pady=(0, 8))
+        vol_ctrl_lbl = _ck.Label(vol_row, text="8", fg_color=CARD, text_color=ACC2,
+                                 font=("Segoe UI", 10, "bold"), width=30)
+        vol_ctrl_lbl.pack(side="right")
+
+        def _set_vol(val):
+            import subprocess as _sp
+            v = int(float(val))
+            vol_ctrl_lbl.configure(text=str(v))
+            serial = _get_serial()
+            if serial:
+                _sp.Popen(["adb", "-s", serial, "shell", "media", "volume",
+                           "--stream", "3", "--set", str(v)])
+
+        tk.Scale(vol_row, from_=0, to=15, orient="horizontal",
+                variable=vol_ctrl_var, bg=CARD, fg=FG, troughcolor=CARD2,
+                highlightthickness=0, bd=0, command=_set_vol,
+                showvalue=False).pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        # Toggle buttons row
+        _ck.Label(sysset_sec, text="Toggle Cepat", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(4, 6))
+        toggle_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        toggle_row.pack(anchor="w", pady=(0, 4))
+        sysset_stat_var = tk.StringVar(value="")
+        _ck.Label(sysset_sec, textvariable=sysset_stat_var, fg_color=CARD,
+                 text_color=GRN, font=("Segoe UI", 9)).pack(anchor="w")
+
+        def _shell_set(ns, key, val, label=""):
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial:
+                sysset_stat_var.set("HP tidak terhubung"); return
+            _sp.Popen(["adb", "-s", serial, "shell", "settings", "put", ns, key, str(val)])
+            if label:
+                sysset_stat_var.set(label)
+                if self._root: self._root.after(2500, lambda: sysset_stat_var.set(""))
+
+        def _adb_keyevent(code):
+            import subprocess as _sp
+            serial = _get_serial()
+            if serial:
+                _sp.Popen(["adb", "-s", serial, "shell", "input", "keyevent", code])
+
+        _toggles = [
+            ("✈ Airplane ON",   lambda: _shell_set("global", "airplane_mode_on", 1, "Airplane mode ON")),
+            ("✈ Airplane OFF",  lambda: _shell_set("global", "airplane_mode_on", 0, "Airplane mode OFF")),
+            ("📍 GPS ON",        lambda: _shell_set("secure", "location_mode", 3, "GPS ON")),
+            ("📍 GPS OFF",       lambda: _shell_set("secure", "location_mode", 0, "GPS OFF")),
+            ("🔆 Bright MAX",    lambda: _set_bright(255)),
+            ("🔅 Bright MIN",    lambda: _set_bright(10)),
+            ("🔒 Screen OFF",    lambda: _adb_keyevent("223")),
+            ("🔓 Wake",          lambda: _adb_keyevent("224")),
+        ]
+        for i, (label, cmd) in enumerate(_toggles):
+            _ck.Button(toggle_row, text=label, fg_color=CARD2, text_color=FG,
+                      font=("Segoe UI", 9), padx=10, pady=6,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=cmd).pack(side="left", padx=(0 if i==0 else 4, 0))
+
+        # Screen timeout
+        timeout_row = _ck.Frame(sysset_sec, fg_color=CARD)
+        timeout_row.pack(fill="x", pady=(8, 0))
+        _ck.Label(timeout_row, text="Screen Timeout:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        timeout_opts = [("30 detik", 30000), ("1 menit", 60000),
+                        ("5 menit", 300000), ("10 menit", 600000), ("Tidak pernah", 2147483647)]
+        for label, ms in timeout_opts:
+            _ck.Button(timeout_row, text=label, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=8, pady=5,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda m=ms, l=label: _shell_set(
+                          "system", "screen_off_timeout", m, "Timeout: " + l)
+                      ).pack(side="left", padx=(0, 4))
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — App Manager
+        # ══════════════════════════════════════════════════════════════
+        appmgr_sec = _sec("App Manager", accent="#0A1A2A",
+                          subtitle="List, stop, clear data, install APK dari PC")
+
+        appmgr_top = _ck.Frame(appmgr_sec, fg_color=CARD)
+        appmgr_top.pack(fill="x", pady=(0, 8))
+        _ck.Label(appmgr_top, text="Filter:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 6))
+        appmgr_filter_var = tk.StringVar()
+        _ck.Entry(appmgr_top, textvariable=appmgr_filter_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=200).pack(side="left", ipady=5)
+
+        appmgr_sys_var = tk.BooleanVar(value=False)
+        _ck.Checkbutton(appmgr_top, text="Sistem", variable=appmgr_sys_var,
+                       fg_color=CARD, text_color=FG,
+                       font=("Segoe UI", 9), bg=CARD,
+                       relief="flat", bd=0).pack(side="left", padx=(10, 0))
+
+        _ck.Button(appmgr_top, text="🔍 Load Apps", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=12, pady=5,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: _thr.Thread(target=_load_apps, daemon=True).start()
+                  ).pack(side="right")
+
+        appmgr_lb = tk.Listbox(appmgr_sec, bg=CARD2, fg=FG, selectbackground=ACC,
+                               selectforeground="white", relief="flat", bd=0,
+                               font=("Consolas", 10), height=8)
+        appmgr_lb.pack(fill="x", pady=(0, 6))
+
+        appmgr_stat_var = tk.StringVar(value="")
+        _ck.Label(appmgr_sec, textvariable=appmgr_stat_var, fg_color=CARD,
+                 text_color=GRN, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 4))
+
+        _all_packages = []
+
+        def _load_apps():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial:
+                if self._root: self._root.after(0, lambda: appmgr_stat_var.set("HP tidak terhubung"))
+                return
+            flag = "" if appmgr_sys_var.get() else "-3"
+            cmd = ["adb", "-s", serial, "shell", "pm", "list", "packages"]
+            if flag: cmd.append(flag)
+            if self._root: self._root.after(0, lambda: appmgr_stat_var.set("Memuat daftar app..."))
+            try:
+                r = _sp.run(cmd, capture_output=True, text=True, timeout=20)
+                pkgs = sorted([l.replace("package:", "").strip()
+                               for l in r.stdout.splitlines() if l.startswith("package:")])
+                _all_packages.clear()
+                _all_packages.extend(pkgs)
+                def _upd():
+                    _filter_apps()
+                    appmgr_stat_var.set("{} app ditemukan".format(len(pkgs)))
+                if self._root: self._root.after(0, _upd)
+            except Exception as e:
+                if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+
+        def _filter_apps(*_):
+            q = appmgr_filter_var.get().lower()
+            appmgr_lb.delete(0, tk.END)
+            for p in _all_packages:
+                if not q or q in p:
+                    appmgr_lb.insert(tk.END, p)
+
+        appmgr_filter_var.trace_add("write", _filter_apps)
+
+        def _selected_pkg():
+            sel = appmgr_lb.curselection()
+            if not sel: return None
+            return appmgr_lb.get(sel[0])
+
+        def _appmgr_action(action):
+            import subprocess as _sp
+            pkg = _selected_pkg()
+            serial = _get_serial()
+            if not pkg:
+                appmgr_stat_var.set("Pilih app dulu"); return
+            if not serial:
+                appmgr_stat_var.set("HP tidak terhubung"); return
+            cmds = {
+                "stop":   ["adb", "-s", serial, "shell", "am", "force-stop", pkg],
+                "clear":  ["adb", "-s", serial, "shell", "pm", "clear", pkg],
+                "disable":["adb", "-s", serial, "shell", "pm", "disable-user", pkg],
+                "enable": ["adb", "-s", serial, "shell", "pm", "enable", pkg],
+                "launch": ["adb", "-s", serial, "shell", "monkey", "-p", pkg, "-c",
+                           "android.intent.category.LAUNCHER", "1"],
+            }
+            if action not in cmds: return
+            appmgr_stat_var.set("{}  {}...".format(action.upper(), pkg))
+            def _bg():
+                try:
+                    r = _sp.run(cmds[action], capture_output=True, text=True, timeout=15)
+                    out = (r.stdout + r.stderr).strip()[:100]
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(out or "OK"))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _install_apk():
+            import subprocess as _sp
+            from tkinter import filedialog as _fd
+            serial = _get_serial()
+            if not serial:
+                appmgr_stat_var.set("HP tidak terhubung"); return
+            path = _fd.askopenfilename(filetypes=[("APK", "*.apk")])
+            if not path: return
+            appmgr_stat_var.set("Install {}...".format(_os.path.basename(path)))
+            def _bg():
+                try:
+                    r = _sp.run(["adb", "-s", serial, "install", "-r", path],
+                                capture_output=True, text=True, timeout=120)
+                    out = (r.stdout + r.stderr).strip()[:120]
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(out or "OK"))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: appmgr_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        appmgr_btn_row = _ck.Frame(appmgr_sec, fg_color=CARD)
+        appmgr_btn_row.pack(anchor="w", pady=(0, 4))
+        for label, act in [("▶ Launch", "launch"), ("⏹ Force Stop", "stop"),
+                           ("🧹 Clear Data", "clear"), ("🚫 Disable", "disable"),
+                           ("✅ Enable", "enable")]:
+            _ck.Button(appmgr_btn_row, text=label, fg_color=CARD2, text_color=FG,
+                      font=("Segoe UI", 9), padx=10, pady=6,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=lambda a=act: _appmgr_action(a)
+                      ).pack(side="left", padx=(0, 6))
+        _ck.Button(appmgr_btn_row, text="📦 Install APK", fg_color="#0A4A2A",
+                  text_color="white", font=("Segoe UI", 9, "bold"), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_install_apk).pack(side="left", padx=(0, 6))
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — App Launcher
+        # ══════════════════════════════════════════════════════════════
+        launch_sec = _sec("App Launcher", accent="#1A0A2A",
+                          subtitle="Buka app, URL, atau menu Settings dari PC")
+
+        launch_row = _ck.Frame(launch_sec, fg_color=CARD)
+        launch_row.pack(fill="x", pady=(0, 8))
+        _ck.Label(launch_row, text="Package / URL:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        launch_var = tk.StringVar()
+        _ck.Entry(launch_row, textvariable=launch_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11)).pack(side="left", fill="x", expand=True, ipady=6)
+
+        launch_stat_var = tk.StringVar(value="")
+        _ck.Label(launch_sec, textvariable=launch_stat_var, fg_color=CARD,
+                 text_color=GRN, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 6))
+
+        def _launch_target():
+            import subprocess as _sp
+            target = launch_var.get().strip()
+            serial = _get_serial()
+            if not target:
+                launch_stat_var.set("Isi dulu"); return
+            if not serial:
+                launch_stat_var.set("HP tidak terhubung"); return
+            if target.startswith("http"):
+                cmd = ["adb", "-s", serial, "shell", "am", "start",
+                       "-a", "android.intent.action.VIEW", "-d", target]
+            elif "/" in target:
+                cmd = ["adb", "-s", serial, "shell", "am", "start", "-n", target]
+            else:
+                cmd = ["adb", "-s", serial, "shell", "monkey", "-p", target,
+                       "-c", "android.intent.category.LAUNCHER", "1"]
+            launch_stat_var.set("Membuka {}...".format(target[:40]))
+            def _bg():
+                try:
+                    r = _sp.run(cmd, capture_output=True, text=True, timeout=15)
+                    out = (r.stdout + r.stderr).strip()[:100]
+                    if self._root: self._root.after(0, lambda: launch_stat_var.set(out or "OK"))
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: launch_stat_var.set(str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        launch_btn_row = _ck.Frame(launch_sec, fg_color=CARD)
+        launch_btn_row.pack(anchor="w", pady=(0, 6))
+        _ck.Button(launch_btn_row, text="▶ Buka", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_launch_target).pack(side="left", padx=(0, 8))
+
+        _shortcuts = [
+            ("WiFi Settings",  "android.settings.WIFI_SETTINGS"),
+            ("Developer Opts", "android.settings.APPLICATION_DEVELOPMENT_SETTINGS"),
+            ("App Settings",   "android.settings.APPLICATION_SETTINGS"),
+            ("Display",        "android.settings.DISPLAY_SETTINGS"),
+        ]
+        for label, action in _shortcuts:
+            def _sh(a=action):
+                import subprocess as _sp
+                serial = _get_serial()
+                if not serial: return
+                _sp.Popen(["adb", "-s", serial, "shell", "am", "start",
+                           "-a", a])
+            _ck.Button(launch_btn_row, text=label, fg_color=CARD2, text_color=MUT,
+                      font=("Segoe UI", 9), padx=8, pady=6,
+                      relief="flat", bd=0, cursor="hand2",
+                      command=_sh).pack(side="left", padx=(0, 4))
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — UI Inspector
+        # ══════════════════════════════════════════════════════════════
+        uiinsp_sec = _sec("UI Inspector", accent="#2A1A0A",
+                          subtitle="Dump & tampilkan elemen UI di layar HP saat ini")
+
+        uiinsp_stat_var = tk.StringVar(value="Tekan Dump untuk baca elemen UI layar HP")
+        _ck.Label(uiinsp_sec, textvariable=uiinsp_stat_var, fg_color=CARD,
+                 text_color=MUT, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 6))
+
+        uiinsp_text = tk.Text(uiinsp_sec, bg=CARD2, fg=FG, relief="flat",
+                              font=("Consolas", 9), height=10, wrap="none",
+                              insertbackground=FG)
+        uiinsp_text.pack(fill="x", pady=(0, 6))
+
+        uiinsp_filter_var = tk.StringVar()
+        uiinsp_frow = _ck.Frame(uiinsp_sec, fg_color=CARD)
+        uiinsp_frow.pack(fill="x", pady=(0, 6))
+        _ck.Label(uiinsp_frow, text="Filter teks:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        _ck.Entry(uiinsp_frow, textvariable=uiinsp_filter_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=200).pack(side="left", ipady=5)
+
+        _uiinsp_lines = []
+
+        def _uiinsp_filter(*_):
+            q = uiinsp_filter_var.get().lower()
+            uiinsp_text.config(state="normal")
+            uiinsp_text.delete("1.0", tk.END)
+            for line in _uiinsp_lines:
+                if not q or q in line.lower():
+                    uiinsp_text.insert(tk.END, line + "\n")
+            uiinsp_text.config(state="disabled")
+
+        uiinsp_filter_var.trace_add("write", _uiinsp_filter)
+
+        def _uiinsp_dump():
+            import subprocess as _sp, xml.etree.ElementTree as _ET, tempfile as _tf
+            serial = _get_serial()
+            if not serial:
+                uiinsp_stat_var.set("HP tidak terhubung"); return
+            uiinsp_stat_var.set("Mengambil UI dump...")
+            def _bg():
+                try:
+                    remote = "/sdcard/synthex_ui.xml"
+                    _sp.run(["adb", "-s", serial, "shell", "uiautomator", "dump", remote],
+                            capture_output=True, timeout=15)
+                    with _tf.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
+                        local = tmp.name
+                    _sp.run(["adb", "-s", serial, "pull", remote, local],
+                            capture_output=True, timeout=10)
+                    tree = _ET.parse(local)
+                    _os.unlink(local)
+                    _uiinsp_lines.clear()
+                    for node in tree.iter():
+                        cls  = node.get("class", "")
+                        text = node.get("text", "")
+                        desc = node.get("content-desc", "")
+                        bnds = node.get("bounds", "")
+                        clickable = node.get("clickable", "false")
+                        if text or desc:
+                            line = "[{}{}] {} | {} | {}".format(
+                                cls.split(".")[-1],
+                                " ✓" if clickable == "true" else "",
+                                text or "(no text)",
+                                desc or "",
+                                bnds)
+                            _uiinsp_lines.append(line)
+                    def _upd():
+                        _uiinsp_filter()
+                        uiinsp_stat_var.set("{} elemen ditemukan".format(len(_uiinsp_lines)))
+                    if self._root: self._root.after(0, _upd)
+                except Exception as e:
+                    if self._root: self._root.after(0, lambda: uiinsp_stat_var.set("Error: " + str(e)[:100]))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _uiinsp_tap_selected():
+            import subprocess as _sp, re as _re4
+            sel = uiinsp_text.tag_ranges("sel")
+            if not sel:
+                uiinsp_stat_var.set("Pilih baris elemen dulu"); return
+            line = uiinsp_text.get(sel[0], sel[1]).strip()
+            serial = _get_serial()
+            if not serial: return
+            m = _re4.search(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]', line)
+            if not m:
+                uiinsp_stat_var.set("Bounds tidak ditemukan di baris ini"); return
+            x = (int(m.group(1)) + int(m.group(3))) // 2
+            y = (int(m.group(2)) + int(m.group(4))) // 2
+            _sp.Popen(["adb", "-s", serial, "shell", "input", "tap", str(x), str(y)])
+            uiinsp_stat_var.set("Tap ke ({}, {})".format(x, y))
+
+        uiinsp_btn_row = _ck.Frame(uiinsp_sec, fg_color=CARD)
+        uiinsp_btn_row.pack(anchor="w")
+        _ck.Button(uiinsp_btn_row, text="📡 Dump UI", fg_color=ACC, text_color="white",
+                  font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_uiinsp_dump).pack(side="left", padx=(0, 8))
+        _ck.Button(uiinsp_btn_row, text="👆 Tap Elemen", fg_color=CARD2, text_color=FG,
+                  font=("Segoe UI", 10), padx=12, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_uiinsp_tap_selected).pack(side="left")
+
+        # ══════════════════════════════════════════════════════════════
+        # SECTION — Logcat Viewer
+        # ══════════════════════════════════════════════════════════════
+        logcat_sec = _sec("Logcat", accent="#0A0A2A",
+                          subtitle="Stream log HP real-time dengan filter")
+
+        logcat_top = _ck.Frame(logcat_sec, fg_color=CARD)
+        logcat_top.pack(fill="x", pady=(0, 8))
+        _ck.Label(logcat_top, text="Filter package/tag:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(0, 8))
+        logcat_filter_var = tk.StringVar()
+        _ck.Entry(logcat_top, textvariable=logcat_filter_var, fg_color="#16162a",
+                 text_color=FG, insertbackground=FG, relief="flat",
+                 font=("Segoe UI", 11), width=200).pack(side="left", ipady=5)
+        _ck.Label(logcat_top, text="Level:", fg_color=CARD, text_color=FG,
+                 font=("Segoe UI", 10)).pack(side="left", padx=(12, 6))
+        logcat_level_var = tk.StringVar(value="*:W")
+        logcat_level_cb = tk.OptionMenu(logcat_top, logcat_level_var,
+                                        "*:V", "*:D", "*:I", "*:W", "*:E")
+        logcat_level_cb.configure(bg=CARD2, fg=FG, relief="flat", bd=0,
+                                  font=("Segoe UI", 10), highlightthickness=0)
+        logcat_level_cb["menu"].configure(bg=CARD2, fg=FG)
+        logcat_level_cb.pack(side="left")
+
+        logcat_text = tk.Text(logcat_sec, bg="#08080F", fg="#7DF080", relief="flat",
+                              font=("Consolas", 9), height=12, wrap="none",
+                              insertbackground=FG, state="disabled")
+        logcat_text.pack(fill="x", pady=(0, 6))
+
+        _logcat_proc = [None]
+        _logcat_running = [False]
+
+        def _logcat_append(line):
+            logcat_text.config(state="normal")
+            logcat_text.insert(tk.END, line + "\n")
+            logcat_text.see(tk.END)
+            logcat_text.config(state="disabled")
+            lines = int(logcat_text.index("end-1c").split(".")[0])
+            if lines > 500:
+                logcat_text.config(state="normal")
+                logcat_text.delete("1.0", "100.0")
+                logcat_text.config(state="disabled")
+
+        def _logcat_start():
+            import subprocess as _sp
+            serial = _get_serial()
+            if not serial:
+                _logcat_append("ERROR: HP tidak terhubung"); return
+            if _logcat_running[0]:
+                return
+            _logcat_running[0] = True
+            logcat_text.config(state="normal")
+            logcat_text.delete("1.0", tk.END)
+            logcat_text.config(state="disabled")
+            logcat_start_btn.configure(text="⏹ Stop", fg_color=RED,
+                                       command=_logcat_stop)
+            pkg_filter = logcat_filter_var.get().strip()
+            level = logcat_level_var.get()
+
+            def _bg():
+                try:
+                    cmd = ["adb", "-s", serial, "logcat", "-v", "time", level]
+                    proc = _sp.Popen(cmd, stdout=_sp.PIPE, stderr=_sp.STDOUT,
+                                     text=True, bufsize=1)
+                    _logcat_proc[0] = proc
+                    for raw in proc.stdout:
+                        if not _logcat_running[0]:
+                            break
+                        line = raw.rstrip()
+                        if pkg_filter and pkg_filter.lower() not in line.lower():
+                            continue
+                        if self._root:
+                            self._root.after(0, lambda l=line: _logcat_append(l))
+                    proc.wait()
+                except Exception as e:
+                    if self._root:
+                        self._root.after(0, lambda: _logcat_append("ERROR: " + str(e)))
+            _thr.Thread(target=_bg, daemon=True).start()
+
+        def _logcat_stop():
+            _logcat_running[0] = False
+            if _logcat_proc[0]:
+                try: _logcat_proc[0].terminate()
+                except Exception: pass
+                _logcat_proc[0] = None
+            logcat_start_btn.configure(text="▶ Mulai Logcat", fg_color=GRN,
+                                       command=_logcat_start)
+
+        logcat_btn_row = _ck.Frame(logcat_sec, fg_color=CARD)
+        logcat_btn_row.pack(anchor="w")
+        logcat_start_btn = _ck.Button(logcat_btn_row, text="▶ Mulai Logcat",
+                                      fg_color=GRN, text_color="white",
+                                      font=("Segoe UI", 10, "bold"), padx=14, pady=6,
+                                      relief="flat", bd=0, cursor="hand2",
+                                      command=_logcat_start)
+        logcat_start_btn.pack(side="left", padx=(0, 8))
+        _ck.Button(logcat_btn_row, text="🧹 Clear", fg_color=CARD2, text_color=MUT,
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=lambda: [
+                      logcat_text.config(state="normal"),
+                      logcat_text.delete("1.0", tk.END),
+                      logcat_text.config(state="disabled")
+                  ]).pack(side="left")
+
         # ── Init ADB in background ───────────────────────────────────────────
         def _init_adb():
             from modules.remote_control import AdbManager, ScrcpyManager
