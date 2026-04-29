@@ -4979,6 +4979,11 @@ class SynthexApp:
         cv.bind("<Configure>",
                 lambda e: cv.itemconfig(_wid, width=e.width))
 
+        def _on_mw(event):
+            cv.yview_scroll(-1 * (event.delta // 120), "units")
+        cv.bind("<Enter>", lambda e: cv.bind_all("<MouseWheel>", _on_mw))
+        cv.bind("<Leave>", lambda e: cv.unbind_all("<MouseWheel>"))
+
         def _sec(title, accent=ACC, subtitle=""):
             w = _ck.Frame(body, fg_color=CARD)
             w.pack(fill="x", padx=20, pady=(0, 12))
@@ -5618,10 +5623,52 @@ class SynthexApp:
             dlg.after(120, dlg.grab_set)
 
         # ══════════════════════════════════════════════════════════════
-        # SECTION — Beda Jaringan? Solusi Koneksi
+        # SECTION — Beda Jaringan? (collapsible toggle)
         # ══════════════════════════════════════════════════════════════
-        net = _sec("Beda Jaringan? Solusi Koneksi", accent="#1A2A0A",
-                   subtitle="LAN ≠ WiFi — pakai cara ini")
+        _net_open = [False]
+        _net_wrap = _ck.Frame(body, fg_color=BG)
+        _net_wrap.pack(fill="x", padx=20, pady=(0, 8))
+
+        _net_hdr_btn = _ck.Button(
+            _net_wrap,
+            text="Ada masalah koneksi? ▼   HP & PC beda jaringan — klik untuk panduan",
+            fg_color="#0D1220", text_color="#4A9EFF",
+            font=("Segoe UI Variable", 9), relief="flat", bd=0,
+            cursor="hand2", anchor="w", padx=14, pady=8)
+        _net_hdr_btn.pack(fill="x")
+
+        _net_collapse = _ck.Frame(_net_wrap, fg_color=BG)
+
+        def _toggle_net():
+            if _net_open[0]:
+                _net_collapse.pack_forget()
+                _net_open[0] = False
+                _net_hdr_btn.configure(
+                    text="Ada masalah koneksi? ▼   HP & PC beda jaringan — klik untuk panduan")
+            else:
+                _net_collapse.pack(fill="x")
+                _net_open[0] = True
+                _net_hdr_btn.configure(
+                    text="Ada masalah koneksi? ▲   HP & PC beda jaringan — klik untuk tutup")
+
+        _net_hdr_btn.configure(command=_toggle_net)
+
+        def _net_sec(title, accent, subtitle=""):
+            w = _ck.Frame(_net_collapse, fg_color=CARD)
+            w.pack(fill="x", pady=(0, 8))
+            h = _ck.Frame(w, fg_color=accent, padx=14, pady=8)
+            h.pack(fill="x")
+            _ck.Label(h, text=title, fg_color=accent, text_color="white",
+                     font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+            if subtitle:
+                _ck.Label(h, text=subtitle, fg_color=accent, text_color="white",
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 0))
+            b = _ck.Frame(w, fg_color=CARD, padx=14, pady=10)
+            b.pack(fill="x")
+            return b
+
+        net = _net_sec("Solusi Koneksi", accent="#1A2A0A",
+                       subtitle="LAN ≠ WiFi — pilih sesuai situasimu")
 
         # ── Mode 1: USB Direct ───────────────────────────────────────────────
         usb_card = _ck.Frame(net, fg_color="#111820", padx=14, pady=10)
@@ -5724,9 +5771,36 @@ class SynthexApp:
                  text="Setelah HP connect ke hotspot PC, HP dapat IP 192.168.137.x — masukkan ke kolom IP di bawah.", fg_color="#111820", text_color="#555577", font=("Segoe UI Variable", 7)).pack(anchor="w", pady=(4, 0))
 
         # ══════════════════════════════════════════════════════════════
-        # SECTION 2 — Pengaturan Mirror (shared untuk semua HP)
+        # SECTION 2 — Pengaturan Mirror (collapsible, hidden by default)
         # ══════════════════════════════════════════════════════════════
-        mir = _sec("Pengaturan Mirror", accent="#0A2A18")
+        _mir_open = [False]
+        _mir_wrap = _ck.Frame(body, fg_color=BG)
+        _mir_wrap.pack(fill="x", padx=20, pady=(0, 8))
+
+        _mir_hdr_btn = _ck.Button(
+            _mir_wrap,
+            text="⚙  Kualitas Mirror ▼   (opsional — default sudah optimal)",
+            fg_color="#0A1A0A", text_color=GRN,
+            font=("Segoe UI Variable", 9), relief="flat", bd=0,
+            cursor="hand2", anchor="w", padx=14, pady=8)
+        _mir_hdr_btn.pack(fill="x")
+
+        _mir_collapse = _ck.Frame(_mir_wrap, fg_color=CARD, padx=14, pady=12)
+
+        def _toggle_mir():
+            if _mir_open[0]:
+                _mir_collapse.pack_forget()
+                _mir_open[0] = False
+                _mir_hdr_btn.configure(
+                    text="⚙  Kualitas Mirror ▼   (opsional — default sudah optimal)")
+            else:
+                _mir_collapse.pack(fill="x")
+                _mir_open[0] = True
+                _mir_hdr_btn.configure(
+                    text="⚙  Kualitas Mirror ▲   (klik untuk tutup)")
+
+        _mir_hdr_btn.configure(command=_toggle_mir)
+        mir = _mir_collapse
 
         def _lbl_cb(parent, lbl, var, vals, w=8):
             _ck.Label(parent, text=lbl, fg_color=CARD, text_color=MUT,
@@ -5747,7 +5821,7 @@ class SynthexApp:
                 ["Auto", "Portrait", "Landscape"],      w=9)
 
         row2 = _ck.Frame(mir, fg_color=CARD)
-        row2.pack(fill="x", pady=(0, 12))
+        row2.pack(fill="x", pady=(0, 4))
         for _txt, _v in [
             ("Stay Awake", stay_var), ("Show Touches", touch_var),
             ("Always On Top", top_var), ("No Audio", audio_var),
@@ -5804,7 +5878,7 @@ class SynthexApp:
                     if getattr(_sy, "frozen", False)
                     else _o.path.dirname(_o.path.dirname(_o.path.abspath(__file__))))
 
-        tools_bar = _ck.Frame(mir, fg_color="#0E0E1C", padx=10, pady=8)
+        tools_bar = _ck.Frame(body, fg_color="#0E0E1C", padx=20, pady=8)
         tools_bar.pack(fill="x")
 
         scrcpy_sv = tk.StringVar(value="scrcpy: memeriksa...")
@@ -5869,7 +5943,7 @@ class SynthexApp:
                   command=_download_adb, **_FB).pack(side="left")
 
         # ── Screenshot button ────────────────────────────────────────────────
-        ss_row = _ck.Frame(mir, fg_color=CARD)
+        ss_row = _ck.Frame(body, fg_color=CARD)
         ss_row.pack(fill="x", pady=(8, 0))
         ss_sv = tk.StringVar(value="")
         _ck.Label(ss_row, textvariable=ss_sv, fg_color=CARD, text_color=MUT,
@@ -5924,11 +5998,49 @@ class SynthexApp:
                   command=_take_screenshot).pack(side="right")
 
         # ══════════════════════════════════════════════════════════════
+        # SECTION — Tailscale (collapsible, advanced)
         # ══════════════════════════════════════════════════════════════
-        # SECTION — Tailscale (beda jaringan, tanpa kabel)
-        # ══════════════════════════════════════════════════════════════
-        ts_sec = _sec("Tailscale — Wireless Tanpa Kabel & Beda Jaringan",
-                      accent="#5B21B6", subtitle="VPN mesh langsung peer-to-peer")
+        _ts_open = [False]
+        _ts_wrap = _ck.Frame(body, fg_color=BG)
+        _ts_wrap.pack(fill="x", padx=20, pady=(0, 8))
+        _ts_hdr_btn = _ck.Button(
+            _ts_wrap,
+            text="Tailscale ▼   koneksi HP & PC beda jaringan tanpa kabel (advanced)",
+            fg_color="#1A0840", text_color="#A855F7",
+            font=("Segoe UI Variable", 9), relief="flat", bd=0,
+            cursor="hand2", anchor="w", padx=14, pady=8)
+        _ts_hdr_btn.pack(fill="x")
+        _ts_collapse = _ck.Frame(_ts_wrap, fg_color=BG)
+
+        def _toggle_ts():
+            if _ts_open[0]:
+                _ts_collapse.pack_forget()
+                _ts_open[0] = False
+                _ts_hdr_btn.configure(
+                    text="Tailscale ▼   koneksi HP & PC beda jaringan tanpa kabel (advanced)")
+            else:
+                _ts_collapse.pack(fill="x")
+                _ts_open[0] = True
+                _ts_hdr_btn.configure(
+                    text="Tailscale ▲   klik untuk tutup")
+        _ts_hdr_btn.configure(command=_toggle_ts)
+
+        def _ts_sec_fn(title, accent, subtitle=""):
+            w = _ck.Frame(_ts_collapse, fg_color=CARD)
+            w.pack(fill="x", pady=(0, 8))
+            h = _ck.Frame(w, fg_color=accent, padx=14, pady=8)
+            h.pack(fill="x")
+            _ck.Label(h, text=title, fg_color=accent, text_color="white",
+                     font=("Segoe UI Variable", 9, "bold")).pack(side="left")
+            if subtitle:
+                _ck.Label(h, text=subtitle, fg_color=accent, text_color="white",
+                         font=("Segoe UI Variable", 8)).pack(side="left", padx=(8, 0))
+            b = _ck.Frame(w, fg_color=CARD, padx=14, pady=10)
+            b.pack(fill="x")
+            return b
+
+        ts_sec = _ts_sec_fn("Tailscale — Wireless Tanpa Kabel & Beda Jaringan",
+                             accent="#5B21B6", subtitle="VPN mesh langsung peer-to-peer")
 
         ts_status_var = tk.StringVar(value="Belum dicek…")
         ts_status_lbl = _ck.Label(ts_sec, textvariable=ts_status_var, fg_color=CARD, text_color=MUT, font=("Segoe UI Variable", 8))
