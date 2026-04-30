@@ -44,11 +44,15 @@ jobs:
           gradle wrapper --gradle-version=8.6
           chmod +x gradlew
 
+      - name: Write local.properties
+        working-directory: android_app
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
+
       - name: Build Release APK
         working-directory: android_app
-        run: ./gradlew assembleRelease --no-daemon --stacktrace
-        env:
-          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          unset ANDROID_SDK_ROOT
+          ./gradlew assembleRelease --no-daemon --stacktrace
 
       - name: Rename APK
         run: |
