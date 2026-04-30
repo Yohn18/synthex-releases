@@ -6493,10 +6493,35 @@ class SynthexApp:
                        activebackground=CARD, activeforeground=FG,
                        font=("Segoe UI", 10), cursor="hand2").pack(
             anchor="w", pady=(8, 0))
-        _ck.Label(usb_wiz_sec,
-                 text="Letakkan Synthex.apk di folder  synthex/tools/Synthex.apk  "
-                      "setelah download dari GitHub Actions.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI", 9)).pack(
-            anchor="w", pady=(2, 0))
+        apk_row = _ck.Frame(usb_wiz_sec, fg_color=CARD)
+        apk_row.pack(anchor="w", pady=(6, 0), fill="x")
+
+        _apk_stat = tk.StringVar()
+        _apk_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools", "Synthex.apk")
+        _apk_exists = os.path.isfile(_apk_path)
+        _apk_stat.set("✓ Synthex.apk tersedia" if _apk_exists else "APK belum ada di tools/")
+
+        _ck.Label(apk_row, textvariable=_apk_stat, fg_color=CARD,
+                 text_color=GRN if _apk_exists else "#3A3A5A",
+                 font=("Segoe UI", 9)).pack(side="left", padx=(0, 10))
+
+        def _download_apk_from_gh():
+            import threading, urllib.request, shutil
+            _apk_stat.set("⏳ Mengunduh APK dari GitHub...")
+            def _do():
+                try:
+                    url = "https://github.com/Yohn18/synthex-releases/releases/latest/download/Synthex.apk"
+                    os.makedirs(os.path.dirname(_apk_path), exist_ok=True)
+                    urllib.request.urlretrieve(url, _apk_path)
+                    _apk_stat.set("✓ APK berhasil diunduh!")
+                except Exception as e:
+                    _apk_stat.set(f"Gagal: {e}")
+            threading.Thread(target=_do, daemon=True).start()
+
+        _ck.Button(apk_row, text="⬇ Download APK", fg_color="#1a2a1a", text_color=GRN,
+                  font=("Segoe UI", 9), padx=10, pady=4,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_download_apk_from_gh).pack(side="left")
 
         _ck.Label(wiz_btn_row,
                  text="Sudah terhubung sebelumnya? Gunakan IP History di atas.", fg_color=CARD, text_color="#3A3A5A", font=("Segoe UI", 9)).pack(side="left")

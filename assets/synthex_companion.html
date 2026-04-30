@@ -18,14 +18,22 @@
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 body{background:var(--bg);color:var(--fg);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;padding-bottom:80px}
 
-/* ── Download Banner ── */
-#apkBanner{display:none;background:linear-gradient(135deg,#1a0a3a,#0a1a3a);border-bottom:1px solid var(--acc);padding:12px 16px;align-items:center;gap:12px}
-#apkBanner .apk-icon{font-size:32px;flex-shrink:0}
-#apkBanner .apk-text{flex:1}
-#apkBanner .apk-title{font-weight:700;font-size:14px;color:var(--fg)}
-#apkBanner .apk-sub{font-size:11px;color:var(--mut);margin-top:2px}
-#apkBanner .apk-btn{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
-#apkBanner .apk-btn:active{background:var(--acc3)}
+/* ── APK Install Modal ── */
+#apkModal{display:none;position:fixed;inset:0;background:#000b;z-index:9000;align-items:flex-end;justify-content:center}
+#apkModal.show{display:flex}
+.apk-sheet{background:var(--bg2);border-radius:24px 24px 0 0;padding:28px 22px 40px;width:100%;max-width:480px;border-top:2px solid var(--acc);animation:slideUp .3s ease}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.apk-sheet .pill{width:40px;height:4px;background:var(--brd);border-radius:2px;margin:0 auto 20px}
+.apk-sheet .sh-icon{font-size:52px;text-align:center;margin-bottom:12px}
+.apk-sheet h2{font-size:20px;font-weight:800;text-align:center;margin-bottom:6px}
+.apk-sheet .sh-sub{font-size:13px;color:var(--mut);text-align:center;margin-bottom:22px;line-height:1.5}
+.apk-sheet .sh-steps{background:var(--card);border-radius:14px;padding:14px 16px;margin-bottom:20px}
+.apk-sheet .sh-steps p{font-size:12px;color:var(--mut);margin-bottom:10px;display:flex;align-items:center;gap:10px}
+.apk-sheet .sh-steps p:last-child{margin-bottom:0}
+.apk-sheet .sh-steps .num{background:var(--acc);color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0}
+.apk-dl-btn{width:100%;background:linear-gradient(135deg,var(--acc),var(--acc2));color:#fff;border:none;border-radius:16px;padding:16px;font-size:16px;font-weight:800;cursor:pointer;margin-bottom:10px;letter-spacing:.3px}
+.apk-dl-btn:active{opacity:.85}
+.apk-skip{width:100%;background:transparent;color:var(--mut);border:none;font-size:13px;padding:8px;cursor:pointer}
 
 /* ── Header ── */
 .hdr{background:var(--bg2);padding:13px 16px;display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--acc);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
@@ -160,14 +168,22 @@ input::placeholder{color:var(--mut)}
 </head>
 <body>
 
-<!-- APK Download Banner -->
-<div id="apkBanner">
-  <div class="apk-icon">📱</div>
-  <div class="apk-text">
-    <div class="apk-title">Install Synthex App</div>
-    <div class="apk-sub">Kontrol HP langsung dari genggamanmu</div>
+<!-- APK Install Modal -->
+<div id="apkModal">
+  <div class="apk-sheet">
+    <div class="pill"></div>
+    <div class="sh-icon">📲</div>
+    <h2>Install Synthex App</h2>
+    <p class="sh-sub">Dapatkan kontrol penuh dari HP kamu.<br>Download sekali, pakai selamanya.</p>
+    <div class="sh-steps">
+      <p><span class="num">1</span>Tap tombol Download di bawah</p>
+      <p><span class="num">2</span>Buka file .apk yang terunduh</p>
+      <p><span class="num">3</span>Izinkan "Install dari sumber tidak dikenal" jika diminta</p>
+      <p><span class="num">4</span>Buka Synthex App — selesai!</p>
+    </div>
+    <button class="apk-dl-btn" onclick="downloadApk()">⬇ Download Synthex.apk</button>
+    <button class="apk-skip" onclick="dismissApkModal()">Lewati, pakai versi web saja</button>
   </div>
-  <button class="apk-btn" onclick="downloadApk()">⬇ Install</button>
 </div>
 
 <!-- Header -->
@@ -370,13 +386,15 @@ let _toastTimer  = null;
 
 // ── APK auto-detect ──────────────────────────────────────────────────────────
 (async () => {
-  const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-  if (!isMobile) return;
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  if (!isAndroid) return;
+  const dismissed = localStorage.getItem("apk_dismissed") === "1";
+  if (dismissed) return;
   try {
     const r = await fetch(BASE + "/api/apk_available");
     const d = await r.json();
     if (d.available) {
-      document.getElementById("apkBanner").style.display = "flex";
+      document.getElementById("apkModal").classList.add("show");
     }
   } catch(e) {}
 })();
@@ -384,6 +402,12 @@ let _toastTimer  = null;
 function downloadApk() {
   window.location.href = BASE + "/download/synthex.apk";
   toast("📥 Mengunduh Synthex.apk...");
+  setTimeout(dismissApkModal, 2000);
+}
+
+function dismissApkModal() {
+  document.getElementById("apkModal").classList.remove("show");
+  localStorage.setItem("apk_dismissed", "1");
 }
 
 // ── Tab switching ────────────────────────────────────────────────────────────
