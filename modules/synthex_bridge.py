@@ -19,9 +19,9 @@ from core.logger import get_logger
 logger = get_logger("synthex_bridge")
 
 _DEFAULT_PORT = 8765
-_COMPANION_HTML = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "assets", "synthex_companion.html")
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_COMPANION_HTML = os.path.join(_ROOT, "assets", "synthex_companion.html")
+_APK_PATH       = os.path.join(_ROOT, "tools", "Synthex.apk")
 
 
 def _get_local_ip() -> str:
@@ -134,6 +134,46 @@ class SynthexBridge:
                         }
                     self._send(200, "application/json",
                                json.dumps(payload).encode())
+
+                elif path == "/api/screenshot":
+                    serial = parse_qs(parsed.query).get("serial", [""])[0]
+                    img_bytes = b""
+                    if adb and adb.available:
+                        try:
+                            s_args = ["-s", serial] if serial else []
+                            rc, img_bytes = adb._run_bytes(*s_args, "exec-out", "screencap", "-p")
+                            if rc != 0:
+                                img_bytes = b""
+                        except Exception as e:
+                            logger.debug("screenshot error: %s", e)
+                    if img_bytes:
+                        self._send(200, "image/png", img_bytes)
+                    else:
+                        self._send(204, "image/png", b"")
+
+                elif path == "/api/devices":
+                    with state.lock:
+                        payload = {"devices": state.devices, "mirror_serial": state.mirror_serial}
+                    self._send(200, "application/json", json.dumps(payload).encode())
+
+                elif path == "/download/synthex.apk":
+                    if os.path.isfile(_APK_PATH):
+                        with open(_APK_PATH, "rb") as f:
+                            apk = f.read()
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/vnd.android.package-archive")
+                        self.send_header("Content-Disposition", 'attachment; filename="Synthex.apk"')
+                        self.send_header("Content-Length", str(len(apk)))
+                        self.send_header("Access-Control-Allow-Origin", "*")
+                        self.end_headers()
+                        self.wfile.write(apk)
+                    else:
+                        self._send(404, "text/plain", b"APK not found. Place Synthex.apk in tools/ folder.")
+
+                elif path == "/api/apk_available":
+                    available = os.path.isfile(_APK_PATH)
+                    self._send(200, "application/json",
+                               json.dumps({"available": available}).encode())
 
                 elif path == "/manifest.json":
                     manifest = {

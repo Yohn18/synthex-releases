@@ -1897,25 +1897,169 @@ class SynthexApp:
     # ================================================================
 
     def _pg_web(self):
+        import webbrowser as _wb
         f = _ck.Frame(self._content, fg_color=BG)
-        self._hdr(f, "Web Browser", "Navigate to websites in Chrome.")
-        c = _card(f, "Open URL")
-        c.pack(fill="x", padx=20)
-        row = _ck.Frame(c, fg_color=CARD)
-        row.pack(fill="x")
+        self._hdr(f, "Web Browser", "Buka website di Chrome & kelola situs favorit.")
+
+        # ── Navigation bar ────────────────────────────────────────────────────
+        nav = _card(f, "Navigasi")
+        nav.pack(fill="x", padx=20)
+
+        # Row 1: URL bar + tombol
+        url_row = _ck.Frame(nav, fg_color=CARD)
+        url_row.pack(fill="x", pady=(0, 6))
         self._url = tk.StringVar()
-        _ck.Entry(row, textvariable=self._url,
-                  font=("Segoe UI", 11)).pack(
-            side="left", fill="x", expand=True, padx=(0, 8))
-        _ck.Button(row, text="Open",
-                   command=self._open_url).pack(side="left")
-        sc = _card(f, "Saved Sites")
-        sc.pack(fill="both", expand=True, padx=20, pady=(12, 20))
-        t = _tree(sc, [("name", "Name", 140), ("url", "URL", 300),
-                       ("cat", "Category", 100)])
-        for s in self._ud.websites:
-            t.insert("", "end", values=(
-                s.get("name",""), s.get("url",""), s.get("category","")))
+        url_entry = _ck.Entry(url_row, textvariable=self._url,
+                              font=("Segoe UI", 11), placeholder_text="https://...")
+        url_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        url_entry.bind("<Return>", lambda e: self._open_url())
+
+        _ck.Button(url_row, text="Buka", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 10, "bold"), padx=12,
+                   command=self._open_url).pack(side="left", padx=(0, 4))
+
+        def _search_google():
+            q = self._url.get().strip()
+            if q:
+                url = "https://www.google.com/search?q={}".format(
+                    q.replace(" ", "+"))
+                self._url.set(url)
+                self._open_url()
+
+        _ck.Button(url_row, text="🔍 Cari", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 10), padx=10,
+                   command=_search_google).pack(side="left", padx=(0, 4))
+
+        def _save_current():
+            url = self._url.get().strip()
+            if not url:
+                return
+            _add_site_dialog(prefill_url=url)
+
+        _ck.Button(url_row, text="＋ Simpan", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 10), padx=10,
+                   command=_save_current).pack(side="left")
+
+        # Row 2: Quick-launch buttons (5 situs pertama)
+        ql_row = _ck.Frame(nav, fg_color=CARD)
+        ql_row.pack(fill="x")
+        ql_lbl = _ck.Label(ql_row, text="Quick:", fg_color=CARD, text_color=MUT,
+                           font=("Segoe UI", 9))
+        ql_lbl.pack(side="left", padx=(0, 6))
+        self._web_ql_frame = ql_row
+
+        def _rebuild_ql():
+            for w in list(self._web_ql_frame.winfo_children()):
+                if w != ql_lbl:
+                    w.destroy()
+            for s in self._ud.websites[:6]:
+                name = s.get("name", "") or s.get("url", "")[:20]
+                url  = s.get("url", "")
+                def _go(u=url):
+                    self._url.set(u)
+                    self._open_url()
+                _ck.Button(self._web_ql_frame, text=name, fg_color="#1A1A2E",
+                           text_color=ACC, font=("Segoe UI", 9), padx=8, pady=3,
+                           relief="flat", bd=0, cursor="hand2",
+                           command=_go).pack(side="left", padx=(0, 4))
+
+        _rebuild_ql()
+
+        # ── Saved Sites ───────────────────────────────────────────────────────
+        sc = _card(f, "Situs Tersimpan")
+        sc.pack(fill="both", expand=True, padx=20, pady=(12, 0))
+
+        # Toolbar aksi
+        act_row = _ck.Frame(sc, fg_color=CARD)
+        act_row.pack(fill="x", pady=(0, 6))
+
+        sites_tree = _tree(sc, [("name", "Nama", 150), ("url", "URL", 300),
+                                 ("cat", "Kategori", 110)])
+        sites_tree.pack(fill="both", expand=True)
+
+        def _refresh_tree():
+            sites_tree.delete(*sites_tree.get_children())
+            for s in self._ud.websites:
+                sites_tree.insert("", "end", values=(
+                    s.get("name", ""), s.get("url", ""), s.get("category", "")))
+            _rebuild_ql()
+
+        def _open_selected(event=None):
+            sel = sites_tree.selection()
+            if not sel:
+                return
+            idx = sites_tree.index(sel[0])
+            if idx < len(self._ud.websites):
+                url = self._ud.websites[idx].get("url", "")
+                if url:
+                    self._url.set(url)
+                    self._open_url()
+
+        sites_tree.bind("<Double-1>", _open_selected)
+
+        def _add_site_dialog(prefill_url=""):
+            dlg = _DarkToplevel(self._root)
+            dlg.title("Tambah Situs")
+            dlg.geometry("360x220")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            _ck.Label(dlg, text="Tambah Situs Favorit", fg_color=BG, text_color=FG,
+                     font=("Segoe UI", 12, "bold")).pack(pady=(16, 8))
+            fields = {}
+            for label, key, ph in [
+                ("Nama",     "name",     "Contoh: Google"),
+                ("URL",      "url",      "https://..."),
+                ("Kategori", "category", "Contoh: Kerja"),
+            ]:
+                row = _ck.Frame(dlg, fg_color=BG)
+                row.pack(fill="x", padx=20, pady=3)
+                _ck.Label(row, text=label, fg_color=BG, text_color=MUT,
+                         font=("Segoe UI", 10), width=70).pack(side="left")
+                var = tk.StringVar(value=prefill_url if key == "url" else "")
+                _ck.Entry(row, textvariable=var, font=("Segoe UI", 10),
+                         placeholder_text=ph).pack(side="left", fill="x", expand=True)
+                fields[key] = var
+
+            def _do_save():
+                url = fields["url"].get().strip()
+                if not url:
+                    return
+                if not url.startswith("http"):
+                    url = "https://" + url
+                self._ud.websites.append({
+                    "name":     fields["name"].get().strip() or url,
+                    "url":      url,
+                    "category": fields["category"].get().strip(),
+                })
+                self._ud.save()
+                _refresh_tree()
+                dlg.destroy()
+
+            _ck.Button(dlg, text="Simpan", fg_color=ACC, text_color=BG,
+                      font=("Segoe UI", 10, "bold"),
+                      command=_do_save).pack(pady=(12, 0))
+
+        def _delete_selected():
+            sel = sites_tree.selection()
+            if not sel:
+                return
+            idx = sites_tree.index(sel[0])
+            if idx < len(self._ud.websites):
+                del self._ud.websites[idx]
+                self._ud.save()
+                _refresh_tree()
+
+        _ck.Button(act_row, text="＋ Tambah", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                   command=lambda: _add_site_dialog()).pack(side="left", padx=(0, 6))
+        _ck.Button(act_row, text="▶ Buka", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_open_selected).pack(side="left", padx=(0, 6))
+        _ck.Button(act_row, text="🗑 Hapus", fg_color="#3A1A1A", text_color=RED,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_delete_selected).pack(side="left")
+
+        _ck.Frame(f, fg_color=BG, height=20).pack()
         return f
 
     # ================================================================
@@ -5069,13 +5213,52 @@ class SynthexApp:
 
         _card_widgets = {}
 
-        empty_lbl = _ck.Label(cards_frame,
-                             text="Tidak ada perangkat — sambungkan HP via USB atau WiFi", fg_color=CARD, text_color=MUT, font=("Segoe UI", 10, "italic"))
-        empty_lbl.pack(anchor="w", pady=6)
+        empty_lbl = _ck.Frame(cards_frame, fg_color=CARD)
+        empty_lbl.pack(fill="x", pady=4)
+        _ck.Label(empty_lbl, text="Tidak ada perangkat terhubung", fg_color=CARD,
+                 text_color=MUT, font=("Segoe UI", 10, "italic")).pack(anchor="w", pady=(4, 2))
+        _ck.Label(empty_lbl, text="Sambungkan HP via USB  —  atau ketik IP:Port di bawah untuk WiFi:",
+                 fg_color=CARD, text_color="#5A5A7A", font=("Segoe UI", 9)).pack(anchor="w")
+        _quick_wifi_row = _ck.Frame(empty_lbl, fg_color=CARD)
+        _quick_wifi_row.pack(anchor="w", pady=(4, 6))
+        _qw_var = tk.StringVar()
+        _ck.Entry(_quick_wifi_row, textvariable=_qw_var, font=("Segoe UI", 10),
+                 placeholder_text="192.168.x.x:5555", width=180).pack(side="left", padx=(0, 8))
+        def _quick_connect_wifi():
+            addr = _qw_var.get().strip()
+            if not addr:
+                return
+            if ":" not in addr:
+                addr += ":5555"
+            def _bg():
+                if self._adb:
+                    ok, m = self._adb.connect(addr)
+                    if self._root:
+                        self._root.after(0, lambda: msg_var.set(m))
+                _refresh_devs()
+            _thr.Thread(target=_bg, daemon=True).start()
+        _ck.Button(_quick_wifi_row, text="Sambungkan", fg_color="#7C3AED", text_color="white",
+                  font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_quick_connect_wifi).pack(side="left")
+
+        def _get_model(serial: str) -> str:
+            try:
+                if self._adb:
+                    _, out, _ = self._adb._run("-s", serial, "shell",
+                                               "getprop", "ro.product.model")
+                    m = out.strip()
+                    if m:
+                        return m
+            except Exception:
+                pass
+            return serial
 
         def _make_device_card(serial: str):
             is_wifi = ":" in serial
             accent_clr = "#7C3AED" if is_wifi else "#0EA5E9"
+            icon_txt   = "\ud83d\udce1" if is_wifi else "\ud83d\udcf1"
+            conn_type  = "WiFi" if is_wifi else "USB"
 
             card = _ck.Frame(cards_frame, fg_color="#16162a", bd=0)
             card.pack(fill="x", pady=(0, 6))
@@ -5088,12 +5271,20 @@ class SynthexApp:
             row = _ck.Frame(inner, fg_color="#16162a")
             row.pack(fill="x")
 
-            icon = "wifi" if is_wifi else "usb "
             mir_dot = _ck.Label(row, text="\u25cf", fg_color="#16162a", text_color=MUT,
                                font=("Segoe UI", 12))
             mir_dot.pack(side="left")
-            _ck.Label(row, text="[{}]  {}".format(icon, serial), fg_color="#16162a", text_color=FG,
-                     font=("Segoe UI", 10, "bold")).pack(side="left", padx=(6, 0))
+
+            _ck.Label(row, text=icon_txt, fg_color="#16162a", text_color=accent_clr,
+                     font=("Segoe UI", 13)).pack(side="left", padx=(6, 4))
+
+            model_name = _get_model(serial)
+            _ck.Label(row, text=model_name, fg_color="#16162a", text_color=FG,
+                     font=("Segoe UI", 10, "bold")).pack(side="left")
+            _ck.Label(row, text="  ({})  {}".format(conn_type, serial),
+                     fg_color="#16162a", text_color="#5A5A7A",
+                     font=("Segoe UI", 9)).pack(side="left")
+
             mir_lbl = _ck.Label(row, text="", fg_color="#16162a", text_color=MUT,
                                font=("Segoe UI", 9))
             mir_lbl.pack(side="left", padx=(10, 0))
@@ -5179,7 +5370,7 @@ class SynthexApp:
                                         target=lambda s=_ns: self._auto_install_companion(s, msg_var),
                                         daemon=True).start()
                     else:
-                        empty_lbl.pack(anchor="w", pady=6)
+                        empty_lbl.pack(fill="x", pady=4)
                         status_var.set("Tidak ada perangkat")
                         dot.configure(text_color=MUT)
                 if self._root:
@@ -6716,7 +6907,28 @@ class SynthexApp:
         _ck.Button(comp_btn_row, text="■ Stop", fg_color="#1c1c2e", text_color=MUT,
                   font=("Segoe UI", 10), padx=10, pady=6,
                   relief="flat", bd=0, cursor="hand2",
-                  command=_stop_companion).pack(side="left")
+                  command=_stop_companion).pack(side="left", padx=(0, 8))
+
+        def _open_firewall():
+            port = int(self.config.get("remote.companion_port", 8765))
+            import subprocess as _sp
+            cmd = (
+                f'netsh advfirewall firewall add rule name="Synthex Companion {port}" '
+                f'dir=in action=allow protocol=TCP localport={port}'
+            )
+            try:
+                r = _sp.run(
+                    ["powershell", "-WindowStyle", "Hidden",
+                     "-Command", f'Start-Process cmd -Verb RunAs -ArgumentList \'/c {cmd}\''],
+                    capture_output=True, timeout=8)
+                comp_stat_var.set(f"Firewall port {port} dibuka (perlu konfirmasi UAC)")
+            except Exception as ex:
+                comp_stat_var.set(f"Gagal buka firewall: {ex}")
+
+        _ck.Button(comp_btn_row, text="🛡 Buka Firewall", fg_color="#1a2a3a", text_color="#60aaff",
+                  font=("Segoe UI", 10), padx=10, pady=6,
+                  relief="flat", bd=0, cursor="hand2",
+                  command=_open_firewall).pack(side="left")
 
         # If bridge was already running from a previous page load
         if self._bridge and self._bridge.running:
@@ -13355,7 +13567,7 @@ class SynthexApp:
         win.resizable(False, False)
         win.attributes("-topmost", True)
 
-        W, H = 320, 148
+        W, H = 340, 210
         sw = self._root.winfo_screenwidth()
         sh = self._root.winfo_screenheight()
         # Default position: top-right corner
@@ -13433,6 +13645,7 @@ class SynthexApp:
         state_var = tk.StringVar(value="SIAP")
         timer_var = tk.StringVar(value="00:00")
         steps_var = tk.StringVar(value="0 langkah")
+        hotkey_hint = "CTRL+1 jeda  ·  CTRL+3 stop"
 
         st = _ck.Frame(win, fg_color="#0D0D14")
         st.pack(fill="x", padx=10, pady=(8, 4))
@@ -13479,6 +13692,10 @@ class SynthexApp:
             steps_var.set("0 langkah")
             btn_rec.configure(text="⏺", fg_color=RED, text_color="#FFFFFF", state="normal")
             btn_pause.configure(text="⏸", fg_color=CARD2, text_color=MUT, state="disabled")
+            lbl_rec.configure(text_color=MUT)
+            lbl_pause.configure(text_color=MUT)
+            lbl_play.configure(text_color=MUT)
+            lbl_unlim.configure(text_color=MUT)
             for nl, tl in self._rec_preview_labels:
                 nl.configure(text="")
                 tl.configure(text="")
@@ -13501,6 +13718,8 @@ class SynthexApp:
                 state_var.set("MEREKAM")
                 btn_rec.configure(text="⏹", fg_color="#2A1A1A", text_color=RED, state="normal")
                 btn_pause.configure(text="⏸", fg_color=YEL, text_color=BG, state="normal")
+                lbl_rec.configure(text_color=RED)
+                lbl_pause.configure(text_color=YEL)
                 self.logger.info("REC: UI updated, calling _tick")
                 _tick()
                 self.logger.info("REC: _do_actual_record COMPLETE")
@@ -13578,10 +13797,11 @@ class SynthexApp:
         # (set at bottom of this function)
 
         # ── 4 equal buttons in single horizontal row ──────────────────────────
-        ICON_F = ("Segoe UI Emoji", 17)
+        ICON_F  = ("Segoe UI Emoji", 17)
+        LABEL_F = ("Segoe UI", 8)
 
         btn_row = _ck.Frame(win, fg_color="#0D0D14", height=58)
-        btn_row.pack(fill="x", padx=8, pady=(6, 8))
+        btn_row.pack(fill="x", padx=8, pady=(6, 2))
         btn_row.pack_propagate(False)
 
         btn_rec = _ck.Button(btn_row, text="⏺", fg_color=RED, text_color="#FFFFFF", font=ICON_F,
@@ -13608,6 +13828,26 @@ class SynthexApp:
                               command=_toggle_unlimited)
         btn_unlim.pack(side="left", fill="both", expand=True)
 
+        # ── Label row bawah tombol ─────────────────────────────────────────────
+        lbl_row = _ck.Frame(win, fg_color="#0D0D14")
+        lbl_row.pack(fill="x", padx=8, pady=(0, 4))
+        for col in range(4):
+            lbl_row.columnconfigure(col, weight=1)
+
+        lbl_rec   = _ck.Label(lbl_row, text="REKAM",   fg_color="#0D0D14", text_color=MUT, font=LABEL_F)
+        lbl_pause = _ck.Label(lbl_row, text="JEDA",    fg_color="#0D0D14", text_color=MUT, font=LABEL_F)
+        lbl_play  = _ck.Label(lbl_row, text="PUTAR",   fg_color="#0D0D14", text_color=MUT, font=LABEL_F)
+        lbl_unlim = _ck.Label(lbl_row, text="∞ ULANG", fg_color="#0D0D14", text_color=MUT, font=LABEL_F)
+        lbl_rec.grid(row=0, column=0, sticky="ew")
+        lbl_pause.grid(row=0, column=1, sticky="ew")
+        lbl_play.grid(row=0, column=2, sticky="ew")
+        lbl_unlim.grid(row=0, column=3, sticky="ew")
+
+        # ── Shortcut hint ──────────────────────────────────────────────────────
+        _ck.Frame(win, fg_color="#2A2A40", height=1).pack(fill="x")
+        _ck.Label(win, text=hotkey_hint, fg_color="#0D0D14", text_color="#3A3A5A",
+                 font=("Segoe UI", 8)).pack(pady=(4, 6))
+
         # Set hotkey references AFTER all widgets are created
         self._rec_toggle_fn = _toggle_recording
         self._rec_pause_fn  = _toggle_pause
@@ -13621,7 +13861,7 @@ class SynthexApp:
                 n       = len(actions)
                 elapsed = _time.time() - self._rec_start_time
                 timer_var.set(time.strftime("%M:%S", time.gmtime(elapsed)))
-                steps_var.set("{} steps".format(n))
+                steps_var.set("{} langkah".format(n))
             if self._rec:
                 self._rec_timer_id = win.after(400, _tick)
 

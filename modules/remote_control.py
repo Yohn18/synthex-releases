@@ -106,6 +106,21 @@ class AdbManager:
         except Exception as e:
             return (-1, "", str(e))
 
+    def _run_bytes(self, *args, timeout=10) -> tuple[int, bytes]:
+        """Run adb command and return raw bytes stdout (for screencap etc)."""
+        if not self.adb:
+            return (-1, b"")
+        try:
+            r = subprocess.run(
+                [self.adb] + list(args),
+                capture_output=True, timeout=timeout,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            return (r.returncode, r.stdout)
+        except subprocess.TimeoutExpired:
+            return (-1, b"")
+        except Exception:
+            return (-1, b"")
+
     def list_devices(self) -> list[dict]:
         """Return list of connected devices as [{"serial":…, "state":…}]."""
         code, out, _ = self._run("devices")

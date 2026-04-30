@@ -5,219 +5,504 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="theme-color" content="#6c4aff">
+<meta name="theme-color" content="#7c3aed">
 <link rel="manifest" href="/manifest.json">
-<title>Synthex</title>
+<title>Synthex Remote</title>
 <style>
+:root{
+  --bg:#08080f;--bg2:#0f0f1a;--card:#13131f;--card2:#1a1a2e;
+  --acc:#7c3aed;--acc2:#a855f7;--acc3:#6d28d9;
+  --grn:#10b981;--red:#ef4444;--yel:#f59e0b;--blu:#0ea5e9;
+  --fg:#e2e8f0;--mut:#64748b;--brd:#1e1e3a;
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-body{background:#0a0a0f;color:#e2e8f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+body{background:var(--bg);color:var(--fg);font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;padding-bottom:80px}
+
+/* ── Download Banner ── */
+#apkBanner{display:none;background:linear-gradient(135deg,#1a0a3a,#0a1a3a);border-bottom:1px solid var(--acc);padding:12px 16px;align-items:center;gap:12px}
+#apkBanner .apk-icon{font-size:32px;flex-shrink:0}
+#apkBanner .apk-text{flex:1}
+#apkBanner .apk-title{font-weight:700;font-size:14px;color:var(--fg)}
+#apkBanner .apk-sub{font-size:11px;color:var(--mut);margin-top:2px}
+#apkBanner .apk-btn{background:var(--acc);color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px}
+#apkBanner .apk-btn:active{background:var(--acc3)}
 
 /* ── Header ── */
-.hdr{background:#111118;padding:12px 16px;display:flex;align-items:center;gap:10px;border-bottom:2px solid #6c4aff;position:sticky;top:0;z-index:100}
-.hdr-logo{width:32px;height:32px;background:#6c4aff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
-.hdr-title{font-weight:700;font-size:16px;flex:1}
-.conn-dot{width:8px;height:8px;border-radius:50%;background:#ef4444}
-.conn-dot.ok{background:#10b981}
-.conn-lbl{font-size:11px;color:#64748b}
+.hdr{background:var(--bg2);padding:13px 16px;display:flex;align-items:center;gap:10px;border-bottom:2px solid var(--acc);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.hdr-logo{width:36px;height:36px;background:linear-gradient(135deg,var(--acc),var(--acc2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;letter-spacing:-1px;flex-shrink:0}
+.hdr-info{flex:1}
+.hdr-title{font-weight:800;font-size:15px;letter-spacing:.3px}
+.hdr-sub{font-size:10px;color:var(--mut);margin-top:1px}
+.conn-pill{display:flex;align-items:center;gap:5px;background:var(--card2);border-radius:20px;padding:5px 10px}
+.conn-dot{width:7px;height:7px;border-radius:50%;background:var(--red);transition:background .3s}
+.conn-dot.ok{background:var(--grn)}
+.conn-lbl{font-size:10px;color:var(--mut)}
 
-/* ── Body ── */
-.page{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+/* ── Device tabs ── */
+.dev-tabs{background:var(--bg2);padding:10px 14px 0;display:flex;gap:6px;overflow-x:auto;border-bottom:1px solid var(--brd)}
+.dev-tabs::-webkit-scrollbar{display:none}
+.dev-tab{background:var(--card);border:1.5px solid var(--brd);border-bottom:none;border-radius:10px 10px 0 0;padding:8px 14px;font-size:12px;font-weight:600;color:var(--mut);cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;flex-shrink:0;transition:all .2s}
+.dev-tab.active{background:var(--card2);border-color:var(--acc);color:var(--fg)}
+.dev-tab .dot{width:6px;height:6px;border-radius:50%;background:var(--mut);flex-shrink:0}
+.dev-tab.active .dot{background:var(--grn)}
+.dev-tab-add{background:transparent;border:1.5px dashed var(--brd);border-bottom:none;border-radius:10px 10px 0 0;padding:8px 14px;font-size:18px;color:var(--mut);cursor:pointer}
+.no-dev-msg{padding:14px 16px;font-size:12px;color:var(--mut);font-style:italic}
 
-/* ── Cards ── */
-.card{background:#111118;border-radius:12px;overflow:hidden}
-.card-hdr{background:#1a1a2e;padding:10px 14px;font-size:12px;font-weight:700;color:#6c4aff;letter-spacing:.5px;text-transform:uppercase}
+/* ── Body layout ── */
+.body{padding:12px 14px;display:flex;flex-direction:column;gap:12px}
+
+/* ── Screen viewer ── */
+.screen-wrap{background:var(--card);border-radius:16px;overflow:hidden;border:1.5px solid var(--brd)}
+.screen-hdr{background:var(--card2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+.screen-hdr .title{font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.5px}
+.screen-hdr .btns{display:flex;gap:6px}
+.screen-hdr button{background:var(--card);border:none;border-radius:7px;color:var(--fg);font-size:11px;padding:4px 10px;cursor:pointer}
+.screen-hdr button:active{background:var(--acc)}
+.screen-container{position:relative;background:#000;min-height:200px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+#screenImg{width:100%;max-height:380px;object-fit:contain;display:none;cursor:crosshair}
+.screen-placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:40px 20px;color:var(--mut)}
+.screen-placeholder .icon{font-size:40px;opacity:.4}
+.screen-placeholder p{font-size:12px;text-align:center}
+.screen-overlay{position:absolute;top:6px;right:6px;background:#0008;border-radius:8px;padding:4px 8px;font-size:10px;color:#fff;pointer-events:none}
+
+/* ── Quick controls ── */
+.ctrl-wrap{background:var(--card);border-radius:16px;overflow:hidden;border:1.5px solid var(--brd)}
+.section-hdr{background:var(--card2);padding:10px 14px;font-size:12px;font-weight:700;color:var(--acc);text-transform:uppercase;letter-spacing:.5px}
+.ctrl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:12px}
+.ctrl-btn{background:var(--card2);border:none;border-radius:12px;color:var(--fg);font-size:22px;padding:16px 0;cursor:pointer;transition:background .15s,transform .1s;-webkit-tap-highlight-color:transparent}
+.ctrl-btn:active{background:var(--acc);transform:scale(.94)}
+.ctrl-btn.wide{grid-column:span 3;font-size:13px;font-weight:700;padding:13px 0;letter-spacing:.3px}
+.ctrl-btn.red{color:var(--red)}
+.ctrl-btn.grn{color:var(--grn)}
+.ctrl-btn.yel{color:var(--yel)}
+.ctrl-btn.blu{color:var(--blu)}
+
+/* ── Card generic ── */
+.card-wrap{background:var(--card);border-radius:16px;overflow:hidden;border:1.5px solid var(--brd)}
 .card-body{padding:12px 14px}
 
-/* ── Device badge ── */
-.dev-badge{display:inline-flex;align-items:center;gap:6px;background:#16162a;border-radius:6px;padding:5px 10px;margin:3px;font-size:12px;color:#e2e8f0}
-.dev-badge .icon{font-size:14px}
-.no-dev{color:#64748b;font-size:12px;padding:4px 0}
-
-/* ── Macro list ── */
-.macro-item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #16162a}
-.macro-item:last-child{border-bottom:none}
-.macro-delay{background:#6c4aff22;color:#9d5cf6;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;white-space:nowrap}
-.macro-label{font-size:13px;flex:1}
-.macro-btn{background:#6c4aff;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
-.macro-btn:active{background:#5a3add}
-.no-macro{color:#64748b;font-size:12px}
-
-/* ── Control pad ── */
-.ctrl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.ctrl-btn{background:#16162a;border:none;border-radius:10px;color:#e2e8f0;font-size:22px;padding:18px 0;cursor:pointer;transition:background .1s}
-.ctrl-btn:active{background:#6c4aff}
-.ctrl-btn.wide{grid-column:span 3;font-size:14px;font-weight:700;padding:14px 0}
-.ctrl-btn.red{color:#f87171}
-.ctrl-btn.grn{color:#10b981}
-.ctrl-btn.yel{color:#f59e0b}
-
-/* ── Input ── */
-.inp-row{display:flex;gap:8px}
-.inp-row input{flex:1;background:#16162a;border:1px solid #1c1c2e;border-radius:8px;color:#e2e8f0;font-size:14px;padding:10px 12px;outline:none}
-.inp-row input::placeholder{color:#64748b}
-.inp-row button{background:#6c4aff;border:none;border-radius:8px;color:#fff;font-weight:700;padding:10px 16px;cursor:pointer;font-size:13px}
-.inp-row button:active{background:#5a3add}
-
 /* ── Coord tap ── */
-.coord-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-.coord-row input{background:#16162a;border:1px solid #1c1c2e;border-radius:8px;color:#e2e8f0;font-size:14px;padding:9px 12px;outline:none;width:100%}
-.tap-btn{width:100%;background:#0ea5e9;border:none;border-radius:8px;color:#fff;font-weight:700;padding:11px 0;cursor:pointer;font-size:14px}
-.tap-btn:active{background:#0284c7}
+.coord-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+input[type=number],input[type=text]{background:var(--card2);border:1.5px solid var(--brd);border-radius:10px;color:var(--fg);font-size:14px;padding:10px 12px;outline:none;width:100%;transition:border-color .2s}
+input:focus{border-color:var(--acc)}
+input::placeholder{color:var(--mut)}
+.tap-btn{width:100%;background:var(--blu);border:none;border-radius:10px;color:#fff;font-weight:700;padding:12px 0;cursor:pointer;font-size:14px;transition:opacity .15s}
+.tap-btn:active{opacity:.75}
+
+/* ── Text input ── */
+.inp-row{display:flex;gap:8px}
+.inp-row input{flex:1}
+.inp-row button{background:var(--acc);border:none;border-radius:10px;color:#fff;font-weight:700;padding:10px 16px;cursor:pointer;font-size:13px;white-space:nowrap}
+.inp-row button:active{background:var(--acc3)}
+
+/* ── Macro farm ── */
+.macro-toolbar{display:flex;gap:6px;padding:10px 14px;border-bottom:1px solid var(--brd)}
+.macro-toolbar button{background:var(--card2);border:none;border-radius:8px;color:var(--fg);font-size:11px;font-weight:600;padding:6px 12px;cursor:pointer}
+.macro-toolbar button.acc{background:var(--acc);color:#fff}
+.macro-toolbar button:active{opacity:.75}
+.macro-list{padding:0 14px 10px}
+.macro-item{display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--brd)}
+.macro-item:last-child{border-bottom:none}
+.macro-icon{width:34px;height:34px;background:var(--card2);border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.macro-info{flex:1;min-width:0}
+.macro-name{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.macro-detail{font-size:10px;color:var(--mut);margin-top:2px}
+.macro-actions{display:flex;gap:5px}
+.macro-run{background:var(--grn);border:none;border-radius:8px;color:#fff;font-size:11px;font-weight:700;padding:6px 12px;cursor:pointer}
+.macro-run:active{opacity:.75}
+.macro-run.all{background:var(--acc);font-size:10px;padding:5px 9px}
+.no-macro{color:var(--mut);font-size:12px;text-align:center;padding:20px 0}
+
+/* ── Coord macro builder ── */
+.coord-macro-form{background:var(--card2);border-radius:12px;padding:12px;margin:10px 14px;border:1.5px solid var(--acc)}
+.coord-macro-form label{font-size:11px;color:var(--mut);display:block;margin-bottom:4px;margin-top:8px}
+.coord-macro-form input{margin-bottom:0}
+.coord-macro-form .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.coord-macro-form .save-btn{width:100%;margin-top:10px;background:var(--acc);border:none;border-radius:10px;color:#fff;font-weight:700;padding:11px 0;cursor:pointer;font-size:13px}
+
+/* ── Phone farm grid ── */
+.farm-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;padding:12px 14px}
+.farm-card{background:var(--card2);border-radius:12px;overflow:hidden;border:1.5px solid var(--brd);cursor:pointer;transition:border-color .2s}
+.farm-card.active{border-color:var(--acc)}
+.farm-screen{background:#000;aspect-ratio:9/16;display:flex;align-items:center;justify-content:center;position:relative}
+.farm-screen img{width:100%;height:100%;object-fit:cover}
+.farm-screen .placeholder{font-size:28px;opacity:.3}
+.farm-info{padding:8px;display:flex;align-items:center;gap:6px}
+.farm-info .dot{width:6px;height:6px;border-radius:50%;background:var(--mut);flex-shrink:0}
+.farm-info .dot.on{background:var(--grn)}
+.farm-info .name{font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── Status bar ── */
-.status-bar{text-align:center;font-size:11px;color:#374151;padding:4px 0}
-
-/* ── Swipe area ── */
-.swipe-pad{background:#111118;border-radius:12px;overflow:hidden}
-.swipe-inner{display:flex;flex-direction:column;align-items:center;padding:14px;gap:8px}
-.swipe-row{display:flex;gap:8px;justify-content:center}
-.sw-btn{background:#16162a;border:none;border-radius:10px;color:#e2e8f0;font-size:20px;padding:16px 24px;cursor:pointer;min-width:64px}
-.sw-btn:active{background:#7c3aed}
+#statusBar{text-align:center;font-size:10px;color:#2a2a4a;padding:6px 0 0}
 
 /* ── Toast ── */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e1e2e;color:#e2e8f0;border-radius:10px;padding:10px 20px;font-size:13px;box-shadow:0 4px 20px #0006;opacity:0;pointer-events:none;transition:opacity .25s;z-index:999;white-space:nowrap}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--card2);color:var(--fg);border-radius:12px;padding:11px 22px;font-size:13px;box-shadow:0 6px 30px #0009;opacity:0;pointer-events:none;transition:opacity .25s;z-index:9999;white-space:nowrap;border:1px solid var(--brd)}
 #toast.show{opacity:1}
+
+/* ── Tab nav ── */
+.tab-nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:1px solid var(--brd);display:flex;z-index:200;padding-bottom:env(safe-area-inset-bottom)}
+.tab-nav button{flex:1;background:none;border:none;color:var(--mut);font-size:10px;padding:10px 4px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;transition:color .2s}
+.tab-nav button .icon{font-size:20px}
+.tab-nav button.active{color:var(--acc2)}
+
+/* ── Sections ── */
+.section{display:none}
+.section.active{display:flex;flex-direction:column;gap:12px}
+
+/* ── Volume row ── */
+.vol-row{display:flex;gap:8px;padding:0 14px 12px}
+.vol-btn{flex:1;background:var(--card2);border:none;border-radius:10px;color:var(--fg);font-size:18px;padding:12px 0;cursor:pointer}
+.vol-btn:active{background:var(--acc)}
+
+/* Scrollbar hide */
+::-webkit-scrollbar{display:none}
 </style>
 </head>
 <body>
 
-<div class="hdr">
-  <div class="hdr-logo">SX</div>
-  <div class="hdr-title">Synthex</div>
-  <span class="conn-dot" id="connDot"></span>
-  <span class="conn-lbl" id="connLbl">Menghubungkan...</span>
+<!-- APK Download Banner -->
+<div id="apkBanner">
+  <div class="apk-icon">📱</div>
+  <div class="apk-text">
+    <div class="apk-title">Install Synthex App</div>
+    <div class="apk-sub">Kontrol HP langsung dari genggamanmu</div>
+  </div>
+  <button class="apk-btn" onclick="downloadApk()">⬇ Install</button>
 </div>
 
-<div class="page">
-
-  <!-- Perangkat -->
-  <div class="card">
-    <div class="card-hdr">Perangkat Terhubung</div>
-    <div class="card-body" id="devList">
-      <div class="no-dev">Memuat...</div>
-    </div>
+<!-- Header -->
+<div class="hdr">
+  <div class="hdr-logo">SX</div>
+  <div class="hdr-info">
+    <div class="hdr-title">Synthex Remote</div>
+    <div class="hdr-sub" id="hdrSub">Menghubungkan...</div>
   </div>
+  <div class="conn-pill">
+    <div class="conn-dot" id="connDot"></div>
+    <span class="conn-lbl" id="connLbl">...</span>
+  </div>
+</div>
 
-  <!-- Kontrol Langsung -->
-  <div class="card">
-    <div class="card-hdr">Kontrol HP</div>
-    <div class="card-body">
+<!-- Device Tabs -->
+<div class="dev-tabs" id="devTabs">
+  <div class="no-dev-msg">Belum ada perangkat</div>
+</div>
+
+<!-- Tab Navigation -->
+<nav class="tab-nav">
+  <button class="active" onclick="switchTab('control',this)"><span class="icon">🎮</span>Kontrol</button>
+  <button onclick="switchTab('macros',this)"><span class="icon">⚡</span>Macro</button>
+  <button onclick="switchTab('farm',this)"><span class="icon">📱</span>Farm</button>
+  <button onclick="switchTab('input',this)"><span class="icon">⌨</span>Input</button>
+</nav>
+
+<div class="body">
+
+  <!-- ══ TAB: KONTROL ══ -->
+  <div id="tab-control" class="section active">
+
+    <!-- Screen Viewer -->
+    <div class="screen-wrap">
+      <div class="screen-hdr">
+        <span class="title">📺 Layar HP</span>
+        <div class="btns">
+          <button onclick="toggleScreenAuto()">⏯ Auto</button>
+          <button onclick="captureNow()">📸 Snap</button>
+        </div>
+      </div>
+      <div class="screen-container" id="screenContainer">
+        <img id="screenImg" alt="Screen">
+        <div class="screen-placeholder" id="screenPlaceholder">
+          <div class="icon">📵</div>
+          <p>Layar tidak tersedia<br><small>Pastikan HP terhubung via ADB</small></p>
+        </div>
+        <div class="screen-overlay" id="screenOverlay" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Quick Controls -->
+    <div class="ctrl-wrap">
+      <div class="section-hdr">🎮 Kontrol Cepat</div>
       <div class="ctrl-grid">
-        <button class="ctrl-btn" onclick="sendKey(4)" title="Back">&#8592;</button>
-        <button class="ctrl-btn" onclick="sendKey(3)" title="Home">&#9711;</button>
-        <button class="ctrl-btn" onclick="sendKey(187)" title="Recent">&#9776;</button>
-        <button class="ctrl-btn" onclick="sendSwipe('up')" title="Swipe Up">&#8679;</button>
-        <button class="ctrl-btn" onclick="sendSwipe('down')" title="Swipe Down">&#8681;</button>
-        <button class="ctrl-btn" onclick="sendKey(26)" title="Power">&#9211;</button>
-        <button class="ctrl-btn wide" onclick="sendKey(224)">Wake Up Layar</button>
-        <button class="ctrl-btn wide yel" onclick="sendSwipe('left')">&#8678; Swipe Kiri</button>
-        <button class="ctrl-btn wide yel" onclick="sendSwipe('right')">Swipe Kanan &#8680;</button>
+        <button class="ctrl-btn" onclick="sendKey(4)">◀</button>
+        <button class="ctrl-btn" onclick="sendKey(3)">⬤</button>
+        <button class="ctrl-btn" onclick="sendKey(187)">▤</button>
+        <button class="ctrl-btn" onclick="sendSwipe('up')">⬆</button>
+        <button class="ctrl-btn" onclick="sendSwipe('down')">⬇</button>
+        <button class="ctrl-btn red" onclick="sendKey(26)">⏻</button>
+        <button class="ctrl-btn wide grn" onclick="sendKey(224)">🔆 Wake Up Layar</button>
+        <button class="ctrl-btn wide yel" onclick="sendSwipe('left')">◀ Swipe Kiri</button>
+        <button class="ctrl-btn wide yel" onclick="sendSwipe('right')">Swipe Kanan ▶</button>
+      </div>
+      <div class="vol-row">
+        <button class="vol-btn" onclick="sendKey(25)">🔉 Vol -</button>
+        <button class="vol-btn" onclick="sendKey(24)">🔊 Vol +</button>
+        <button class="vol-btn" onclick="sendKey(164)">🔇 Mute</button>
+      </div>
+    </div>
+
+    <!-- Tap Koordinat -->
+    <div class="card-wrap">
+      <div class="section-hdr">📍 Tap Koordinat</div>
+      <div class="card-body">
+        <div class="coord-grid">
+          <input type="number" id="tapX" placeholder="X (mis. 540)" inputmode="numeric">
+          <input type="number" id="tapY" placeholder="Y (mis. 960)" inputmode="numeric">
+        </div>
+        <button class="tap-btn" onclick="sendTap()">✦ Tap Sekarang</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ TAB: MACRO ══ -->
+  <div id="tab-macros" class="section">
+    <div class="card-wrap">
+      <div class="section-hdr">⚡ Macro Aktif</div>
+      <div class="macro-toolbar">
+        <button class="acc" onclick="showAddMacro()">＋ Tambah</button>
+        <button onclick="runAllMacros()">▶▶ Jalankan Semua</button>
+        <button onclick="runAllDevices()">📱 Semua HP</button>
+      </div>
+      <div class="macro-list" id="macroList">
+        <div class="no-macro">Belum ada macro aktif</div>
+      </div>
+    </div>
+
+    <!-- Form tambah coord macro -->
+    <div class="coord-macro-form" id="addMacroForm" style="display:none">
+      <div style="font-size:13px;font-weight:700;color:var(--acc2);margin-bottom:4px">✦ Tambah Coord Macro</div>
+      <label>Nama Macro</label>
+      <input type="text" id="mName" placeholder="Contoh: Tap Login">
+      <label>Aksi</label>
+      <select id="mAction" style="background:var(--card2);border:1.5px solid var(--brd);border-radius:10px;color:var(--fg);font-size:14px;padding:10px 12px;width:100%;outline:none">
+        <option value="tap">Tap</option>
+        <option value="swipe_up">Swipe Atas</option>
+        <option value="swipe_down">Swipe Bawah</option>
+        <option value="key">Keyevent</option>
+        <option value="text">Kirim Teks</option>
+      </select>
+      <div class="row2" id="coordFields">
+        <div><label>X</label><input type="number" id="mX" placeholder="540" inputmode="numeric"></div>
+        <div><label>Y</label><input type="number" id="mY" placeholder="960" inputmode="numeric"></div>
+      </div>
+      <div id="extraField" style="display:none">
+        <label id="extraLabel">Nilai</label>
+        <input type="text" id="mExtra" placeholder="">
+      </div>
+      <label>Repeat (kali)</label>
+      <input type="number" id="mRepeat" placeholder="1" value="1" inputmode="numeric">
+      <button class="save-btn" onclick="saveCoordMacro()">💾 Simpan Macro</button>
+    </div>
+
+    <div id="coordMacroList" class="card-wrap" style="display:none">
+      <div class="section-hdr">📍 Coord Macros Tersimpan</div>
+      <div class="macro-list" id="coordMacroItems"></div>
+    </div>
+  </div>
+
+  <!-- ══ TAB: FARM ══ -->
+  <div id="tab-farm" class="section">
+    <div class="card-wrap">
+      <div class="section-hdr">📱 Phone Farm</div>
+      <div class="farm-grid" id="farmGrid">
+        <div style="grid-column:1/-1;text-align:center;color:var(--mut);font-size:12px;padding:30px 0">
+          Tidak ada perangkat terhubung
+        </div>
+      </div>
+    </div>
+    <div class="card-wrap">
+      <div class="section-hdr">⚡ Aksi Bulk</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+        <button style="background:var(--acc);border:none;border-radius:10px;color:#fff;font-weight:700;padding:12px;cursor:pointer;font-size:13px" onclick="bulkAction('home')">⬤ Semua ke Home</button>
+        <button style="background:var(--card2);border:none;border-radius:10px;color:var(--fg);font-weight:700;padding:12px;cursor:pointer;font-size:13px" onclick="bulkAction('back')">◀ Semua Back</button>
+        <button style="background:var(--card2);border:none;border-radius:10px;color:var(--fg);font-weight:700;padding:12px;cursor:pointer;font-size:13px" onclick="bulkAction('wake')">🔆 Wake All Screen</button>
+        <button style="background:#14532d;border:none;border-radius:10px;color:var(--grn);font-weight:700;padding:12px;cursor:pointer;font-size:13px" onclick="runMacroAllDevices()">⚡ Run Macro di Semua HP</button>
       </div>
     </div>
   </div>
 
-  <!-- Swipe Koordinat Custom -->
-  <div class="card">
-    <div class="card-hdr">Tap Koordinat</div>
-    <div class="card-body">
-      <div class="coord-row">
-        <input type="number" id="tapX" placeholder="X (misal 540)" inputmode="numeric">
-        <input type="number" id="tapY" placeholder="Y (misal 960)" inputmode="numeric">
-      </div>
-      <button class="tap-btn" onclick="sendTap()">&#128393; Tap Sekarang</button>
-    </div>
-  </div>
-
-  <!-- Kirim Teks -->
-  <div class="card">
-    <div class="card-hdr">Kirim Teks ke HP</div>
-    <div class="card-body">
-      <div class="inp-row">
-        <input type="text" id="textInput" placeholder="Ketik teks..." autocomplete="off">
-        <button onclick="sendText()">Kirim</button>
+  <!-- ══ TAB: INPUT ══ -->
+  <div id="tab-input" class="section">
+    <div class="card-wrap">
+      <div class="section-hdr">⌨ Kirim Teks ke HP</div>
+      <div class="card-body">
+        <div class="inp-row">
+          <input type="text" id="textInput" placeholder="Ketik teks..." autocomplete="off">
+          <button onclick="sendText()">Kirim</button>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- Macro List -->
-  <div class="card">
-    <div class="card-hdr">Macro Aktif</div>
-    <div class="card-body" id="macroList">
-      <div class="no-macro">Belum ada macro</div>
+    <div class="card-wrap">
+      <div class="section-hdr">📋 Clipboard</div>
+      <div class="card-body" style="display:flex;flex-direction:column;gap:8px">
+        <textarea id="clipText" placeholder="Tempel teks panjang di sini..." style="background:var(--card2);border:1.5px solid var(--brd);border-radius:10px;color:var(--fg);font-size:13px;padding:10px 12px;outline:none;width:100%;min-height:90px;resize:vertical;font-family:inherit"></textarea>
+        <button style="background:var(--acc);border:none;border-radius:10px;color:#fff;font-weight:700;padding:12px;cursor:pointer;font-size:13px" onclick="sendClipboard()">📋 Kirim ke Clipboard HP</button>
+      </div>
+    </div>
+    <div class="card-wrap">
+      <div class="section-hdr">🔗 Buka URL di HP</div>
+      <div class="card-body">
+        <div class="inp-row">
+          <input type="text" id="urlInput" placeholder="https://..." autocomplete="off">
+          <button onclick="sendUrl()">Buka</button>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="status-bar" id="statusBar">Menghubungkan ke Synthex PC...</div>
-
+  <div id="statusBar">Menghubungkan ke Synthex PC...</div>
 </div>
 
 <div id="toast"></div>
 
 <script>
 const BASE = window.location.origin;
-let _serial = "";
-let _pollTimer = null;
-let _toastTimer = null;
+let _serial  = "";
+let _devices = [];
+let _macros  = [];
+let _coordMacros = JSON.parse(localStorage.getItem("coordMacros") || "[]");
+let _screenAuto  = true;
+let _screenTimer = null;
+let _pollTimer   = null;
+let _farmTimers  = {};
+let _toastTimer  = null;
 
+// ── APK auto-detect ──────────────────────────────────────────────────────────
+(async () => {
+  const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+  if (!isMobile) return;
+  try {
+    const r = await fetch(BASE + "/api/apk_available");
+    const d = await r.json();
+    if (d.available) {
+      document.getElementById("apkBanner").style.display = "flex";
+    }
+  } catch(e) {}
+})();
+
+function downloadApk() {
+  window.location.href = BASE + "/download/synthex.apk";
+  toast("📥 Mengunduh Synthex.apk...");
+}
+
+// ── Tab switching ────────────────────────────────────────────────────────────
+function switchTab(name, btn) {
+  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+  document.querySelectorAll(".tab-nav button").forEach(b => b.classList.remove("active"));
+  document.getElementById("tab-" + name).classList.add("active");
+  btn.classList.add("active");
+  if (name === "farm") refreshFarm();
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
 function toast(msg) {
   const el = document.getElementById("toast");
   el.textContent = msg;
   el.classList.add("show");
   clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => el.classList.remove("show"), 2200);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 2400);
 }
 
-function fmt(sec) {
-  if (sec < 60) return sec + "d";
-  if (sec < 3600) return Math.floor(sec/60) + "m";
-  return Math.floor(sec/3600) + "j " + (Math.floor(sec/60)%60) + "m";
-}
-
+// ── Connection ───────────────────────────────────────────────────────────────
 function setConnected(ok) {
   document.getElementById("connDot").className = "conn-dot" + (ok ? " ok" : "");
-  document.getElementById("connLbl").textContent = ok ? "Terhubung" : "Terputus";
+  document.getElementById("connLbl").textContent = ok ? "Online" : "Offline";
 }
 
 async function poll() {
   try {
     const r = await fetch(BASE + "/api/status", {cache:"no-store"});
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    if (!r.ok) throw new Error();
     const d = await r.json();
     setConnected(true);
-    renderDevices(d.devices || []);
-    renderMacros(d.macros || []);
-    _serial = d.mirror_serial || (d.devices?.[0]?.serial || "");
+    _devices = d.devices || [];
+    _macros  = d.macros  || [];
+    _serial  = _serial || d.mirror_serial || (_devices[0]?.serial || "");
+    renderDevTabs(_devices);
+    renderMacros(_macros);
+    document.getElementById("hdrSub").textContent =
+      _devices.length ? _devices.length + " perangkat · " + new Date().toLocaleTimeString() : "Tidak ada HP";
     document.getElementById("statusBar").textContent =
-      "Tersambung · serial: " + (_serial || "—") + " · " + new Date().toLocaleTimeString();
+      "serial aktif: " + (_serial || "—");
   } catch(e) {
     setConnected(false);
-    document.getElementById("statusBar").textContent = "Tidak dapat terhubung ke Synthex PC";
+    document.getElementById("hdrSub").textContent = "Terputus dari PC";
   }
   _pollTimer = setTimeout(poll, 3000);
 }
 
-function renderDevices(devs) {
-  const el = document.getElementById("devList");
-  if (!devs.length) { el.innerHTML = '<div class="no-dev">Tidak ada HP terhubung</div>'; return; }
+// ── Device tabs ──────────────────────────────────────────────────────────────
+function renderDevTabs(devs) {
+  const el = document.getElementById("devTabs");
+  if (!devs.length) {
+    el.innerHTML = '<div class="no-dev-msg">Belum ada HP terhubung ke PC</div>';
+    return;
+  }
   el.innerHTML = devs.map(d => {
-    const icon = d.serial.includes(":") ? "📶" : "🔌";
-    return `<span class="dev-badge"><span class="icon">${icon}</span>${d.serial} <small style="color:#64748b">${d.state||""}</small></span>`;
-  }).join("");
+    const icon  = d.serial.includes(":") ? "📡" : "📱";
+    const label = d.model || d.serial.split(":")[0] || d.serial;
+    const act   = d.serial === _serial ? " active" : "";
+    return `<div class="dev-tab${act}" onclick="selectDevice('${d.serial}')">
+      <div class="dot${act ? " on" : ""}"></div>
+      ${icon} ${label}
+    </div>`;
+  }).join("") + '<div class="dev-tab-add" title="Tambah perangkat">＋</div>';
 }
 
-function renderMacros(macros) {
-  const el = document.getElementById("macroList");
-  const enabled = macros.filter(m => m.enabled !== false);
-  if (!enabled.length) { el.innerHTML = '<div class="no-macro">Belum ada macro aktif</div>'; return; }
-  el.innerHTML = enabled.map((m, i) =>
-    `<div class="macro-item">
-      <span class="macro-delay">${fmt(m.delay_sec || 180)}</span>
-      <span class="macro-label">${m.label || m.action || "Macro " + (i+1)}</span>
-      <button class="macro-btn" onclick="fireMacro(${i})">&#9654; Jalankan</button>
-    </div>`
-  ).join("");
+function selectDevice(serial) {
+  _serial = serial;
+  renderDevTabs(_devices);
+  captureNow();
+  toast("HP aktif: " + serial);
 }
 
+// ── Screen ───────────────────────────────────────────────────────────────────
+async function captureNow() {
+  if (!_serial) return;
+  try {
+    const url = BASE + "/api/screenshot?serial=" + encodeURIComponent(_serial) + "&t=" + Date.now();
+    const r   = await fetch(url, {cache:"no-store"});
+    if (r.status === 200) {
+      const blob = await r.blob();
+      const burl = URL.createObjectURL(blob);
+      const img  = document.getElementById("screenImg");
+      img.onload = () => URL.revokeObjectURL(burl);
+      img.src = burl;
+      img.style.display = "block";
+      document.getElementById("screenPlaceholder").style.display = "none";
+      document.getElementById("screenOverlay").textContent = new Date().toLocaleTimeString();
+      document.getElementById("screenOverlay").style.display = "block";
+    }
+  } catch(e) {}
+  if (_screenAuto) _screenTimer = setTimeout(captureNow, 2000);
+}
+
+function toggleScreenAuto() {
+  _screenAuto = !_screenAuto;
+  if (_screenAuto) {
+    captureNow();
+    toast("Auto screenshot ON");
+  } else {
+    clearTimeout(_screenTimer);
+    toast("Auto screenshot OFF");
+  }
+}
+
+// Tap-to-ADB: klik gambar → kirim tap ke koordinat HP yang sebenarnya
+document.getElementById("screenImg").addEventListener("click", function(e) {
+  const rect = this.getBoundingClientRect();
+  const sx = (e.clientX - rect.left) / rect.width;
+  const sy = (e.clientY - rect.top)  / rect.height;
+  // Estimasi resolusi 1080x1920 (akan diperbaiki dari status HP)
+  const screenW = 1080, screenH = 1920;
+  const ax = Math.round(sx * screenW);
+  const ay = Math.round(sy * screenH);
+  post("/api/adb", {action:"tap", x:ax, y:ay, serial:_serial})
+    .then(r => toast(r.ok ? `✦ Tap (${ax},${ay})` : "Gagal tap"));
+});
+
+// ── ADB helpers ──────────────────────────────────────────────────────────────
 async function post(path, body) {
   try {
     const r = await fetch(BASE + path, {
@@ -226,52 +511,272 @@ async function post(path, body) {
     });
     return r.ok ? await r.json() : {ok:false};
   } catch(e) {
-    toast("Koneksi gagal: " + e.message);
-    return {ok:false};
+    toast("⚠ Koneksi gagal"); return {ok:false};
   }
 }
 
-async function sendKey(code) {
-  const r = await post("/api/adb", {action:"key", keycode:code, serial:_serial});
-  toast(r.ok ? "Keyevent " + code + " terkirim" : "Gagal");
+async function sendKey(code, serial) {
+  const s = serial || _serial;
+  const r = await post("/api/adb", {action:"key", keycode:code, serial:s});
+  if (!r.ok) toast("Gagal");
 }
 
-async function sendSwipe(dir) {
-  const presets = {
-    up:    {x1:540,y1:1200,x2:540,y2:300,ms:350},
-    down:  {x1:540,y1:300,x2:540,y2:1200,ms:350},
-    left:  {x1:900,y1:960,x2:100,y2:960,ms:300},
-    right: {x1:100,y1:960,x2:900,y2:960,ms:300},
-  };
-  const p = presets[dir];
-  if (!p) return;
-  const r = await post("/api/adb", {...p, action:"swipe", serial:_serial});
-  toast(r.ok ? "Swipe " + dir : "Gagal");
+async function sendSwipe(dir, serial) {
+  const s = serial || _serial;
+  const P = {up:{x1:540,y1:1400,x2:540,y2:300,ms:350},down:{x1:540,y1:300,x2:540,y2:1400,ms:350},
+             left:{x1:900,y1:960,x2:100,y2:960,ms:300},right:{x1:100,y1:960,x2:900,y2:960,ms:300}};
+  const p = P[dir]; if (!p) return;
+  const r = await post("/api/adb", {...p, action:"swipe", serial:s});
+  if (!r.ok) toast("Gagal swipe");
 }
 
 async function sendTap() {
   const x = parseInt(document.getElementById("tapX").value);
   const y = parseInt(document.getElementById("tapY").value);
-  if (isNaN(x) || isNaN(y)) { toast("Isi koordinat X dan Y dulu"); return; }
+  if (isNaN(x)||isNaN(y)){toast("⚠ Isi koordinat X dan Y");return;}
   const r = await post("/api/adb", {action:"tap", x, y, serial:_serial});
-  toast(r.ok ? `Tap (${x},${y}) OK` : "Gagal");
+  toast(r.ok ? `✦ Tap (${x},${y}) OK` : "Gagal");
 }
 
 async function sendText() {
   const txt = document.getElementById("textInput").value.trim();
   if (!txt) return;
   const r = await post("/api/adb", {action:"text", text:txt, serial:_serial});
-  if (r.ok) { toast("Teks terkirim"); document.getElementById("textInput").value = ""; }
+  if (r.ok) {toast("✓ Teks terkirim"); document.getElementById("textInput").value="";}
   else toast("Gagal kirim teks");
+}
+
+async function sendClipboard() {
+  const txt = document.getElementById("clipText").value.trim();
+  if (!txt) return;
+  const r = await post("/api/adb", {action:"text", text:txt, serial:_serial});
+  toast(r.ok ? "✓ Clipboard terkirim" : "Gagal");
+}
+
+async function sendUrl() {
+  let url = document.getElementById("urlInput").value.trim();
+  if (!url) return;
+  if (!url.startsWith("http")) url = "https://" + url;
+  const r = await post("/api/adb", {action:"text", text:url, serial:_serial});
+  toast(r.ok ? "✓ URL dikirim" : "Gagal");
+}
+
+// ── Macro ────────────────────────────────────────────────────────────────────
+function renderMacros(macros) {
+  const el = document.getElementById("macroList");
+  const all = [...macros.filter(m=>m.enabled!==false), ..._coordMacros];
+  renderCoordMacros();
+  if (!macros.filter(m=>m.enabled!==false).length && !_coordMacros.length) {
+    el.innerHTML = '<div class="no-macro">Belum ada macro aktif</div>'; return;
+  }
+  el.innerHTML = macros.filter(m=>m.enabled!==false).map((m,i) => {
+    const icon = m.action?.includes("tap") ? "👆" : m.action?.includes("swipe") ? "↕" : "⚡";
+    return `<div class="macro-item">
+      <div class="macro-icon">${icon}</div>
+      <div class="macro-info">
+        <div class="macro-name">${m.label||m.action||"Macro "+(i+1)}</div>
+        <div class="macro-detail">${m.delay_sec||0}s delay</div>
+      </div>
+      <div class="macro-actions">
+        <button class="macro-run all" onclick="fireMacroAll(${i})">📱</button>
+        <button class="macro-run" onclick="fireMacro(${i})">▶</button>
+      </div>
+    </div>`;
+  }).join("");
 }
 
 async function fireMacro(idx) {
   const r = await post("/api/command", {type:"fire_macro", index:idx});
-  toast(r.ok ? "Macro dijalankan" : "Gagal");
+  toast(r.ok ? "⚡ Macro dijalankan" : "Gagal");
 }
 
-// Start polling
+async function fireMacroAll(idx) {
+  for (const d of _devices) {
+    await post("/api/command", {type:"fire_macro", index:idx, serial:d.serial});
+  }
+  toast("⚡ Macro → semua HP");
+}
+
+async function runAllMacros() {
+  for (let i = 0; i < _macros.filter(m=>m.enabled!==false).length; i++) {
+    await fireMacro(i);
+    await new Promise(r => setTimeout(r, 500));
+  }
+  toast("⚡ Semua macro dijalankan");
+}
+
+async function runAllDevices() {
+  for (const d of _devices) {
+    for (let i = 0; i < _macros.filter(m=>m.enabled!==false).length; i++) {
+      await post("/api/command", {type:"fire_macro", index:i, serial:d.serial});
+    }
+  }
+  toast("⚡ Semua macro → semua HP");
+}
+
+// ── Coord Macros ─────────────────────────────────────────────────────────────
+function showAddMacro() {
+  const f = document.getElementById("addMacroForm");
+  f.style.display = f.style.display === "none" ? "block" : "none";
+}
+
+document.getElementById("mAction").addEventListener("change", function() {
+  const coordFields = document.getElementById("coordFields");
+  const extraField  = document.getElementById("extraField");
+  const extraLabel  = document.getElementById("extraLabel");
+  const mExtra      = document.getElementById("mExtra");
+  if (this.value === "key") {
+    coordFields.style.display = "none";
+    extraField.style.display  = "block";
+    extraLabel.textContent    = "Keycode (mis. 3=Home, 4=Back)";
+    mExtra.placeholder        = "3";
+  } else if (this.value === "text") {
+    coordFields.style.display = "none";
+    extraField.style.display  = "block";
+    extraLabel.textContent    = "Teks yang dikirim";
+    mExtra.placeholder        = "Hello world";
+  } else {
+    coordFields.style.display = "grid";
+    extraField.style.display  = "none";
+  }
+});
+
+function saveCoordMacro() {
+  const name   = document.getElementById("mName").value.trim() || "Macro";
+  const action = document.getElementById("mAction").value;
+  const repeat = parseInt(document.getElementById("mRepeat").value) || 1;
+  let macro = {name, action, repeat, id: Date.now()};
+  if (action === "tap") {
+    macro.x = parseInt(document.getElementById("mX").value) || 540;
+    macro.y = parseInt(document.getElementById("mY").value) || 960;
+  } else if (action === "key") {
+    macro.keycode = parseInt(document.getElementById("mExtra").value) || 3;
+  } else if (action === "text") {
+    macro.text = document.getElementById("mExtra").value;
+  }
+  _coordMacros.push(macro);
+  localStorage.setItem("coordMacros", JSON.stringify(_coordMacros));
+  document.getElementById("addMacroForm").style.display = "none";
+  renderCoordMacros();
+  toast("✓ Macro tersimpan");
+}
+
+function renderCoordMacros() {
+  const el = document.getElementById("coordMacroItems");
+  const wrap = document.getElementById("coordMacroList");
+  if (!_coordMacros.length) { wrap.style.display = "none"; return; }
+  wrap.style.display = "block";
+  el.innerHTML = _coordMacros.map((m, i) => {
+    const icon = m.action==="tap"?"📍":m.action==="key"?"🔑":m.action==="text"?"💬":"↕";
+    const detail = m.action==="tap"?`(${m.x},${m.y})`:m.action==="key"?`key:${m.keycode}`:m.text||"";
+    return `<div class="macro-item">
+      <div class="macro-icon">${icon}</div>
+      <div class="macro-info">
+        <div class="macro-name">${m.name}</div>
+        <div class="macro-detail">${m.action} ${detail} × ${m.repeat}</div>
+      </div>
+      <div class="macro-actions">
+        <button class="macro-run all" onclick="runCoordMacroAll(${i})">📱</button>
+        <button class="macro-run" onclick="runCoordMacro(${i})">▶</button>
+        <button style="background:var(--card2);border:none;border-radius:8px;color:var(--red);font-size:11px;padding:6px 8px;cursor:pointer" onclick="deleteCoordMacro(${i})">✕</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function runCoordMacro(idx, serial) {
+  const m = _coordMacros[idx];
+  const s = serial || _serial;
+  if (!m) return;
+  for (let r = 0; r < (m.repeat||1); r++) {
+    if (m.action === "tap") await post("/api/adb", {action:"tap", x:m.x, y:m.y, serial:s});
+    else if (m.action === "swipe_up") await post("/api/adb", {action:"swipe",x1:540,y1:1400,x2:540,y2:300,ms:350,serial:s});
+    else if (m.action === "swipe_down") await post("/api/adb", {action:"swipe",x1:540,y1:300,x2:540,y2:1400,ms:350,serial:s});
+    else if (m.action === "key") await post("/api/adb", {action:"key", keycode:m.keycode, serial:s});
+    else if (m.action === "text") await post("/api/adb", {action:"text", text:m.text, serial:s});
+    if (r < (m.repeat||1)-1) await new Promise(r => setTimeout(r, 300));
+  }
+  if (!serial) toast("✦ " + m.name + " selesai");
+}
+
+async function runCoordMacroAll(idx) {
+  for (const d of _devices) await runCoordMacro(idx, d.serial);
+  toast("⚡ " + (_coordMacros[idx]?.name||"Macro") + " → semua HP");
+}
+
+function deleteCoordMacro(idx) {
+  _coordMacros.splice(idx, 1);
+  localStorage.setItem("coordMacros", JSON.stringify(_coordMacros));
+  renderCoordMacros();
+  toast("🗑 Macro dihapus");
+}
+
+// ── Phone Farm ───────────────────────────────────────────────────────────────
+async function refreshFarm() {
+  const el = document.getElementById("farmGrid");
+  if (!_devices.length) {
+    el.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--mut);font-size:12px;padding:30px 0">Tidak ada perangkat terhubung</div>';
+    return;
+  }
+  el.innerHTML = _devices.map(d => {
+    const label = d.model || d.serial;
+    const act   = d.serial === _serial ? " active" : "";
+    return `<div class="farm-card${act}" onclick="selectDevice('${d.serial}');switchTab('control',document.querySelector('.tab-nav button'))" id="farm-${d.serial.replace(/[:.]/g,'_')}">
+      <div class="farm-screen">
+        <img id="farmImg_${d.serial.replace(/[:.]/g,'_')}" style="display:none;width:100%;height:100%;object-fit:cover">
+        <div class="placeholder" id="farmPh_${d.serial.replace(/[:.]/g,'_')}">📵</div>
+      </div>
+      <div class="farm-info">
+        <div class="dot${act?' on':''}"></div>
+        <div class="name">${label}</div>
+      </div>
+    </div>`;
+  }).join("");
+  // Load thumbnails
+  for (const d of _devices) {
+    loadFarmThumb(d.serial);
+  }
+}
+
+async function loadFarmThumb(serial) {
+  try {
+    const id  = serial.replace(/[:.]/g,'_');
+    const url = BASE + "/api/screenshot?serial=" + encodeURIComponent(serial) + "&t=" + Date.now();
+    const r   = await fetch(url, {cache:"no-store"});
+    if (r.status === 200) {
+      const blob = await r.blob();
+      const burl = URL.createObjectURL(blob);
+      const img  = document.getElementById("farmImg_" + id);
+      const ph   = document.getElementById("farmPh_"  + id);
+      if (img) { img.src = burl; img.style.display = "block"; }
+      if (ph)  { ph.style.display = "none"; }
+    }
+  } catch(e) {}
+}
+
+// ── Bulk actions ─────────────────────────────────────────────────────────────
+async function bulkAction(type) {
+  const keyCodes = {home:3, back:4, wake:224};
+  const kc = keyCodes[type];
+  if (!kc) return;
+  for (const d of _devices) await sendKey(kc, d.serial);
+  toast("✓ Aksi ke " + _devices.length + " HP");
+}
+
+async function runMacroAllDevices() {
+  if (!_coordMacros.length) { toast("⚠ Belum ada coord macro"); return; }
+  for (const d of _devices) {
+    for (let i = 0; i < _coordMacros.length; i++) {
+      await runCoordMacro(i, d.serial);
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+  toast("⚡ Semua macro → " + _devices.length + " HP");
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
 poll();
+if (_serial) captureNow();
 </script>
 </body>
 </html>

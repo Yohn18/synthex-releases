@@ -1,4 +1,5 @@
 # Secrets & credentials
+.yohn_keys.ps1
 config.json
 auth/token.json
 auth/google_creds/
@@ -10,7 +11,12 @@ credentials.json
 backups/
 
 # Local assets & scripts
-assets/
+assets/icon.ico
+assets/icon.png
+assets/splash.png
+make_icon.py
+make_shortcut.ps1
+backup.ps1
 make_icon.py
 make_shortcut.ps1
 backup.ps1
