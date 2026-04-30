@@ -9770,7 +9770,13 @@ class SynthexApp:
         # Check if already installed
         installed = self._adb.is_companion_installed(serial)
         if installed:
-            return  # already there, nothing to do
+            # Sudah ada — langsung launch dengan IP PC agar auto-connect
+            from modules.synthex_bridge import _get_local_ip
+            pc_ip = _get_local_ip()
+            port  = int(self.config.get("remote.companion_port", 8765))
+            self._adb.launch_companion(serial, host=pc_ip, port=port)
+            _set_msg("✓ Synthex App dibuka di HP — {}:{}".format(pc_ip, port))
+            return
 
         # Not installed — check if APK is available locally
         apk_path = self._adb.get_companion_apk_path()
@@ -9785,12 +9791,16 @@ class SynthexApp:
         _set_msg("HP baru terdeteksi — menginstall Synthex App...")
         ok, msg = self._adb.install_companion(apk_path, serial)
         if ok:
-            _set_msg("Synthex App berhasil diinstall!")
-            _t.sleep(1)
-            self._adb.launch_companion(serial)
-            _set_msg("Synthex App diluncurkan di HP")
+            _set_msg("Synthex App terinstall — meluncurkan...")
+            _t.sleep(1.5)
+            # Kirim IP PC via intent agar HP auto-connect tanpa ketik manual
+            from modules.synthex_bridge import _get_local_ip
+            pc_ip = _get_local_ip()
+            port  = int(self.config.get("remote.companion_port", 8765))
+            self._adb.launch_companion(serial, host=pc_ip, port=port)
+            _set_msg("✓ Synthex App terbuka di HP — terhubung ke {}:{}".format(pc_ip, port))
         else:
-            _set_msg("Install Synthex App gagal: {}".format(msg[:80]))
+            _set_msg("Install gagal: {}".format(msg[:80]))
 
     def _show_companion_download_prompt(self, serial: str, msg_var=None):
         """Show a dialog asking user to download companion APK first."""

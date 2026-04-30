@@ -246,12 +246,14 @@ class AdbManager:
         ok  = rc == 0 and ("success" in msg.lower() or not err)
         return (ok, msg)
 
-    def launch_companion(self, serial: str = "") -> tuple[bool, str]:
-        """Launch Synthex companion app on device."""
+    def launch_companion(self, serial: str = "", host: str = "", port: int = 8765) -> tuple[bool, str]:
+        """Launch Synthex companion app, optionally passing PC IP via intent."""
         s = ["-s", serial] if serial else []
-        rc, out, err = self._run(
-            *s, "shell", "am", "start", "-n",
-            "{}/com.yohn18.synthex.MainActivity".format(self._COMPANION_PKG))
+        cmd = [*s, "shell", "am", "start", "-n",
+               "{}/com.yohn18.synthex.MainActivity".format(self._COMPANION_PKG)]
+        if host:
+            cmd += ["--es", "host", host, "--es", "port", str(port)]
+        rc, out, err = self._run(*cmd)
         return (rc == 0, out or err)
 
     def get_companion_apk_path(self) -> str:
