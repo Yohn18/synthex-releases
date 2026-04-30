@@ -63,7 +63,7 @@ if ($branch) {
 }
 
 # ── Commands hint ─────────────────────────────────────────────────────────────
-Write-Host "  ${GRY}${B}ai${R} ${GRY}<tanya>  ${B}ai${R}${GRY}(chat)  ${B}ai reset${R}${GRY}   ${PRP}synthex   build   gs   glog${R}"
+Write-Host "  ${GRY}Ketik pertanyaan langsung, atau ketik ${WHT}help${GRY} untuk daftar perintah.${R}"
 Write-Host "  ${GRY}$('─' * 48)${R}"
 Write-Host ""
 
@@ -72,14 +72,27 @@ Write-Host ""
 # ══════════════════════════════════════════════════════════════════════════════
 
 $_YOHNAI_SYSTEM = @"
-Kamu adalah YohnAI, AI assistant yang terintegrasi langsung di YohnShell terminal milik Yohn18.
-Kamu bisa membantu: coding, membuat aplikasi, debug, menjalankan perintah, analisis, dan segala hal teknis.
-Selalu jawab dalam Bahasa Indonesia kecuali diminta lain.
-Jika menghasilkan kode PowerShell yang bisa dijalankan, bungkus dalam ```powershell ... ```.
-Jika menghasilkan kode Python, bungkus dalam ```python ... ```.
-Jika menghasilkan kode lain (js, html, dll), bungkus dalam ```namalang ... ```.
-Jawaban singkat, padat, dan langsung ke inti. Gunakan bullet point jika perlu.
-Proyek user ada di: D:\Yohn Project\
+Kamu adalah YohnAI — asisten pribadi Yohn18 yang hidup di dalam terminal YohnShell.
+Sifat kamu: santai, cerdas, to the point. Ngobrol seperti teman developer senior.
+Kamu ngerti bahasa campur (Indonesia + slang + English) dan selalu paham maksud user walau kalimatnya tidak formal.
+
+Kemampuan kamu:
+- Coding semua bahasa, debug, refactor, jelasin kode
+- Buat aplikasi dari nol (Python, web, Android, dll)
+- Bantu setup environment, install tools, konfigurasi sistem
+- Analisis error dan kasih solusi langsung
+- Jalankan perintah PowerShell/Python jika diminta
+- Diskusi teknis atau non-teknis
+
+Aturan jawaban:
+- Bahasa Indonesia santai, kecuali kalau user pakai English
+- Singkat dan langsung — tidak bertele-tele
+- Kalau ada kode PowerShell yang bisa langsung dijalankan, bungkus di ```powershell
+- Kalau ada kode Python, bungkus di ```python
+- Kode lain: ```namalang
+- Kalau pertanyaannya simpel, jawab singkat. Kalau kompleks, jelaskan bertahap.
+
+Konteks: semua project ada di D:\Yohn Project\  — synthex ada di D:\Yohn Project\synthex\
 "@
 
 # History percakapan — tersimpan selama sesi terminal aktif
@@ -128,159 +141,219 @@ function ai {
     _yohnai_send $prompt
 }
 
+# ── API helper ───────────────────────────────────────────────────────────────
+function _api_call {
+    param([string]$uri, [string]$key, [string]$model, $messages, [int]$maxTok = 2048, [float]$temp = 0.7)
+    try {
+        if (-not $key) { return $null }
+        # Pastikan messages selalu array saat di-serialize ke JSON
+        $msgArray = @($messages)
+        $payload = [ordered]@{
+            model       = $model
+            messages    = $msgArray
+            max_tokens  = $maxTok
+            temperature = $temp
+        }
+        $body = $payload | ConvertTo-Json -Depth 15 -Compress
+        $headers = @{ "Authorization" = "Bearer $key" }
+        $r = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers `
+             -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 30
+        return $r.choices[0].message.content
+    } catch {
+        $code = $null
+        try { $code = $_.Exception.Response.StatusCode.value__ } catch {}
+        $script:_lastApiError = "[$model] $(if ($code) {"HTTP $code — "})$($_.Exception.Message)"
+        try {
+            $ed = $_.ErrorDetails.Message | ConvertFrom-Json
+            $script:_lastApiError += " | $($ed.error.message)"
+        } catch {}
+        return $null
+    }
+}
+
+# ── Render reply (code blocks + run prompt) ───────────────────────────────────
+function _render_reply {
+    param([string]$reply)
+    $lines    = $reply -split "`n"
+    $inCode   = $false
+    $codeBuf  = [System.Collections.Generic.List[string]]::new()
+    $codeLang = ""
+    foreach ($line in $lines) {
+        if ($line -match '^```(\w*)') {
+            if (-not $inCode) {
+                $inCode = $true
+                $codeLang = if ($matches[1]) { $matches[1] } else { "code" }
+                $codeBuf.Clear()
+                Write-Host "  ${GRY}┌─ $codeLang ──────────────────────────────${R}"
+            } else {
+                $inCode = $false
+                Write-Host "  ${GRY}└─────────────────────────────────────────${R}"
+                Write-Host ""
+                $captured = $codeBuf.ToArray()
+                if ($codeLang -in @("powershell","ps1","pwsh")) {
+                    Write-Host "  ${YEL}Jalankan? [y/N]${R} " -NoNewline
+                    $c = Read-Host
+                    if ($c -eq "y" -or $c -eq "Y") { Write-Host ""; $captured | ForEach-Object { Invoke-Expression $_ }; Write-Host "" }
+                } elseif ($codeLang -in @("python","py")) {
+                    Write-Host "  ${YEL}Jalankan Python? [y/N]${R} " -NoNewline
+                    $c = Read-Host
+                    if ($c -eq "y" -or $c -eq "Y") {
+                        $tmp = [System.IO.Path]::GetTempFileName() -replace '\.tmp$','.py'
+                        $captured | Set-Content $tmp -Encoding UTF8
+                        python $tmp; Remove-Item $tmp -ErrorAction SilentlyContinue; Write-Host ""
+                    }
+                }
+            }
+        } elseif ($inCode) {
+            $codeBuf.Add($line); Write-Host "  ${GRN}  $line${R}"
+        } else {
+            if ($line.Trim()) { Write-Host "  ${WHT}$line${R}" } else { Write-Host "" }
+        }
+    }
+}
+
 function _yohnai_send {
     param([string]$prompt)
 
     $_YOHNAI_HISTORY.Add(@{ role = "user"; content = $prompt })
 
-    $messages = @(@{ role = "system"; content = $_YOHNAI_SYSTEM })
-    foreach ($m in $_YOHNAI_HISTORY) { $messages += $m }
+    $OR  = "https://openrouter.ai/api/v1/chat/completions"
+    $GQ  = "https://api.groq.com/openai/v1/chat/completions"
+    $ORK = $env:OPENROUTER_API_KEY
+    $GQK = $env:GROQ_API_KEY
 
-    # ── Model priority chain ─────────────────────────────────────────────────
-    # Groq (cepat, gratis) → OpenRouter (fallback)
-    $script:_modelChain = @(
-        @{ provider="groq";        model="llama-3.3-70b-versatile";              label="llama3.3-70b"    },
-        @{ provider="groq";        model="llama-3.1-70b-versatile";              label="llama3.1-70b"    },
-        @{ provider="groq";        model="deepseek-r1-distill-llama-70b";        label="deepseek-r1-70b" },
-        @{ provider="groq";        model="llama-3.1-8b-instant";                 label="llama3.1-8b"     },
-        @{ provider="openrouter";  model="meta-llama/llama-3.3-70b-instruct:free"; label="or:llama3.3"  },
-        @{ provider="openrouter";  model="google/gemini-flash-1.5";              label="or:gemini-flash" },
-        @{ provider="openrouter";  model="openai/gpt-4o-mini";                   label="or:gpt4o-mini"   }
-    )
+    # ── Definisi spesialis ────────────────────────────────────────────────────
+    # Tiap spesialis punya keahlian + model terbaik untuknya
+    $specDef = @{
+        # Gratis via Groq
+        "chat"     = @{ url=$GQ;  key=$GQK; model="llama-3.3-70b-versatile";           label="Llama 3.3";   icon="💬"; color=$WHT  }
+        "code"     = @{ url=$GQ;  key=$GQK; model="deepseek-r1-distill-llama-70b";     label="DeepSeek R1"; icon="💻"; color=$GRN  }
+        "reason"   = @{ url=$GQ;  key=$GQK; model="deepseek-r1-distill-llama-70b";     label="DeepSeek R1"; icon="🧠"; color=$YEL  }
+        # OpenRouter (bayar, kualitas tinggi)
+        "codepro"  = @{ url=$OR;  key=$ORK; model="qwen/qwen-2.5-72b-instruct";        label="Qwen 2.5";    icon="⚡"; color=$CYN  }
+        "docs"     = @{ url=$OR;  key=$ORK; model="google/gemini-2.0-flash-001";        label="Gemini 2.0";  icon="✨"; color=$GRN  }
+        "creative" = @{ url=$OR;  key=$ORK; model="openai/gpt-4o-mini";                label="GPT-4o";      icon="💡"; color=$WHT  }
+        # Claude — hanya untuk nuansa & sintesis
+        "claude"   = @{ url=$OR;  key=$ORK; model="anthropic/claude-haiku-4-5";        label="Claude";      icon="👑"; color=$PRP  }
+    }
 
+    # ══ STEP 1 — Router (Llama 8b, gratis, cepat) ════════════════════════════
     Write-Host ""
-    Write-Host "  ${CYN}${B}YohnAI${R} ${GRY}▸ thinking...${R}" -NoNewline
+    Write-Host "  ${CYN}${B}YohnAI${R} ${GRY}▸ routing...${R}" -NoNewline
 
-    $res   = $null
-    $reply = $null
-    $usedLabel = ""
+    $routeContent = "Tugas user: $prompt`n`nPilih SATU worker + opsional 1 assistant:`n- chat: ngobrol/simpel`n- code: coding/debug`n- reason: logika/matematika`n- codepro: coding besar`n- docs: dokumen panjang`n- creative: kreatif/ide`n- claude: bahasa ambigu/nuansa`n`nHemat: pakai chat/code/reason dulu (gratis). claude hanya jika perlu.`n`nJawab JSON: {`"worker`":`"nama`",`"assistant`":null,`"reason`":`"singkat`"}"
+    $routeQ = [System.Collections.Generic.List[object]]::new()
+    $routeQ.Add(@{ role="system"; content="Kamu AI router. Jawab JSON saja tanpa teks lain." })
+    $routeQ.Add(@{ role="user"; content=$routeContent })
 
-    foreach ($m in $script:_modelChain) {
-        try {
-            if ($m.provider -eq "groq") {
-                $headers = @{ "Authorization" = "Bearer $env:GROQ_API_KEY"; "Content-Type" = "application/json" }
-                $uri     = "https://api.groq.com/openai/v1/chat/completions"
-            } else {
-                $headers = @{ "Authorization" = "Bearer $env:OPENROUTER_API_KEY"; "Content-Type" = "application/json" }
-                $uri     = "https://openrouter.ai/api/v1/chat/completions"
-            }
-            $body = @{
-                model       = $m.model
-                messages    = $messages
-                max_tokens  = 2048
-                temperature = 0.7
-            } | ConvertTo-Json -Depth 10
+    $routeRaw = _api_call $GQ $GQK "llama-3.1-8b-instant" $routeQ 80 0.1
+    if (-not $routeRaw) { $routeRaw = _api_call $OR $ORK "anthropic/claude-haiku-4-5" $routeQ 80 0.1 }
 
-            $res       = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers -Body $body
-            $reply     = $res.choices[0].message.content
-            $usedLabel = $m.label
-            break
-        } catch {
-            $code = $_.Exception.Response.StatusCode.value__
-            # 429 = rate limit, 503 = overloaded → coba model berikutnya
-            if ($code -in @(429, 503, 500) -or $_.Exception.Message -match "decommission|overload|rate.limit") {
-                continue
-            }
-            # Error lain (auth, network) → stop
-            throw
+    $route = $null
+    if ($routeRaw) {
+        $jsonStr = if ($routeRaw -match '\{[^{}]+\}') { $matches[0] } else { $routeRaw }
+        try { $route = $jsonStr | ConvertFrom-Json } catch {}
+    }
+
+    $workerKey    = if ($route -and $route.worker    -and $specDef.ContainsKey($route.worker))    { $route.worker }    else { "chat" }
+    $assistantKey = if ($route -and $route.assistant -and $specDef.ContainsKey($route.assistant)) { $route.assistant } else { $null }
+
+    # ══ STEP 2 — Worker utama menjawab ═══════════════════════════════════════
+    $wd = $specDef[$workerKey]
+    Write-Host "`r  $($wd.icon) ${GRY}$($wd.label) mengerjakan...${R}                    " -NoNewline
+
+    $sysMsgs = [System.Collections.Generic.List[object]]::new()
+    $sysMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
+    foreach ($m in $_YOHNAI_HISTORY) { $sysMsgs.Add(@{ role=$m.role; content=$m.content }) }
+
+    $workerReply = _api_call $wd.url $wd.key $wd.model $sysMsgs 2048
+    if (-not $workerReply) { $workerReply = _api_call $GQ $GQK "llama-3.3-70b-versatile" $sysMsgs 2048 }
+
+    # ══ STEP 3 — Assistant review (opsional, hanya jika diperlukan) ══════════
+    $assistantNote = $null
+    if ($assistantKey -and $workerReply) {
+        $ad = $specDef[$assistantKey]
+        Write-Host "`r  $($ad.icon) ${GRY}$($ad.label) review...${R}                         " -NoNewline
+        $reviewMsgs = @(
+            @{ role="system"; content="Kamu reviewer AI. Baca jawaban berikut dan tambahkan HANYA jika ada yang kurang/salah. Jika sudah baik, jawab 'OK' saja. Singkat." },
+            @{ role="user";   content="Pertanyaan: $prompt`n`nJawaban: $workerReply" }
+        )
+        $rev = _api_call $ad.url $ad.key $ad.model $reviewMsgs 400
+        if ($rev -and $rev.Trim() -ne "OK" -and $rev.Length -gt 5) { $assistantNote = $rev }
+    }
+
+    # ══ STEP 4 — Gabungkan jika ada catatan assistant ═════════════════════════
+    $reply     = $workerReply
+    $usedLabel = $wd.label
+
+    if ($assistantNote) {
+        # Jika ada tambahan dari assistant, gabungkan lewat Claude atau worker sendiri
+        $mergeMsgs = @(
+            @{ role="system"; content="Gabungkan dua perspektif berikut jadi satu jawaban terbaik. Bahasa Indonesia santai. Langsung ke inti." },
+            @{ role="user";   content="Jawaban utama:`n$workerReply`n`nTambahan review:`n$assistantNote`n`nPertanyaan asal: $prompt" }
+        )
+        # Gunakan Claude untuk merge hanya jika ada dua perspektif
+        $merged = _api_call $OR $ORK "anthropic/claude-haiku-4-5" $mergeMsgs 2048
+        if (-not $merged) { $merged = _api_call $GQ $GQK "llama-3.3-70b-versatile" $mergeMsgs 2048 }
+        if ($merged) { $reply = $merged; $usedLabel = "$($wd.label) + $($specDef[$assistantKey].label)" }
+    }
+
+    # Fallback total
+    if (-not $reply) {
+        foreach ($fm in @("meta-llama/llama-3.3-70b-instruct:free","google/gemini-2.0-flash-exp:free","deepseek/deepseek-chat:free")) {
+            $r = _api_call $OR $ORK $fm $sysMsgs 2048
+            if ($r) { $reply = $r; $usedLabel = ($fm -split "/")[-1]; break }
         }
     }
 
     if (-not $reply) {
-        Write-Host "`r  ${RED}YohnAI: Semua model tidak tersedia saat ini. Coba lagi nanti.${R}"
+        Write-Host "`r  ${RED}YohnAI: Semua model tidak tersedia.${R}"
+        if ($script:_lastApiError) { Write-Host "  ${RED}Error terakhir: $($script:_lastApiError)${R}" }
+        Write-Host "  ${GRY}Cek: api (test)${R}"
         $_YOHNAI_HISTORY.RemoveAt($_YOHNAI_HISTORY.Count - 1)
         Write-Host ""; return
     }
 
-    try {
-        # Simpan reply ke history
-        $_YOHNAI_HISTORY.Add(@{ role = "assistant"; content = $reply })
-        # Batasi history max 20 pasang pesan
-        while ($_YOHNAI_HISTORY.Count -gt 40) { $_YOHNAI_HISTORY.RemoveAt(0) }
+    $_YOHNAI_HISTORY.Add(@{ role = "assistant"; content = $reply })
+    while ($_YOHNAI_HISTORY.Count -gt 40) { $_YOHNAI_HISTORY.RemoveAt(0) }
 
-        Write-Host "`r  ${CYN}${B}YohnAI${R} ${GRY}▸ [$usedLabel]${R}              "
-        Write-Host ""
+    # ══ DISPLAY ════════════════════════════════════════════════════════════════
+    $workerColor = $wd.color
+    Write-Host "`r  $($wd.icon) $workerColor$($wd.label)${R} ${GRY}[$usedLabel]${R}                              "
+    Write-Host ""
 
-        $lines   = $reply -split "`n"
-        $inCode  = $false
-        $codeBuf = [System.Collections.Generic.List[string]]::new()
-        $codeLang = ""
-
-        foreach ($line in $lines) {
-            if ($line -match '^```(\w*)') {
-                if (-not $inCode) {
-                    $inCode   = $true
-                    $codeLang = if ($matches[1]) { $matches[1] } else { "code" }
-                    $codeBuf.Clear()
-                    Write-Host "  ${GRY}┌─ $codeLang ─────────────────────────────${R}"
-                } else {
-                    $inCode = $false
-                    Write-Host "  ${GRY}└────────────────────────────────────────${R}"
-                    Write-Host ""
-                    $captured = $codeBuf.ToArray()
-                    if ($codeLang -in @("powershell","ps1","pwsh")) {
-                        Write-Host "  ${YEL}Jalankan? ${WHT}[y/N]${R} " -NoNewline
-                        $c = Read-Host
-                        if ($c -eq "y" -or $c -eq "Y") {
-                            Write-Host ""
-                            $captured | ForEach-Object { Invoke-Expression $_ }
-                            Write-Host ""
-                        }
-                    } elseif ($codeLang -in @("python","py")) {
-                        Write-Host "  ${YEL}Jalankan Python? ${WHT}[y/N]${R} " -NoNewline
-                        $c = Read-Host
-                        if ($c -eq "y" -or $c -eq "Y") {
-                            $tmp = [System.IO.Path]::GetTempFileName() -replace '\.tmp$','.py'
-                            $captured | Set-Content $tmp -Encoding UTF8
-                            python $tmp
-                            Remove-Item $tmp -ErrorAction SilentlyContinue
-                            Write-Host ""
-                        }
-                    }
-                }
-            } elseif ($inCode) {
-                $codeBuf.Add($line)
-                Write-Host "  ${GRN}  $line${R}"
-            } else {
-                if ($line.Trim() -ne "") {
-                    Write-Host "  ${WHT}$line${R}"
-                } else {
-                    Write-Host ""
-                }
-            }
-        }
-        Write-Host ""
-    } catch {
-        Write-Host "`r  ${RED}YohnAI error: $($_.Exception.Message)${R}"
-        if ($_.ErrorDetails.Message) {
-            try {
-                $err = $_.ErrorDetails.Message | ConvertFrom-Json
-                Write-Host "  ${RED}$($err.error.message)${R}"
-            } catch { Write-Host "  ${RED}$($_.ErrorDetails.Message)${R}" }
-        }
-        Write-Host ""
-    }
+    _render_reply $reply
+    Write-Host ""
 }
 
 # ── AI Welcome (cepat, non-blocking via background job) ───────────────────────
 $_welcomeJob = Start-Job -ScriptBlock {
-    param($key, $hour)
-    $headers = @{ "Authorization" = "Bearer $key"; "Content-Type" = "application/json" }
-    $tod     = if ($hour -lt 12) { "pagi" } elseif ($hour -lt 17) { "siang" } else { "malam" }
-    $body = @{
-        model    = "llama-3.1-8b-instant"
-        messages = @(
-            @{ role = "system"; content = "Kamu YohnAI di YohnShell. Sambut Yohn dengan 1 kalimat singkat, segar, dan motivatif. Sebut siap bantu coding dan buat aplikasi. Bahasa Indonesia. Tanpa tanda bintang atau markdown." },
-            @{ role = "user";   content = "Sambut sesi $tod ini." }
-        )
-        max_tokens = 60; temperature = 0.95
-    } | ConvertTo-Json -Depth 5
-    try {
-        $r = Invoke-RestMethod -Uri "https://api.groq.com/openai/v1/chat/completions" `
-                 -Method POST -Headers $headers -Body $body
-        $r.choices[0].message.content.Trim()
-    } catch { "" }
-} -ArgumentList $env:GROQ_API_KEY, $hour
+    param($orKey, $groqKey, $hour)
+    $tod = if ($hour -lt 12) { "pagi" } elseif ($hour -lt 17) { "siang" } else { "malam" }
+    $sys = "Kamu YohnAI di YohnShell terminal. Sambut Yohn dengan 1 kalimat singkat, santai, dan natural — seperti teman. Bahasa Indonesia gaul. Tanpa tanda bintang atau markdown."
+    $models = @(
+        @{ uri="https://openrouter.ai/api/v1/chat/completions"; key=$orKey;   model="anthropic/claude-haiku-4-5"  },
+        @{ uri="https://openrouter.ai/api/v1/chat/completions"; key=$orKey;   model="anthropic/claude-3.5-haiku"  },
+        @{ uri="https://api.groq.com/openai/v1/chat/completions"; key=$groqKey; model="llama-3.1-8b-instant"     }
+    )
+    foreach ($m in $models) {
+        try {
+            $headers = @{ "Authorization" = "Bearer $($m.key)"; "Content-Type" = "application/json" }
+            $body = @{
+                model    = $m.model
+                messages = @(
+                    @{ role = "system"; content = $sys },
+                    @{ role = "user";   content = "Sambut sesi $tod ini, singkat aja." }
+                )
+                max_tokens = 60; temperature = 0.9
+            } | ConvertTo-Json -Depth 5
+            $r = Invoke-RestMethod -Uri $m.uri -Method POST -Headers $headers -Body $body
+            $msg = $r.choices[0].message.content.Trim()
+            if ($msg) { return $msg }
+        } catch { continue }
+    }
+    return ""
+} -ArgumentList $env:OPENROUTER_API_KEY, $env:GROQ_API_KEY, $hour
 
 # Tunggu max 4 detik lalu tampilkan
 $null = Wait-Job $_welcomeJob -Timeout 4
@@ -292,24 +365,190 @@ if ($_welcomeMsg) {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  ALIASES & FUNCTIONS
+#  COMMANDS
 # ══════════════════════════════════════════════════════════════════════════════
 
-function synthex { python "$synthexPath\main.py" }
+function help {
+    Write-Host ""
+    Write-Host "  ${CYN}${B}YohnShell — Daftar Perintah${R}"
+    Write-Host "  ${GRY}$('─' * 48)${R}"
+    Write-Host ""
+    Write-Host "  ${PRP}${B}AI${R}"
+    Write-Host "  ${WHT}ai <pertanyaan>${R}     ${GRY}tanya YohnAI langsung${R}"
+    Write-Host "  ${WHT}ai${R}                  ${GRY}masuk mode chat interaktif${R}"
+    Write-Host "  ${WHT}ai reset${R}             ${GRY}hapus history percakapan${R}"
+    Write-Host "  ${GRY}  atau ketik kalimat bebas → otomatis ke YohnAI${R}"
+    Write-Host ""
+    Write-Host "  ${PRP}${B}Synthex${R}"
+    Write-Host "  ${WHT}buka${R}                 ${GRY}jalankan Synthex app${R}"
+    Write-Host "  ${WHT}build${R}                ${GRY}build Synthex jadi .exe${R}"
+    Write-Host "  ${WHT}edit${R}                 ${GRY}buka folder project di Explorer${R}"
+    Write-Host ""
+    Write-Host "  ${PRP}${B}Git${R}"
+    Write-Host "  ${WHT}status${R}               ${GRY}git status${R}"
+    Write-Host "  ${WHT}log${R}                  ${GRY}git log ringkas${R}"
+    Write-Host "  ${WHT}push${R}                 ${GRY}git push${R}"
+    Write-Host "  ${WHT}pull${R}                 ${GRY}git pull${R}"
+    Write-Host "  ${WHT}add${R}                  ${GRY}git add semua perubahan${R}"
+    Write-Host "  ${WHT}commit <pesan>${R}        ${GRY}git commit -m${R}"
+    Write-Host "  ${WHT}simpan <pesan>${R}        ${GRY}add + commit + push sekaligus${R}"
+    Write-Host ""
+    Write-Host "  ${PRP}${B}Lainnya${R}"
+    Write-Host "  ${WHT}goto <folder>${R}         ${GRY}pindah ke folder di Yohn Project${R}"
+    Write-Host "  ${WHT}models${R}               ${GRY}lihat daftar model AI yang tersedia${R}"
+    Write-Host "  ${WHT}reload${R}               ${GRY}reload YohnShell${R}"
+    Write-Host "  ${WHT}clear${R}                ${GRY}bersihkan layar${R}"
+    Write-Host ""
+}
+
+# ── Synthex ───────────────────────────────────────────────────────────────────
+function buka   { python "$synthexPath\main.py" }
+function synthex { buka }   # alias lama tetap jalan
+
 function build {
-    Write-Host "${YEL}Building Synthex...${R}"
+    Write-Host ""
+    Write-Host "  ${YEL}Building Synthex...${R}"
     Set-Location $synthexPath
     pyinstaller Synthex.spec
+    Set-Location $projectsPath
+    Write-Host "  ${GRN}Build selesai!${R}"
+    Write-Host ""
 }
-function gs    { git status }
-function glog  { git log --oneline --graph --decorate -20 }
-function gpush { git push }
-function gadd  { git add -A }
-function gcom  { param([string]$msg) git commit -m $msg }
+
+function edit {
+    explorer $synthexPath
+}
+
+# ── Git ───────────────────────────────────────────────────────────────────────
+function status { git -C (Get-Location).Path status }
+function log    {
+    param([int]$n = 20)
+    git log --oneline --graph --decorate -$n
+}
+function push   { git push }
+function pull   { git pull }
+function add    { git add -A; Write-Host "  ${GRN}Semua perubahan di-stage.${R}" }
+
+function commit {
+    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$words)
+    $msg = $words -join " "
+    if (-not $msg) { Write-Host "  ${RED}Tulis pesan commit: commit <pesan>${R}"; return }
+    git commit -m $msg
+}
+
+function simpan {
+    param([Parameter(ValueFromRemainingArguments=$true)][string[]]$words)
+    $msg = $words -join " "
+    if (-not $msg) { Write-Host "  ${RED}Tulis pesan: simpan <pesan>${R}"; return }
+    Write-Host "  ${YEL}Menyimpan...${R}"
+    git add -A
+    git commit -m $msg
+    git push
+    Write-Host "  ${GRN}Tersimpan dan ter-push!${R}"
+    Write-Host ""
+}
+
+# ── Navigation ────────────────────────────────────────────────────────────────
+function goto {
+    param([string]$folder)
+    if (-not $folder) { Set-Location $projectsPath; return }
+    $target = Join-Path $projectsPath $folder
+    if (Test-Path $target) { Set-Location $target }
+    else { Write-Host "  ${RED}Folder tidak ditemukan: $target${R}" }
+}
+
+function reload {
+    . "$PSScriptRoot\Yohn.ps1"
+}
+
+# ── Models list ──────────────────────────────────────────────────────────────
+function models {
+    Write-Host ""
+    Write-Host "  ${CYN}${B}YohnAI — Tim Spesialis${R}"
+    Write-Host "  ${GRY}$('─' * 54)${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}ROUTER (gratis, ~0.2s)${R}"
+    Write-Host "  ${WHT}💬 Llama 3.1 8b${R}   ${GRY}Groq · klasifikasi tugas${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}WORKERS GRATIS (via Groq)${R}"
+    Write-Host "  ${WHT}💬 Llama 3.3 70b${R}  ${GRY}Ngobrol, Q&A umum, simpel${R}"
+    Write-Host "  ${WHT}💻 DeepSeek R1${R}    ${GRY}Coding, debug, reasoning, logika${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}WORKERS BERBAYAR (via OpenRouter, murah)${R}"
+    Write-Host "  ${WHT}⚡ Qwen 2.5 72b${R}   ${GRY}Coding skala besar, arsitektur app${R}"
+    Write-Host "  ${WHT}✨ Gemini 2.0${R}     ${GRY}Dokumen panjang, analisis teks${R}"
+    Write-Host "  ${WHT}💡 GPT-4o mini${R}    ${GRY}Brainstorm kreatif, nulis konten${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}SPESIALIS KHUSUS (Claude, hanya jika perlu)${R}"
+    Write-Host "  ${WHT}${PRP}👑 Claude Haiku${R}   ${GRY}Bahasa ambigu, sintesis, nuansa${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}FALLBACK (jika semua error)${R}"
+    Write-Host "  ${WHT}Llama 3.3 free · Gemini 2.0 free · DeepSeek free${R}"
+    Write-Host ""
+    Write-Host "  ${GRY}Router otomatis pilih worker terbaik per tugas.${R}"
+    Write-Host "  ${GRY}Claude hanya dipanggil ~20% kasus.${R}"
+    Write-Host ""
+}
+
+# ── Backward compat aliases ───────────────────────────────────────────────────
+function gs    { status }
+function glog  { log }
+function gpush { push }
+function gadd  { add }
+function gcom  { param([string]$msg) commit $msg }
+
+function api {
+    param([string]$cmd)
+    if ($cmd -eq "test" -or -not $cmd) {
+        Write-Host ""
+        Write-Host "  ${CYN}${B}Test Koneksi API${R}"
+        Write-Host "  ${GRY}$('─' * 40)${R}"
+        $OR  = "https://openrouter.ai/api/v1/chat/completions"
+        $GQ  = "https://api.groq.com/openai/v1/chat/completions"
+        $ORK = $env:OPENROUTER_API_KEY
+        $GQK = $env:GROQ_API_KEY
+        $testMsg = @(@{ role="user"; content="hi" })
+
+        Write-Host "  ${GRY}OpenRouter key:${R} $(if ($ORK) { "${GRN}ada${R}" } else { "${RED}TIDAK ADA${R}" })"
+        Write-Host "  ${GRY}Groq key:${R}       $(if ($GQK) { "${GRN}ada${R}" } else { "${RED}TIDAK ADA${R}" })"
+        Write-Host ""
+
+        Write-Host "  ${GRY}Groq (llama-3.1-8b)...${R} " -NoNewline
+        $r1 = _api_call $GQ $GQK "llama-3.1-8b-instant" $testMsg 5
+        if ($r1) { Write-Host "${GRN}OK${R}" } else { Write-Host "${RED}GAGAL${R}  $($script:_lastApiError)" }
+
+        Write-Host "  ${GRY}Groq (llama-3.3-70b)...${R} " -NoNewline
+        $r2 = _api_call $GQ $GQK "llama-3.3-70b-versatile" $testMsg 5
+        if ($r2) { Write-Host "${GRN}OK${R}" } else { Write-Host "${RED}GAGAL${R}  $($script:_lastApiError)" }
+
+        Write-Host "  ${GRY}OpenRouter (claude-haiku-4-5)...${R} " -NoNewline
+        $r3 = _api_call $OR $ORK "anthropic/claude-haiku-4-5" $testMsg 5
+        if ($r3) { Write-Host "${GRN}OK${R}" } else { Write-Host "${RED}GAGAL${R}  $($script:_lastApiError)" }
+
+        Write-Host "  ${GRY}OpenRouter (qwen-2.5-72b)...${R} " -NoNewline
+        $r4 = _api_call $OR $ORK "qwen/qwen-2.5-72b-instruct" $testMsg 5
+        if ($r4) { Write-Host "${GRN}OK${R}" } else { Write-Host "${RED}GAGAL${R}  $($script:_lastApiError)" }
+
+        Write-Host ""
+    }
+}
 
 function prompt {
     $loc = (Get-Location).Path -replace [regex]::Escape($projectsPath), "~yohn"
     $gb  = git branch --show-current 2>$null
     $branchPart = if ($gb) { " ${PRP}($gb)${R}" } else { "" }
     "${CYN}${B}yohn${R}${GRY}:${R}${WHT}$loc${R}$branchPart ${YEL}❯${R} "
+}
+
+# ── Natural language fallback → YohnAI ───────────────────────────────────────
+# Kalau command tidak dikenal, rekonstruksi kalimat penuh dan kirim ke YohnAI
+$ExecutionContext.InvokeCommand.CommandNotFoundAction = {
+    param($cmdName, $eventArgs)
+    $captured = $cmdName
+    $eventArgs.CommandScriptBlock = {
+        param([Parameter(ValueFromRemainingArguments=$true)][string[]]$rest)
+        $full = (@($captured) + @($rest) | Where-Object { $_ }) -join " "
+        _yohnai_send $full
+    }.GetNewClosure()
+    $eventArgs.StopSearch = $true
 }
