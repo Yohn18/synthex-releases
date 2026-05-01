@@ -2,7 +2,7 @@
   "latest_version": "1.3.70",
   "min_version": "1.3.67",
   "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.70/Synthex.exe",
-  "changelog": "1.3.68: Recorder lebih besar + label tombol + hint shortcut, Web Browser fitur lengkap (search, tambah/hapus situs, quick-launch), Remote page nama model HP + WiFi quick-connect",
+  "changelog": "1.3.70: Fix bug web browser — race condition restart, JS inject ke halaman aktif, validasi URL di open URL, STEP_TYPES lengkap, replay cek file dulu, hapus sleep di recording start",
   "maintenance": false,
   "maintenance_msg": ""
 }
