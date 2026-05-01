@@ -36,6 +36,7 @@ class BrowserActions:
         self._browser_mode: str = ""   # "profile" | "fresh" | "cdp"
         self._spy_active: bool = False
         self._use_cdp: bool = False     # connect to existing Chrome via CDP
+        self._ready: bool = False       # True once browser worker has a live page
 
     # -- Browser launcher helper --
     def _launch_browser(self, p, headless: bool = True, slow_mo: int = 50):
@@ -213,8 +214,10 @@ class BrowserActions:
         if self._started and self._thread and self._thread.is_alive():
             fut: concurrent.futures.Future = concurrent.futures.Future()
             self._cmd_queue.put((None, (), {}, fut))
+            self._thread.join(timeout=8)
         with self._lock:
             self._started = False
+            self._ready = False
             self._thread = None
         self.logger.info("Browser worker stopped  -  will restart on next action.")
 
@@ -372,6 +375,9 @@ class BrowserActions:
             page.set_default_timeout(
                 self.config.get("browser.timeout", 30000))
 
+            self._ready = True
+            self.logger.info("Browser worker ready.")
+
             while True:
                 cmd, args, kwargs, fut = self._cmd_queue.get()
                 if cmd is None:
@@ -381,6 +387,7 @@ class BrowserActions:
                 except Exception as exc:
                     fut.set_exception(exc)
 
+            self._ready = False
             try:
                 if self._browser_mode == "cdp" and browser:
                     browser.disconnect()
@@ -402,7 +409,13 @@ class BrowserActions:
     def _dispatch(self, fn, *args, timeout: float = 60, **kwargs):
         """Send a callable to the Playwright thread and block until done."""
         self._ensure_started()
-        # Give the worker thread a moment to set _chrome_conflict if it failed instantly
+        # Wait briefly for worker to become ready (Playwright init can take ~1-2s)
+        if not self._ready:
+            deadline = time.time() + 10
+            while not self._ready and time.time() < deadline:
+                if self._thread and not self._thread.is_alive():
+                    break
+                time.sleep(0.1)
         if self._thread and not self._thread.is_alive():
             raise RuntimeError(
                 "Chrome is not connected. Click 'Connect Browser' to start.")
@@ -622,8 +635,7 @@ class BrowserActions:
         btype = self.config.get("browser.type", "chrome").lower()
         if use_profile and btype == "chrome" and self._started:
             self.logger.info("Stopping main browser worker so recording can use Chrome profile.")
-            self.restart_browser()
-            time.sleep(1.0)
+            self.restart_browser()  # join(8) sudah di dalam restart_browser
 
         self._recording_events = []
         self._recording_active = True
@@ -684,7 +696,12 @@ class BrowserActions:
                 self.logger.info("Recording with fresh browser (no profile).")
 
             page = context.new_page() if not context.pages else context.pages[0]
+            # add_init_script aktif untuk halaman baru; evaluate langsung untuk halaman existing
             page.add_init_script(self._JS_CAPTURE)
+            try:
+                page.evaluate(self._JS_CAPTURE)
+            except Exception:
+                pass
 
             last_url = ""
             start_url = self.config.get("browser.target_url", "https://example.com")
@@ -748,6 +765,10 @@ class BrowserActions:
             self.config.get("macro.save_path", _DEFAULT_MACROS_DIR),
             "browser_sequence.json",
         )
+        if not os.path.exists(save_path):
+            raise FileNotFoundError(
+                "Belum ada recording yang tersimpan. "
+                "Lakukan Record terlebih dahulu.")
         with open(save_path, encoding="utf-8") as f:
             events = json.load(f)
 

@@ -312,7 +312,11 @@ def _apply_styles(root):
 
 # -- Step type maps --
 
-STEP_TYPES = ["Open URL", "Click", "Type", "Wait", "Extract", "Screenshot"]
+STEP_TYPES = [
+    "Open URL", "Click Element", "Click XY", "Type Text", "Wait",
+    "Extract Text", "Take Screenshot", "Press Key",
+    "Save Data", "Use Saved Data", "Scroll", "Save to Sheets",
+]
 
 _STEP_TO_ENGINE = {
     "Open URL":   "Open URL",
@@ -13254,10 +13258,27 @@ class SynthexApp:
 
     def _open_url(self):
         url = self._url.get().strip()
-        if url and self.engine:
-            threading.Thread(
-                target=self.engine.open_url, args=(url,),
-                daemon=True).start()
+        if not url:
+            return
+        if not self.engine:
+            self._show_alert("Browser", "Engine belum siap.", "warning")
+            return
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+            self._url.set(url)
+        self._sv.set("Membuka {}…".format(url))
+
+        def _worker():
+            try:
+                title = self.engine.open_url(url)
+                msg = "Dibuka: {}".format(title or url)
+                self._root.after(0, lambda: self._sv.set(msg))
+            except Exception as e:
+                from utils.error_handler import friendly_message
+                msg = friendly_message(e)
+                self._root.after(0, lambda m=msg, ex=e: self._toast_error(m, ex))
+
+        threading.Thread(target=_worker, daemon=True).start()
 
     # ================================================================
     #  SPY actions
