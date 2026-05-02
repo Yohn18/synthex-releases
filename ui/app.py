@@ -251,6 +251,82 @@ class _BrowserSessions:
             except OSError: pass
 
 
+class _UserScripts:
+    """Per-domain userscripts — injected automatically after navigation."""
+    _PATH = os.path.join(_ROOT, "data", "userscripts.json")
+
+    def __init__(self):
+        self._scripts: list = []
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self._PATH, "r", encoding="utf-8") as f:
+                self._scripts = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def all(self) -> list:
+        with self._lock:
+            return list(self._scripts)
+
+    def add(self, name: str, pattern: str, js: str) -> dict:
+        script = {"id":      str(int(time.time() * 1000)),
+                  "name":    name,
+                  "pattern": pattern,
+                  "js":      js,
+                  "enabled": True,
+                  "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with self._lock:
+            self._scripts.insert(0, script)
+        self._save()
+        return script
+
+    def update(self, script_id: str, **fields):
+        with self._lock:
+            for s in self._scripts:
+                if s["id"] == script_id:
+                    s.update(fields)
+                    break
+        self._save()
+
+    def delete(self, script_id: str):
+        with self._lock:
+            self._scripts = [s for s in self._scripts if s["id"] != script_id]
+        self._save()
+
+    def matching(self, url: str) -> list:
+        """Return enabled scripts whose pattern matches the given URL."""
+        with self._lock:
+            result = []
+            for s in self._scripts:
+                if not s.get("enabled", True):
+                    continue
+                pat = s.get("pattern", "").strip()
+                if not pat:
+                    continue
+                # Support wildcard * and plain domain matching
+                import fnmatch
+                if fnmatch.fnmatch(url, pat) or pat in url:
+                    result.append(s)
+            return result
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self._PATH), exist_ok=True)
+        import tempfile as _tf
+        with self._lock:
+            snapshot = list(self._scripts)
+        fd, tmp = _tf.mkstemp(dir=os.path.dirname(self._PATH), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(snapshot, fh, indent=2)
+            os.replace(tmp, self._PATH)
+        except Exception:
+            try: os.unlink(tmp)
+            except OSError: pass
+
+
 class UserData:
     def __init__(self):
         self._lock = threading.Lock()
@@ -611,10 +687,11 @@ class SynthexApp:
         self._root   = None
         self._email  = None
         self._token  = None
-        self._ud              = UserData()
-        self._browser_hist    = _BrowserHistory()
+        self._ud               = UserData()
+        self._browser_hist     = _BrowserHistory()
         self._browser_sessions = _BrowserSessions()
-        self._ud_lock         = threading.Lock()
+        self._userscripts      = _UserScripts()
+        self._ud_lock          = threading.Lock()
         self._dm_poll_id = None
         self._pages  = {}
         self._nav    = {}
@@ -2493,6 +2570,151 @@ class SynthexApp:
 
         ses_tree.bind("<<TreeviewSelect>>", _on_ses_select)
         _refresh_sessions()
+
+        # ── Userscripts per-domain ────────────────────────────────────────────
+        us_card = _card(f, "Userscript")
+        us_card.pack(fill="x", padx=20, pady=(12, 0))
+
+        _sel_script = [None]
+
+        us_top = _ck.Frame(us_card, fg_color=CARD)
+        us_top.pack(fill="x", pady=(0, 6))
+
+        def _script_dialog(edit_id=None):
+            """Add or edit a userscript."""
+            existing = None
+            if edit_id:
+                existing = next((s for s in self._userscripts.all() if s["id"] == edit_id), None)
+
+            dlg = _DarkToplevel(self._root)
+            dlg.title("Edit Script" if existing else "Script Baru")
+            dlg.geometry("580x460")
+            dlg.grab_set()
+
+            _ck.Label(dlg, text="Nama:", fg_color=BG, text_color=MUT,
+                     font=("Segoe UI", 10)).pack(padx=16, pady=(14, 2), anchor="w")
+            name_var = tk.StringVar(value=existing.get("name", "") if existing else "")
+            _ck.Entry(dlg, textvariable=name_var, font=("Segoe UI", 11),
+                      placeholder_text="Contoh: Dark Mode YouTube"
+                      ).pack(fill="x", padx=16, pady=(0, 6))
+
+            _ck.Label(dlg, text="Domain / URL Pattern  (contoh: *youtube.com*, https://tokopedia.com/*):",
+                     fg_color=BG, text_color=MUT, font=("Segoe UI", 10)
+                     ).pack(padx=16, anchor="w")
+            pat_var = tk.StringVar(value=existing.get("pattern", "") if existing else "")
+            _ck.Entry(dlg, textvariable=pat_var, font=("Segoe UI", 11),
+                      placeholder_text="*youtube.com*"
+                      ).pack(fill="x", padx=16, pady=(2, 6))
+
+            _ck.Label(dlg, text="JavaScript:", fg_color=BG, text_color=MUT,
+                     font=("Segoe UI", 10)).pack(padx=16, anchor="w")
+            js_txt = tk.Text(dlg, wrap="none", bg=CARD, fg=FG,
+                             font=("Consolas", 10), relief="flat",
+                             padx=8, pady=8, insertbackground=FG, height=10)
+            js_txt.pack(fill="both", expand=True, padx=16, pady=(2, 0))
+            if existing:
+                js_txt.insert("1.0", existing.get("js", ""))
+
+            def _save_script():
+                name = name_var.get().strip()
+                pat  = pat_var.get().strip()
+                js   = js_txt.get("1.0", "end").strip()
+                if not name or not pat or not js:
+                    return
+                if existing:
+                    self._userscripts.update(edit_id, name=name, pattern=pat, js=js)
+                else:
+                    self._userscripts.add(name, pat, js)
+                dlg.destroy()
+                _refresh_scripts()
+
+            btn_row = _ck.Frame(dlg, fg_color=BG)
+            btn_row.pack(pady=10)
+            _ck.Button(btn_row, text="Simpan", fg_color=ACC, text_color=BG,
+                       font=("Segoe UI", 10, "bold"), padx=14,
+                       command=_save_script).pack(side="left", padx=(0, 8))
+            _ck.Button(btn_row, text="Batal", fg_color=CARD2, text_color=FG,
+                       font=("Segoe UI", 10), padx=14,
+                       command=dlg.destroy).pack(side="left")
+
+        def _toggle_script():
+            if not _sel_script[0]:
+                return
+            scripts = self._userscripts.all()
+            s = next((x for x in scripts if x["id"] == _sel_script[0]), None)
+            if s:
+                self._userscripts.update(_sel_script[0], enabled=not s.get("enabled", True))
+                _refresh_scripts()
+
+        def _delete_script():
+            if not _sel_script[0]:
+                return
+            self._userscripts.delete(_sel_script[0])
+            _sel_script[0] = None
+            _refresh_scripts()
+
+        def _inject_now():
+            if not _sel_script[0]:
+                return
+            if not self.engine or not self.engine.browser:
+                self._show_alert("Userscript", "Browser belum terhubung.", "warning")
+                return
+            scripts = self._userscripts.all()
+            s = next((x for x in scripts if x["id"] == _sel_script[0]), None)
+            if not s:
+                return
+            def _worker():
+                try:
+                    self.engine.browser.evaluate_js(s["js"])
+                    if self._root:
+                        self._root.after(0, lambda: self._sv.set(
+                            "Script '{}' dijalankan.".format(s["name"])))
+                except Exception as e:
+                    if self._root:
+                        self._root.after(0, lambda err=str(e):
+                            self._sv.set("Script gagal: {}".format(err)))
+            threading.Thread(target=_worker, daemon=True).start()
+
+        _ck.Button(us_top, text="+ Script Baru", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                   command=lambda: _script_dialog()).pack(side="left", padx=(0, 6))
+        _ck.Button(us_top, text="Edit", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=lambda: _script_dialog(edit_id=_sel_script[0]) if _sel_script[0] else None
+                   ).pack(side="left", padx=(0, 6))
+        _ck.Button(us_top, text="Aktif/Nonaktif", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_toggle_script).pack(side="left", padx=(0, 6))
+        _ck.Button(us_top, text="Jalankan Sekarang", fg_color="#1a2a3a", text_color="#60aaff",
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_inject_now).pack(side="left", padx=(0, 6))
+        _ck.Button(us_top, text="Hapus", fg_color="#3A1A1A", text_color=RED,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_delete_script).pack(side="left")
+
+        us_tree = _tree(us_card, [
+            ("name",    "Nama Script",   160),
+            ("pattern", "Pattern",       200),
+            ("status",  "Status",         70),
+            ("created", "Dibuat",        120),
+        ])
+        us_tree.configure(height=5)
+
+        def _refresh_scripts():
+            us_tree.delete(*us_tree.get_children())
+            for s in self._userscripts.all():
+                status = "Aktif" if s.get("enabled", True) else "Nonaktif"
+                us_tree.insert("", "end", iid=s["id"], values=(
+                    s.get("name", ""), s.get("pattern", ""),
+                    status, s.get("created", "")))
+
+        def _on_script_select(event=None):
+            sel = us_tree.selection()
+            _sel_script[0] = sel[0] if sel else None
+
+        us_tree.bind("<<TreeviewSelect>>", _on_script_select)
+        us_tree.bind("<Double-1>", lambda e: _script_dialog(edit_id=_sel_script[0]) if _sel_script[0] else None)
+        _refresh_scripts()
 
         # ── Browser History ───────────────────────────────────────────────────
         hc = _card(f, "History")
@@ -13754,7 +13976,17 @@ class SynthexApp:
             try:
                 title = self.engine.open_url(url)
                 self._browser_hist.add(url, title or "")
+                # Auto-inject matching userscripts
+                scripts = self._userscripts.matching(url)
+                for s in scripts:
+                    try:
+                        self.engine.browser.evaluate_js(s["js"])
+                        self.logger.info("Userscript '%s' injected into %s", s["name"], url)
+                    except Exception as se:
+                        self.logger.warning("Userscript '%s' failed: %s", s["name"], se)
                 msg = "Dibuka: {}".format(title or url)
+                if scripts:
+                    msg += "  [{} script]".format(len(scripts))
                 self._root.after(0, lambda: self._sv.set(msg))
             except Exception as e:
                 from utils.error_handler import friendly_message

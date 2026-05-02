@@ -1121,6 +1121,12 @@ class BrowserActions:
         except Exception:
             return ""
 
+    def evaluate_js(self, js: str):
+        """Evaluate arbitrary JavaScript in the current page context."""
+        def _eval(page, code):
+            return page.evaluate(code)
+        return self._dispatch(_eval, js, timeout=15)
+
     def close(self):
         if self._started and self._thread and self._thread.is_alive():
             fut: concurrent.futures.Future = concurrent.futures.Future()
