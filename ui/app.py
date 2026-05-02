@@ -175,6 +175,82 @@ class _BrowserHistory:
             except OSError: pass
 
 
+class _BrowserSessions:
+    """Named browser sessions — each session is a list of {url, title} entries."""
+    _PATH = os.path.join(_ROOT, "data", "browser_sessions.json")
+
+    def __init__(self):
+        self._sessions: list = []
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self._PATH, "r", encoding="utf-8") as f:
+                self._sessions = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def all(self) -> list:
+        with self._lock:
+            return list(self._sessions)
+
+    def new(self, name: str) -> dict:
+        session = {"id": str(int(time.time() * 1000)),
+                   "name": name,
+                   "urls": [],
+                   "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with self._lock:
+            self._sessions.insert(0, session)
+        self._save()
+        return session
+
+    def add_url(self, session_id: str, url: str, title: str = ""):
+        with self._lock:
+            for s in self._sessions:
+                if s["id"] == session_id:
+                    # avoid duplicate URL in same session
+                    if not any(u["url"] == url for u in s["urls"]):
+                        s["urls"].append({"url": url, "title": title or url})
+                    break
+        self._save()
+
+    def remove_url(self, session_id: str, url: str):
+        with self._lock:
+            for s in self._sessions:
+                if s["id"] == session_id:
+                    s["urls"] = [u for u in s["urls"] if u["url"] != url]
+                    break
+        self._save()
+
+    def delete(self, session_id: str):
+        with self._lock:
+            self._sessions = [s for s in self._sessions if s["id"] != session_id]
+        self._save()
+
+    def rename(self, session_id: str, new_name: str):
+        with self._lock:
+            for s in self._sessions:
+                if s["id"] == session_id:
+                    s["name"] = new_name
+                    break
+        self._save()
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self._PATH), exist_ok=True)
+        import tempfile as _tf
+        with self._lock:
+            snapshot = list(self._sessions)
+        fd, tmp = _tf.mkstemp(dir=os.path.dirname(self._PATH), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(snapshot, fh, indent=2)
+            os.replace(tmp, self._PATH)
+        except Exception:
+            try: os.unlink(tmp)
+            except OSError: pass
+
+
 class UserData:
     def __init__(self):
         self._lock = threading.Lock()
@@ -535,9 +611,10 @@ class SynthexApp:
         self._root   = None
         self._email  = None
         self._token  = None
-        self._ud           = UserData()
-        self._browser_hist = _BrowserHistory()
-        self._ud_lock      = threading.Lock()
+        self._ud              = UserData()
+        self._browser_hist    = _BrowserHistory()
+        self._browser_sessions = _BrowserSessions()
+        self._ud_lock         = threading.Lock()
         self._dm_poll_id = None
         self._pages  = {}
         self._nav    = {}
@@ -2233,6 +2310,189 @@ class SynthexApp:
         _ck.Button(act_row, text="🗑 Hapus", fg_color="#3A1A1A", text_color=RED,
                    font=("Segoe UI", 9), padx=10, pady=4,
                    command=_delete_selected).pack(side="left")
+
+        # ── Session Save / Restore ────────────────────────────────────────────
+        ses_card = _card(f, "Sesi Browser")
+        ses_card.pack(fill="x", padx=20, pady=(12, 0))
+
+        _sel_session = [None]   # currently selected session id
+
+        # ── Toolbar ──────────────────────────────────────────────────────────
+        ses_top = _ck.Frame(ses_card, fg_color=CARD)
+        ses_top.pack(fill="x", pady=(0, 6))
+
+        def _new_session_dialog():
+            dlg = _DarkToplevel(self._root)
+            dlg.title("Sesi Baru")
+            dlg.geometry("300x130")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+            _ck.Label(dlg, text="Nama sesi:", fg_color=BG, text_color=FG,
+                     font=("Segoe UI", 11)).pack(padx=20, pady=(16, 4), anchor="w")
+            name_var = tk.StringVar()
+            entry = _ck.Entry(dlg, textvariable=name_var, font=("Segoe UI", 11),
+                              placeholder_text="Contoh: Kerja Pagi")
+            entry.pack(fill="x", padx=20)
+            entry.focus_set()
+            def _ok(e=None):
+                n = name_var.get().strip()
+                if not n:
+                    return
+                s = self._browser_sessions.new(n)
+                dlg.destroy()
+                _refresh_sessions()
+                # auto-select new session
+                for iid in ses_tree.get_children():
+                    if ses_tree.item(iid, "values")[0] == n:
+                        ses_tree.selection_set(iid)
+                        _on_ses_select()
+                        break
+            entry.bind("<Return>", _ok)
+            _ck.Button(dlg, text="Buat", fg_color=ACC, text_color=BG,
+                       font=("Segoe UI", 10, "bold"), command=_ok).pack(pady=10)
+
+        def _save_url_to_session():
+            url = self._url.get().strip()
+            if not url:
+                self._show_alert("Sesi", "Buka URL dulu di browser.", "warning")
+                return
+            if not _sel_session[0]:
+                self._show_alert("Sesi", "Pilih sesi dulu, atau buat sesi baru.", "warning")
+                return
+            # get title from history
+            hist_entries = self._browser_hist.search(url)
+            title = hist_entries[0].get("title", "") if hist_entries else ""
+            self._browser_sessions.add_url(_sel_session[0], url, title)
+            _refresh_url_list()
+
+        def _open_session():
+            if not _sel_session[0]:
+                self._show_alert("Sesi", "Pilih sesi dulu.", "warning")
+                return
+            sessions = self._browser_sessions.all()
+            ses = next((s for s in sessions if s["id"] == _sel_session[0]), None)
+            if not ses or not ses["urls"]:
+                self._show_alert("Sesi", "Sesi ini kosong.", "warning")
+                return
+            if not self.engine or not self.engine.browser:
+                self._show_alert("Sesi", "Browser belum terhubung.", "warning")
+                return
+            urls = [u["url"] for u in ses["urls"]]
+            steps = [{"type": "Open URL", "value": u} for u in urls]
+
+            def _worker():
+                for i, step in enumerate(steps):
+                    try:
+                        url = step["value"]
+                        title = self.engine.open_url(url)
+                        self._browser_hist.add(url, title or "")
+                        if self._root:
+                            self._root.after(0, lambda t=title, u=url:
+                                self._sv.set("Sesi [{}/{}]: {}".format(i+1, len(steps), t or u)))
+                    except Exception as e:
+                        if self._root:
+                            self._root.after(0, lambda err=str(e):
+                                self._sv.set("Gagal: {}".format(err)))
+            threading.Thread(target=_worker, daemon=True).start()
+
+        def _delete_session():
+            if not _sel_session[0]:
+                return
+            self._browser_sessions.delete(_sel_session[0])
+            _sel_session[0] = None
+            _refresh_sessions()
+            _refresh_url_list()
+
+        _ck.Button(ses_top, text="+ Sesi Baru", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                   command=_new_session_dialog).pack(side="left", padx=(0, 6))
+        _ck.Button(ses_top, text="Simpan URL Ini", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_save_url_to_session).pack(side="left", padx=(0, 6))
+        _ck.Button(ses_top, text="▶ Buka Sesi", fg_color="#14532D", text_color="white",
+                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                   command=_open_session).pack(side="left", padx=(0, 6))
+        _ck.Button(ses_top, text="Hapus Sesi", fg_color="#3A1A1A", text_color=RED,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_delete_session).pack(side="left")
+
+        # ── Two-column layout: sessions list + URL list ───────────────────────
+        two_col = _ck.Frame(ses_card, fg_color=CARD)
+        two_col.pack(fill="x")
+
+        # Left: sessions treeview
+        left_f = _ck.Frame(two_col, fg_color=CARD)
+        left_f.pack(side="left", fill="both", expand=True, padx=(0, 8))
+        _ck.Label(left_f, text="Sesi tersimpan", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 3))
+        ses_tree = _tree(left_f, [
+            ("name",  "Nama Sesi", 150),
+            ("count", "URL",        50),
+            ("date",  "Dibuat",    110),
+        ])
+        ses_tree.configure(height=5)
+
+        # Right: URLs in selected session
+        right_f = _ck.Frame(two_col, fg_color=CARD)
+        right_f.pack(side="left", fill="both", expand=True)
+        _ck.Label(right_f, text="URL dalam sesi ini", fg_color=CARD, text_color=MUT,
+                 font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 3))
+        url_tree = _tree(right_f, [
+            ("title", "Judul", 160),
+            ("url",   "URL",   220),
+        ])
+        url_tree.configure(height=5)
+
+        def _remove_url_from_session(event=None):
+            sel = url_tree.selection()
+            if not sel or not _sel_session[0]:
+                return
+            vals = url_tree.item(sel[0], "values")
+            if vals:
+                self._browser_sessions.remove_url(_sel_session[0], vals[1])
+                _refresh_url_list()
+
+        url_tree.bind("<Delete>", _remove_url_from_session)
+
+        def _open_url_from_session(event=None):
+            sel = url_tree.selection()
+            if not sel:
+                return
+            vals = url_tree.item(sel[0], "values")
+            if vals and len(vals) >= 2:
+                self._url.set(vals[1])
+                self._open_url()
+
+        url_tree.bind("<Double-1>", _open_url_from_session)
+
+        def _refresh_sessions():
+            ses_tree.delete(*ses_tree.get_children())
+            for s in self._browser_sessions.all():
+                ses_tree.insert("", "end", iid=s["id"], values=(
+                    s.get("name", ""),
+                    len(s.get("urls", [])),
+                    s.get("created", ""),
+                ))
+
+        def _refresh_url_list():
+            url_tree.delete(*url_tree.get_children())
+            if not _sel_session[0]:
+                return
+            sessions = self._browser_sessions.all()
+            ses = next((s for s in sessions if s["id"] == _sel_session[0]), None)
+            if ses:
+                for u in ses.get("urls", []):
+                    url_tree.insert("", "end", values=(
+                        u.get("title", "")[:50], u.get("url", "")))
+
+        def _on_ses_select(event=None):
+            sel = ses_tree.selection()
+            if sel:
+                _sel_session[0] = sel[0]   # iid == session id
+                _refresh_url_list()
+
+        ses_tree.bind("<<TreeviewSelect>>", _on_ses_select)
+        _refresh_sessions()
 
         # ── Browser History ───────────────────────────────────────────────────
         hc = _card(f, "History")
