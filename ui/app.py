@@ -1997,9 +1997,123 @@ class SynthexApp:
                 return
             _add_site_dialog(prefill_url=url)
 
+        def _summarize_page():
+            if not self.engine or not self.engine.browser:
+                self._show_alert("AI Ringkas", "Browser belum terhubung.", "warning")
+                return
+            api_key  = self.config.get("ai.api_key", "").strip()
+            provider = self.config.get("ai.provider", "openai")
+            model    = self.config.get("ai.model", "")
+            if not api_key:
+                self._show_alert("AI Ringkas", "API key AI belum diisi di Settings → AI.", "warning")
+                return
+
+            # Build result dialog immediately (shows loading state)
+            dlg = _DarkToplevel(self._root)
+            dlg.title("Ringkasan Halaman")
+            dlg.geometry("620x500")
+            dlg.grab_set()
+
+            hdr_f = _ck.Frame(dlg, fg_color="#16162a", padx=16, pady=12)
+            hdr_f.pack(fill="x")
+            _ck.Label(hdr_f, text="[AI] Ringkasan Halaman", fg_color="#16162a",
+                     text_color=PRP, font=("Segoe UI", 13, "bold")).pack(side="left")
+
+            url_lbl = _ck.Label(hdr_f, text=self._url.get()[:70],
+                                fg_color="#16162a", text_color=MUT,
+                                font=("Segoe UI", 9))
+            url_lbl.pack(side="left", padx=(10, 0))
+
+            # Scrollable text area
+            txt_f = _ck.Frame(dlg, fg_color=BG)
+            txt_f.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+            result_txt = tk.Text(txt_f, wrap="word", bg=CARD, fg=FG,
+                                 font=("Segoe UI", 11), relief="flat",
+                                 padx=12, pady=10, state="normal",
+                                 insertbackground=FG)
+            result_txt.pack(fill="both", expand=True)
+            result_txt.insert("1.0", "Membaca halaman…")
+            result_txt.configure(state="disabled")
+
+            status_lbl = _ck.Label(dlg, text="", fg_color=BG,
+                                   text_color=MUT, font=("Segoe UI", 9))
+            status_lbl.pack(pady=(0, 4))
+
+            btn_f = _ck.Frame(dlg, fg_color=BG)
+            btn_f.pack(pady=(0, 12))
+
+            def _copy_result():
+                content = result_txt.get("1.0", "end").strip()
+                self._root.clipboard_clear()
+                self._root.clipboard_append(content)
+                status_lbl.configure(text="Disalin ke clipboard!", text_color=GRN)
+
+            _ck.Button(btn_f, text="Salin", fg_color=CARD2, text_color=FG,
+                       font=("Segoe UI", 10), padx=14,
+                       command=_copy_result).pack(side="left", padx=(0, 8))
+            _ck.Button(btn_f, text="Tutup", fg_color=CARD2, text_color=FG,
+                       font=("Segoe UI", 10), padx=14,
+                       command=dlg.destroy).pack(side="left")
+
+            def _set_text(text, color=FG):
+                result_txt.configure(state="normal")
+                result_txt.delete("1.0", "end")
+                result_txt.insert("1.0", text)
+                result_txt.configure(state="disabled", fg=color)
+
+            def _worker():
+                try:
+                    page_text = self.engine.browser.get_all_text()
+                    if not page_text or not page_text.strip():
+                        if self._root:
+                            self._root.after(0, lambda: _set_text(
+                                "Halaman kosong atau tidak bisa dibaca.", RED))
+                        return
+
+                    # Trim ke 6000 karakter — cukup untuk 1-2 halaman konten
+                    trimmed = page_text.strip()[:6000]
+                    current_url = self._url.get()
+
+                    if self._root:
+                        self._root.after(0, lambda: status_lbl.configure(
+                            text="Menghubungi AI…", text_color=YEL))
+
+                    from modules.ai_client import call_ai
+                    summary = call_ai(
+                        prompt=trimmed,
+                        provider=provider,
+                        api_key=api_key,
+                        model=model,
+                        max_tokens=600,
+                        system_prompt=(
+                            "Kamu adalah asisten yang meringkas konten halaman web. "
+                            "Buat ringkasan singkat tapi lengkap dalam Bahasa Indonesia: "
+                            "topik utama, poin-poin penting, dan kesimpulan. "
+                            "Format dengan paragraf pendek. Maksimal 300 kata."
+                        ),
+                    )
+                    if self._root:
+                        self._root.after(0, lambda s=summary: (
+                            _set_text(s),
+                            status_lbl.configure(
+                                text="Diringkas dari: {}".format(current_url[:60]),
+                                text_color=MUT)
+                        ))
+                except Exception as e:
+                    err = str(e)
+                    if self._root:
+                        self._root.after(0, lambda: _set_text(
+                            "Gagal: {}".format(err), RED))
+
+            threading.Thread(target=_worker, daemon=True).start()
+
         _ck.Button(url_row, text="＋ Simpan", fg_color=CARD2, text_color=FG,
                    font=("Segoe UI", 10), padx=10,
-                   command=_save_current).pack(side="left")
+                   command=_save_current).pack(side="left", padx=(0, 4))
+
+        _ck.Button(url_row, text="[AI] Ringkas", fg_color="#1a1a3a", text_color=PRP,
+                   font=("Segoe UI", 10), padx=10,
+                   command=lambda: _summarize_page()).pack(side="left")
 
         # Row 2: Quick-launch buttons (5 situs pertama)
         ql_row = _ck.Frame(nav, fg_color=CARD)
