@@ -44,8 +44,13 @@ Write-Host "  ${GRN}${B}$greeting, Yohn!${R}  ${GRY}$dateStr${R}"
 Write-Host ""
 
 # ── Environment ───────────────────────────────────────────────────────────────
+# Load key files: .yohn_keys.ps1 (local) then D:\.aiconfig.ps1 (master override)
 $_keysFile = Join-Path $PSScriptRoot ".yohn_keys.ps1"
 if (Test-Path $_keysFile) { . $_keysFile }
+if (Test-Path "D:\.aiconfig.ps1") { . "D:\.aiconfig.ps1" }
+# Normalize: .aiconfig.ps1 uses OPENROUTER_KEY / GROQ_KEY; script uses the _API_KEY form
+if (-not $env:OPENROUTER_API_KEY -and $env:OPENROUTER_KEY) { $env:OPENROUTER_API_KEY = $env:OPENROUTER_KEY }
+if (-not $env:GROQ_API_KEY       -and $env:GROQ_KEY)       { $env:GROQ_API_KEY       = $env:GROQ_KEY       }
 
 $projectsPath = "D:\Yohn Project"
 $synthexPath  = "$projectsPath\synthex"

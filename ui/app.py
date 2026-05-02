@@ -27,11 +27,15 @@ _LIGHT_PALETTE = ("#F4F4FA","#FFFFFF","#EEEEF6","#E8E8F2",
 
 def _get_theme_name() -> str:
     try:
-        _cfg = os.path.join(_SYNTHEX_DIR, "config.json")
-        with open(_cfg, encoding="utf-8") as _f:
-            return json.load(_f).get("ui", {}).get("theme", "dark")
+        # Try the live config first (AppData/source or next to exe)
+        for _cfg in (os.path.join(_SYNTHEX_DIR, "config.json"),
+                     os.path.join(_ROOT, "config.json")):
+            if os.path.exists(_cfg):
+                with open(_cfg, encoding="utf-8") as _f:
+                    return json.load(_f).get("ui", {}).get("theme", "dark")
     except Exception:
-        return "dark"
+        pass
+    return "dark"
 
 _pal = _LIGHT_PALETTE if _get_theme_name() == "light" else _DARK_PALETTE
 (BG, CARD, CARD2, SIDE, ACC, ACC2, FG, MUT, GRN, RED, YEL, PRP, BLUE) = _pal
