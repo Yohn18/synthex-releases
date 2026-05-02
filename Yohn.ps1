@@ -160,6 +160,18 @@ function ai {
     _yohnai_send $prompt
 }
 
+# ── Key reload helper (dipakai diagnose + auto-fix 401) ──────────────────────
+$script:_keysReloaded = $false
+
+function _reload_keys {
+    $kf1 = Join-Path $PSScriptRoot ".yohn_keys.ps1"
+    $kf2 = "D:\.aiconfig.ps1"
+    if (Test-Path $kf1) { . $kf1 }
+    if (Test-Path $kf2) { . $kf2 }
+    if (-not $env:OPENROUTER_API_KEY -and $env:OPENROUTER_KEY) { $env:OPENROUTER_API_KEY = $env:OPENROUTER_KEY }
+    if (-not $env:GROQ_API_KEY       -and $env:GROQ_KEY)       { $env:GROQ_API_KEY       = $env:GROQ_KEY }
+}
+
 # ── API helper ───────────────────────────────────────────────────────────────
 function _api_call {
     param([string]$uri, [string]$key, [string]$model, $messages, [int]$maxTok = 2048, [float]$temp = 0.7)
@@ -224,7 +236,7 @@ function _render_reply {
                 }
             }
         } elseif ($inCode) {
-            $codeBuf.Add($line); Write-Host "  ${GRN}  $line${R}"
+            [void]$codeBuf.Add($line); Write-Host "  ${GRN}  $line${R}"
         } else {
             if ($line.Trim()) { Write-Host "  ${WHT}$line${R}" } else { Write-Host "" }
         }
@@ -234,7 +246,7 @@ function _render_reply {
 function _yohnai_send {
     param([string]$prompt)
 
-    $_YOHNAI_HISTORY.Add(@{ role = "user"; content = $prompt })
+    [void]$_YOHNAI_HISTORY.Add(@{ role = "user"; content = $prompt })
 
     $OR  = "https://openrouter.ai/api/v1/chat/completions"
     $GQ  = "https://api.groq.com/openai/v1/chat/completions"
@@ -254,12 +266,13 @@ function _yohnai_send {
         @{ url=$OR; key=$ORK; model="mistralai/mistral-7b-instruct:free";     label="Mistral free"; icon="💡"; color=$GRY }
     )
 
+    # [void] wajib pada semua List.Add() — tanpanya PowerShell bocorkan return value ke pipeline
     $sysMsgs = [System.Collections.Generic.List[object]]::new()
-    $sysMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
-    foreach ($m in $_YOHNAI_HISTORY) { $sysMsgs.Add(@{ role=$m.role; content=$m.content }) }
+    [void]$sysMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
+    foreach ($m in $_YOHNAI_HISTORY) { [void]$sysMsgs.Add(@{ role=$m.role; content=$m.content }) }
 
     Write-Host ""
-    Write-Host "  ${PRP}🔮${R} ${GRY}Hermes 3 mengerjakan...${R}" -NoNewline
+    Write-Host "  ${PRP}🔮${R} ${GRY}mengirim ke Hermes 3...${R}"
 
     $reply     = $null
     $usedEntry = $chain[0]
@@ -268,24 +281,34 @@ function _yohnai_send {
         if (-not $entry.key) { continue }
         $r = _api_call $entry.url $entry.key $entry.model $sysMsgs 2048
         if ($r) { $reply = $r; $usedEntry = $entry; break }
+
+        # Auto-fix: jika 401, reload key files dan retry sekali
+        if ($script:_lastApiError -like "*401*" -and -not $script:_keysReloaded) {
+            $script:_keysReloaded = $true
+            _reload_keys
+            $freshKey = if ($entry.url -like "*groq*") { $env:GROQ_API_KEY } else { $env:OPENROUTER_API_KEY }
+            if ($freshKey -and $freshKey -ne $entry.key) {
+                Write-Host "  ${YEL}🔑 Key diperbarui, retry...${R}"
+                $r2 = _api_call $entry.url $freshKey $entry.model $sysMsgs 2048
+                if ($r2) { $reply = $r2; $usedEntry = $entry; break }
+            }
+        }
     }
 
     if (-not $reply) {
-        Write-Host "`r  ${RED}YohnAI: Semua model tidak tersedia.${R}"
+        Write-Host "  ${RED}YohnAI: Semua model tidak tersedia.${R}"
         if ($script:_lastApiError) { Write-Host "  ${RED}Error terakhir: $($script:_lastApiError)${R}" }
         Write-Host "  ${GRY}Cek: api (test)${R}"
-        $_YOHNAI_HISTORY.RemoveAt($_YOHNAI_HISTORY.Count - 1)
+        [void]$_YOHNAI_HISTORY.RemoveAt($_YOHNAI_HISTORY.Count - 1)
         Write-Host ""; return
     }
 
-    $_YOHNAI_HISTORY.Add(@{ role = "assistant"; content = $reply })
-    while ($_YOHNAI_HISTORY.Count -gt 40) { $_YOHNAI_HISTORY.RemoveAt(0) }
+    [void]$_YOHNAI_HISTORY.Add(@{ role = "assistant"; content = $reply })
+    while ($_YOHNAI_HISTORY.Count -gt 40) { [void]$_YOHNAI_HISTORY.RemoveAt(0) }
 
     # ══ DISPLAY ════════════════════════════════════════════════════════════════
-    $workerColor = $usedEntry.color
-    Write-Host "`r  $($usedEntry.icon) $workerColor$($usedEntry.label)${R}                                    "
+    Write-Host "  $($usedEntry.icon) $($usedEntry.color)$($usedEntry.label)${R}"
     Write-Host ""
-
     _render_reply $reply
     Write-Host ""
 }
@@ -360,6 +383,7 @@ function help {
     Write-Host "  ${PRP}${B}Lainnya${R}"
     Write-Host "  ${WHT}goto <folder>${R}         ${GRY}pindah ke folder di Yohn Project${R}"
     Write-Host "  ${WHT}models${R}               ${GRY}lihat daftar model AI yang tersedia${R}"
+    Write-Host "  ${WHT}diagnose${R}             ${GRY}cek kesehatan API + test semua model (alias: cek)${R}"
     Write-Host "  ${WHT}reload${R}               ${GRY}reload YohnShell${R}"
     Write-Host "  ${WHT}clear${R}                ${GRY}bersihkan layar${R}"
     Write-Host ""
@@ -489,6 +513,80 @@ function api {
         Write-Host ""
     }
 }
+
+function diagnose {
+    Write-Host ""
+    Write-Host "  ${CYN}${B}YohnShell — Diagnostik Sistem${R}"
+    Write-Host "  ${GRY}$('─' * 54)${R}"
+    Write-Host ""
+
+    # 1. API Keys
+    $ORK = $env:OPENROUTER_API_KEY
+    $GQK = $env:GROQ_API_KEY
+    Write-Host "  ${PRP}${B}API Keys${R}"
+    $orShow = if ($ORK) { "${GRN}✓ ada${R}  ${GRY}$($ORK.Substring(0,[Math]::Min(14,$ORK.Length)))...${R}" } else { "${RED}✗ TIDAK ADA${R}" }
+    $gqShow = if ($GQK) { "${GRN}✓ ada${R}  ${GRY}$($GQK.Substring(0,[Math]::Min(14,$GQK.Length)))...${R}" } else { "${RED}✗ TIDAK ADA${R}" }
+    Write-Host "  OpenRouter : $orShow"
+    Write-Host "  Groq       : $gqShow"
+    Write-Host ""
+
+    # 2. Key files
+    Write-Host "  ${PRP}${B}File Keys${R}"
+    $kf1 = Join-Path $PSScriptRoot ".yohn_keys.ps1"
+    $kf2 = "D:\.aiconfig.ps1"
+    Write-Host "  .yohn_keys.ps1 : $(if (Test-Path $kf1) { "${GRN}✓ ada${R}" } else { "${RED}✗ tidak ditemukan${R}" })"
+    Write-Host "  .aiconfig.ps1  : $(if (Test-Path $kf2) { "${GRN}✓ ada${R}" } else { "${YEL}— tidak ada (opsional)${R}" })"
+    Write-Host ""
+
+    # 3. Test semua model
+    $OR = "https://openrouter.ai/api/v1/chat/completions"
+    $GQ = "https://api.groq.com/openai/v1/chat/completions"
+    $testMsg = @(@{ role="user"; content="hi" })
+    $chainDiag = @(
+        @{ url=$OR; key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="🔮 Hermes 3 405b" }
+        @{ url=$GQ; key=$GQK; model="llama-3.3-70b-versatile";              label="💬 Llama 3.3 70b" }
+        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-llama-70b";        label="💻 DeepSeek R1 70b" }
+        @{ url=$GQ; key=$GQK; model="llama-3.1-8b-instant";                 label="⚡ Llama 3.1 8b" }
+        @{ url=$OR; key=$ORK; model="meta-llama/llama-3.3-70b-instruct:free"; label="💬 Llama free" }
+        @{ url=$OR; key=$ORK; model="google/gemini-2.0-flash-exp:free";       label="✨ Gemini free" }
+        @{ url=$OR; key=$ORK; model="mistralai/mistral-7b-instruct:free";     label="💡 Mistral free" }
+    )
+    Write-Host "  ${PRP}${B}Test Model${R}"
+    $okCount = 0
+    foreach ($e in $chainDiag) {
+        Write-Host "  $($e.label)... " -NoNewline
+        if (-not $e.key) { Write-Host "${YEL}skip (no key)${R}"; continue }
+        $r = _api_call $e.url $e.key $e.model $testMsg 5
+        if ($r) { Write-Host "${GRN}OK${R}"; $okCount++ }
+        else    { Write-Host "${RED}GAGAL${R}  ${GRY}$($script:_lastApiError)${R}" }
+    }
+    Write-Host ""
+
+    # 4. State
+    Write-Host "  ${PRP}${B}State${R}"
+    Write-Host "  History chat : ${WHT}$($_YOHNAI_HISTORY.Count) pesan${R}"
+    Write-Host ""
+
+    # 5. Auto-fix jika ada masalah key
+    if (-not $ORK -or -not $GQK) {
+        Write-Host "  ${YEL}⚠ Key tidak lengkap — mencoba reload otomatis...${R}"
+        _reload_keys
+        $ORK2 = $env:OPENROUTER_API_KEY
+        $GQK2 = $env:GROQ_API_KEY
+        $fixed = @()
+        if ($ORK2 -and -not $ORK) { $fixed += "OpenRouter" }
+        if ($GQK2 -and -not $GQK) { $fixed += "Groq" }
+        if ($fixed) { Write-Host "  ${GRN}✓ Diperbaiki: $($fixed -join ", ")${R}" }
+        else { Write-Host "  ${RED}Tidak bisa auto-fix. Periksa .yohn_keys.ps1${R}" }
+        Write-Host ""
+    }
+
+    $summary = if ($okCount -gt 0) { "${GRN}$okCount model aktif${R}" } else { "${RED}semua model gagal!${R}" }
+    Write-Host "  ${GRY}Hasil: $summary  · ketik ${WHT}reload${GRY} jika sudah update key file${R}"
+    Write-Host ""
+}
+
+function cek { diagnose }
 
 function prompt {
     $loc = (Get-Location).Path -replace [regex]::Escape($projectsPath), "~yohn"
