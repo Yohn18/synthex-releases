@@ -336,8 +336,7 @@ class SmartMacro:
         if t == "ocr_image":
             return self._run_ocr_image(step, variables)
 
-        self.logger.warning(f"Unknown step type: {t}")
-        return f"unknown: {t}"
+        raise ValueError(f"Step type tidak dikenal: '{t}'")
 
     # ------------------------------------------------------------------ #
     #  Browser actions                                                     #

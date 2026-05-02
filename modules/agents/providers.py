@@ -47,7 +47,7 @@ AUTO_SELECT = {
     },
     "writing": {
         "provider": "openrouter",
-        "model":    "anthropic/claude-3-haiku",
+        "model":    "anthropic/claude-3-haiku-20240307",
         "label":    "OpenRouter · Claude Haiku",
     },
     "math": {
@@ -57,8 +57,8 @@ AUTO_SELECT = {
     },
     "review": {
         "provider": "groq",
-        "model":    "mixtral-8x7b-32768",
-        "label":    "Groq · Mixtral 8x7B",
+        "model":    "llama-3.3-70b-versatile",
+        "label":    "Groq · LLaMA 3.3 70B",
     },
     "general": {
         "provider": "groq",
@@ -67,7 +67,7 @@ AUTO_SELECT = {
     },
     "orchestrator": {
         "provider": "openrouter",
-        "model":    "anthropic/claude-3-haiku",
+        "model":    "anthropic/claude-3-haiku-20240307",
         "label":    "OpenRouter · Claude Haiku",
     },
     "critic": {
@@ -172,24 +172,18 @@ def call_with_fallback(task_type: str, messages: list, keys: dict,
     sel = AUTO_SELECT.get(task_type, AUTO_SELECT["general"])
     providers_to_try = [sel["provider"]] + FALLBACKS.get(sel["provider"], [])
 
+    _fallback_models = {
+        "groq":       "llama-3.3-70b-versatile",
+        "together":   "Qwen/Qwen2.5-72B-Instruct-Turbo",
+        "openrouter": "anthropic/claude-3-haiku-20240307",
+    }
+
     last_err = None
     for prov in providers_to_try:
         key = keys.get(prov, "")
         if not key:
             continue
-        model = sel["model"] if prov == sel["provider"] else AUTO_SELECT.get(task_type, {}).get("model", "llama-3.1-8b-instant")
-        # Use provider's own default model on fallback
-        if prov != sel["provider"]:
-            fb_sel = next((v for k, v in AUTO_SELECT.items()
-                           if v["provider"] == prov and k == task_type), None)
-            if fb_sel:
-                model = fb_sel["model"]
-            else:
-                model = {
-                    "groq":       "llama-3.3-70b-versatile",
-                    "together":   "Qwen/Qwen2.5-72B-Instruct-Turbo",
-                    "openrouter": "anthropic/claude-3-haiku",
-                }.get(prov, "llama-3.1-8b-instant")
+        model = sel["model"] if prov == sel["provider"] else _fallback_models.get(prov, "llama-3.1-8b-instant")
         try:
             text = call(prov, model, messages, key,
                         max_tokens=max_tokens, stream_cb=stream_cb)
@@ -197,7 +191,7 @@ def call_with_fallback(task_type: str, messages: list, keys: dict,
             return text, label
         except Exception as e:
             last_err = e
-            time.sleep(0.5)
+            time.sleep(0.3)
             continue
 
     raise RuntimeError("Semua provider gagal. Error terakhir: {}".format(last_err))

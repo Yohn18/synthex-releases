@@ -419,6 +419,9 @@ class BrowserActions:
         if self._thread and not self._thread.is_alive():
             raise RuntimeError(
                 "Chrome is not connected. Click 'Connect Browser' to start.")
+        if not self._ready:
+            raise RuntimeError(
+                "Browser belum siap. Coba lagi sebentar atau klik 'Connect Browser'.")
         fut: concurrent.futures.Future = concurrent.futures.Future()
         self._cmd_queue.put((fn, args, kwargs, fut))
         try:

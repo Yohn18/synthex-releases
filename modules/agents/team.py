@@ -56,7 +56,6 @@ class AgentTeam:
         primary_resp = agents["primary"].think(
             task,
             context=orch_resp.content,
-            stream_cb=self.stream_cb,
             max_tokens=max_tokens,
         )
         self.memory.store(session_id, agents["primary"].name, task_type,

@@ -10,15 +10,15 @@ import certifi
 _PROVIDERS = {
     "openai":    "OpenAI (GPT)",
     "anthropic": "Anthropic (Claude)",
-    "groq":      "Groq (LLaMA / Mixtral)",
+    "groq":      "Groq (LLaMA)",
     "gemini":    "Google Gemini",
 }
 
 _DEFAULT_MODELS = {
     "openai":    "gpt-4o-mini",
     "anthropic": "claude-haiku-4-5-20251001",
-    "groq":      "llama3-70b-8192",
-    "gemini":    "gemini-1.5-flash",
+    "groq":      "llama-3.3-70b-versatile",
+    "gemini":    "gemini-2.0-flash",
 }
 
 PROVIDER_NAMES  = list(_PROVIDERS.keys())

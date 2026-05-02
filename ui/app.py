@@ -10542,8 +10542,8 @@ class SynthexApp:
             "anthropic": ["claude-opus-4-7", "claude-sonnet-4-6",
                           "claude-haiku-4-5-20251001"],
             "gemini":    ["gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash"],
-            "groq":      ["llama-3.3-70b-versatile", "llama3-8b-8192",
-                          "mixtral-8x7b-32768"],
+            "groq":      ["llama-3.3-70b-versatile", "llama-3.1-8b-instant",
+                          "llama3-groq-70b-8192-tool-use-preview"],
         }
         _saved_model = self.config.get("ai.model", "").strip()
         _m_list      = list(_PROV_MODELS.get(provider, []))

@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import time
+from collections import deque
 from core.logger import get_logger
 
 logger = get_logger("wa_bot")
@@ -100,7 +101,8 @@ class WABot:
         self.adb      = adb_manager
         self._running = False
         self._thread  = None
-        self._seen    = set()   # (pkg, key) already replied
+        self._seen_keys: deque = deque(maxlen=500)  # bounded; prevents re-reply & memory leak
+        self._seen_set:  set   = set()              # fast O(1) lookup mirror
         self.config   = {
             "enabled":  False,
             "context":  "",
@@ -190,7 +192,10 @@ class WABot:
 
     def _send_text_adb(self, serial: str, text: str):
         """Type text via ADB input, then send."""
-        escaped = text.replace(" ", "%s").replace("'", "\\'")
+        # adb shell input text requires escaping every shell-special character.
+        # Backslash-escape all chars that the Android shell would interpret.
+        _SPECIAL = set(r' \'"`&|<>()[]{}$!#;,~*?^%')
+        escaped = "".join(("\\" + c if c in _SPECIAL else c) for c in text)
         self.adb._run("-s", serial, "shell",
                       "input", "text", escaped, timeout=10)
         time.sleep(0.3)
@@ -205,9 +210,12 @@ class WABot:
                 notifs = self._dump_notifications(serial)
                 for n in notifs:
                     uid = (n.get("pkg"), n.get("key"))
-                    if uid in self._seen:
+                    if uid in self._seen_set:
                         continue
-                    self._seen.add(uid)
+                    if len(self._seen_keys) == self._seen_keys.maxlen:
+                        self._seen_set.discard(self._seen_keys[0])
+                    self._seen_keys.append(uid)
+                    self._seen_set.add(uid)
 
                     sender = n.get("sender", "")
                     text   = n.get("text", "")
