@@ -327,6 +327,68 @@ class _UserScripts:
             except OSError: pass
 
 
+class _BrowserSchedules:
+    """Scheduled browser automations — open URL / run steps at a set time."""
+    _PATH = os.path.join(_ROOT, "data", "browser_schedules.json")
+
+    def __init__(self):
+        self._items: list = []
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self._PATH, "r", encoding="utf-8") as f:
+                self._items = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def all(self) -> list:
+        with self._lock:
+            return list(self._items)
+
+    def add(self, name: str, url: str, time_str: str, repeat: str) -> dict:
+        """repeat: 'daily' | 'weekday' | 'weekend' | 'once'"""
+        item = {"id":      str(int(time.time() * 1000)),
+                "name":    name,
+                "url":     url,
+                "time":    time_str,   # "HH:MM"
+                "repeat":  repeat,
+                "enabled": True,
+                "created": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with self._lock:
+            self._items.insert(0, item)
+        self._save()
+        return item
+
+    def update(self, item_id: str, **fields):
+        with self._lock:
+            for it in self._items:
+                if it["id"] == item_id:
+                    it.update(fields)
+                    break
+        self._save()
+
+    def delete(self, item_id: str):
+        with self._lock:
+            self._items = [it for it in self._items if it["id"] != item_id]
+        self._save()
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self._PATH), exist_ok=True)
+        import tempfile as _tf
+        with self._lock:
+            snapshot = list(self._items)
+        fd, tmp = _tf.mkstemp(dir=os.path.dirname(self._PATH), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(snapshot, fh, indent=2)
+            os.replace(tmp, self._PATH)
+        except Exception:
+            try: os.unlink(tmp)
+            except OSError: pass
+
+
 class UserData:
     def __init__(self):
         self._lock = threading.Lock()
@@ -691,6 +753,7 @@ class SynthexApp:
         self._browser_hist     = _BrowserHistory()
         self._browser_sessions = _BrowserSessions()
         self._userscripts      = _UserScripts()
+        self._browser_schedules = _BrowserSchedules()
         self._ud_lock          = threading.Lock()
         self._dm_poll_id = None
         self._pages  = {}
@@ -1042,6 +1105,7 @@ class SynthexApp:
     def _done(self):
         self._pc.create_rectangle(0, 0, 364, 4, fill=ACC, outline="", tags="bar")
         self._pv.set("All systems active.")
+        self._register_browser_schedules()
         self._root.after(400, self._dashboard)
 
     # ── Dashboard fade helper ──────────────────────────────────────────────────
@@ -2715,6 +2779,308 @@ class SynthexApp:
         us_tree.bind("<<TreeviewSelect>>", _on_script_select)
         us_tree.bind("<Double-1>", lambda e: _script_dialog(edit_id=_sel_script[0]) if _sel_script[0] else None)
         _refresh_scripts()
+
+        # ── AI Multi-step Chain Commands ─────────────────────────────────────
+        ai_card = _card(f, "AI Otomasi")
+        ai_card.pack(fill="x", padx=20, pady=(12, 0))
+
+        _ck.Label(ai_card, text="Ketik perintah dalam bahasa natural, AI akan mengeksekusinya step by step.",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI", 9),
+                 wraplength=600, justify="left").pack(anchor="w", pady=(0, 6))
+
+        ai_inp_row = _ck.Frame(ai_card, fg_color=CARD)
+        ai_inp_row.pack(fill="x", pady=(0, 6))
+        ai_cmd_var = tk.StringVar()
+        ai_entry = _ck.Entry(ai_inp_row, textvariable=ai_cmd_var,
+                             font=("Segoe UI", 11),
+                             placeholder_text='Contoh: buka youtube → cari "lo fi" → klik video pertama')
+        ai_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        ai_status_var = tk.StringVar(value="")
+        ai_status = _ck.Label(ai_card, textvariable=ai_status_var,
+                              fg_color=CARD, text_color=MUT, font=("Segoe UI", 9))
+        ai_status.pack(anchor="w", pady=(0, 4))
+
+        # Step progress log
+        ai_log = tk.Text(ai_card, wrap="word", bg=CARD2, fg=FG,
+                         font=("Consolas", 9), relief="flat",
+                         padx=8, pady=6, state="disabled", height=5)
+        ai_log.pack(fill="x", pady=(0, 6))
+
+        def _ai_log_append(line: str, color=FG):
+            ai_log.configure(state="normal")
+            ai_log.insert("end", line + "\n")
+            ai_log.see("end")
+            ai_log.configure(state="disabled")
+
+        def _run_ai_chain():
+            cmd = ai_cmd_var.get().strip()
+            if not cmd:
+                return
+            api_key  = self.config.get("ai.api_key", "").strip()
+            provider = self.config.get("ai.provider", "openai")
+            model    = self.config.get("ai.model", "")
+            if not api_key:
+                ai_status_var.set("API key AI belum diisi di Settings → AI.")
+                return
+            if not self.engine or not self.engine.browser:
+                ai_status_var.set("Browser belum terhubung.")
+                return
+
+            ai_log.configure(state="normal")
+            ai_log.delete("1.0", "end")
+            ai_log.configure(state="disabled")
+            ai_status_var.set("AI sedang membuat rencana...")
+
+            _SYSTEM = (
+                "Kamu adalah AI yang mengubah perintah bahasa natural menjadi langkah-langkah "
+                "otomasi browser. Output HARUS berupa JSON array saja, tidak ada teks lain.\n"
+                "Setiap elemen adalah object dengan field 'type' dan 'value'.\n\n"
+                "Tipe yang tersedia:\n"
+                "- 'Open URL': value = URL lengkap (https://...)\n"
+                "- 'Type Text': value = 'css_selector | teks yang diketik'\n"
+                "- 'Click Element': value = CSS selector atau deskripsi elemen\n"
+                "- 'Wait': value = jumlah detik (angka sebagai string)\n"
+                "- 'Press Key': value = nama key (Enter, Tab, Escape, ArrowDown, dll)\n"
+                "- 'Take Screenshot': value = nama file (opsional)\n\n"
+                "Contoh output untuk 'buka youtube, cari lo fi':\n"
+                '[{"type":"Open URL","value":"https://youtube.com"},'
+                '{"type":"Click Element","value":"input#search"},'
+                '{"type":"Type Text","value":"input#search | lo fi"},'
+                '{"type":"Press Key","value":"Enter"}]'
+            )
+
+            def _worker():
+                try:
+                    from modules.ai_client import call_ai
+                    raw = call_ai(
+                        prompt="Ubah perintah ini menjadi langkah otomasi browser:\n\n{}".format(cmd),
+                        provider=provider,
+                        api_key=api_key,
+                        model=model,
+                        max_tokens=800,
+                        system_prompt=_SYSTEM,
+                    )
+
+                    # Parse JSON — cari array dalam respons
+                    import re as _re
+                    m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+                    if not m:
+                        raise ValueError("AI tidak mengembalikan JSON array yang valid.")
+                    steps = json.loads(m.group(0))
+                    if not isinstance(steps, list) or not steps:
+                        raise ValueError("Langkah kosong dari AI.")
+
+                    if self._root:
+                        self._root.after(0, lambda n=len(steps): (
+                            ai_status_var.set("Rencana: {} langkah. Menjalankan...".format(n)),
+                            _ai_log_append("AI membuat {} langkah:".format(n), ACC)
+                        ))
+
+                    for i, step in enumerate(steps):
+                        stype = step.get("type", "")
+                        sval  = step.get("value", "")
+                        label = "[{}/{}] {} → {}".format(i+1, len(steps), stype, sval[:50])
+                        if self._root:
+                            self._root.after(0, lambda l=label: _ai_log_append(l))
+                        try:
+                            if stype == "Open URL":
+                                if not sval.startswith(("http://", "https://")):
+                                    sval = "https://" + sval
+                                title = self.engine.open_url(sval)
+                                self._browser_hist.add(sval, title or "")
+                                # inject userscripts
+                                for s in self._userscripts.matching(sval):
+                                    try: self.engine.browser.evaluate_js(s["js"])
+                                    except Exception: pass
+                            elif stype == "Click Element":
+                                self.engine.browser.find_and_click(sval)
+                            elif stype == "Type Text":
+                                if "|" in sval:
+                                    sel, txt = sval.split("|", 1)
+                                    self.engine.browser.type_text(sel.strip(), txt.strip())
+                                else:
+                                    self.engine.browser.type_text("body", sval)
+                            elif stype == "Wait":
+                                time.sleep(max(0.1, min(float(sval or "1"), 30)))
+                            elif stype == "Press Key":
+                                def _press(page, k=sval):
+                                    page.keyboard.press(k)
+                                self.engine.browser._dispatch(_press)
+                            elif stype == "Take Screenshot":
+                                import os as _os
+                                path = _os.path.join(_ROOT, "screenshots",
+                                                     sval or "ai_step_{}.png".format(i+1))
+                                self.engine.browser.screenshot(path)
+                            ok_label = "  [OK]"
+                        except Exception as step_err:
+                            ok_label = "  [GAGAL: {}]".format(str(step_err)[:60])
+                        if self._root:
+                            self._root.after(0, lambda l=ok_label: _ai_log_append(l))
+
+                    if self._root:
+                        self._root.after(0, lambda: ai_status_var.set("Selesai."))
+
+                except Exception as e:
+                    err = str(e)
+                    if self._root:
+                        self._root.after(0, lambda: (
+                            ai_status_var.set("Gagal: {}".format(err)),
+                            _ai_log_append("ERROR: {}".format(err))
+                        ))
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+        ai_entry.bind("<Return>", lambda e: _run_ai_chain())
+        _ck.Button(ai_inp_row, text="Jalankan", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 10, "bold"), padx=12,
+                   command=_run_ai_chain).pack(side="left")
+
+        # ── Jadwal Browser ────────────────────────────────────────────────────
+        sched_card = _card(f, "Jadwal Browser")
+        sched_card.pack(fill="x", padx=20, pady=(12, 0))
+
+        _ck.Label(sched_card,
+                 text="Buka URL secara otomatis pada waktu tertentu (pakai APScheduler).",
+                 fg_color=CARD, text_color=MUT, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 6))
+
+        _sel_sched = [None]
+
+        sched_top = _ck.Frame(sched_card, fg_color=CARD)
+        sched_top.pack(fill="x", pady=(0, 6))
+
+        def _sched_dialog(edit_id=None):
+            existing = None
+            if edit_id:
+                existing = next((x for x in self._browser_schedules.all()
+                                 if x["id"] == edit_id), None)
+            dlg = _DarkToplevel(self._root)
+            dlg.title("Edit Jadwal" if existing else "Jadwal Baru")
+            dlg.geometry("360x280")
+            dlg.resizable(False, False)
+            dlg.grab_set()
+
+            fields = {}
+            for label, key, ph, default in [
+                ("Nama",   "name",   "Contoh: Buka Gmail Pagi",   existing.get("name","")   if existing else ""),
+                ("URL",    "url",    "https://...",               existing.get("url","")    if existing else ""),
+                ("Waktu",  "time",   "08:00",                     existing.get("time","08:00") if existing else "08:00"),
+            ]:
+                row = _ck.Frame(dlg, fg_color=BG)
+                row.pack(fill="x", padx=16, pady=(8, 0))
+                _ck.Label(row, text=label, fg_color=BG, text_color=MUT,
+                         font=("Segoe UI", 10), width=60).pack(side="left")
+                var = tk.StringVar(value=default)
+                _ck.Entry(row, textvariable=var, font=("Segoe UI", 10),
+                          placeholder_text=ph).pack(side="left", fill="x", expand=True)
+                fields[key] = var
+
+            rep_row = _ck.Frame(dlg, fg_color=BG)
+            rep_row.pack(fill="x", padx=16, pady=(8, 0))
+            _ck.Label(rep_row, text="Ulangi", fg_color=BG, text_color=MUT,
+                     font=("Segoe UI", 10), width=60).pack(side="left")
+            rep_var = tk.StringVar(value=existing.get("repeat","daily") if existing else "daily")
+            rep_cb = ttk.Combobox(rep_row, textvariable=rep_var, state="readonly",
+                                  values=["daily","weekday","weekend","once"],
+                                  font=("Segoe UI", 10), width=14)
+            rep_cb.pack(side="left")
+
+            def _save():
+                name = fields["name"].get().strip()
+                url  = fields["url"].get().strip()
+                t    = fields["time"].get().strip()
+                rep  = rep_var.get()
+                if not name or not url or not t:
+                    return
+                if existing:
+                    self._browser_schedules.update(edit_id, name=name, url=url,
+                                                   time=t, repeat=rep)
+                else:
+                    self._browser_schedules.add(name, url, t, rep)
+                dlg.destroy()
+                _refresh_sched()
+                self._register_browser_schedules()
+
+            btn_f = _ck.Frame(dlg, fg_color=BG)
+            btn_f.pack(pady=14)
+            _ck.Button(btn_f, text="Simpan", fg_color=ACC, text_color=BG,
+                       font=("Segoe UI", 10, "bold"), padx=14, command=_save
+                       ).pack(side="left", padx=(0, 8))
+            _ck.Button(btn_f, text="Batal", fg_color=CARD2, text_color=FG,
+                       font=("Segoe UI", 10), padx=14, command=dlg.destroy
+                       ).pack(side="left")
+
+        def _toggle_sched():
+            if not _sel_sched[0]:
+                return
+            items = self._browser_schedules.all()
+            it = next((x for x in items if x["id"] == _sel_sched[0]), None)
+            if it:
+                self._browser_schedules.update(_sel_sched[0], enabled=not it.get("enabled", True))
+                _refresh_sched()
+                self._register_browser_schedules()
+
+        def _delete_sched():
+            if not _sel_sched[0]:
+                return
+            job_id = "__bsched_{}__".format(_sel_sched[0])
+            if self.engine and self.engine.scheduler:
+                try:
+                    self.engine.scheduler._scheduler.remove_job(job_id)
+                except Exception:
+                    pass
+            self._browser_schedules.delete(_sel_sched[0])
+            _sel_sched[0] = None
+            _refresh_sched()
+
+        def _run_sched_now():
+            if not _sel_sched[0]:
+                return
+            threading.Thread(
+                target=self._run_browser_schedule,
+                args=(_sel_sched[0],), daemon=True).start()
+
+        _ck.Button(sched_top, text="+ Jadwal Baru", fg_color=ACC, text_color=BG,
+                   font=("Segoe UI", 9, "bold"), padx=10, pady=4,
+                   command=lambda: _sched_dialog()).pack(side="left", padx=(0, 6))
+        _ck.Button(sched_top, text="Edit", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=lambda: _sched_dialog(edit_id=_sel_sched[0]) if _sel_sched[0] else None
+                   ).pack(side="left", padx=(0, 6))
+        _ck.Button(sched_top, text="Aktif/Nonaktif", fg_color=CARD2, text_color=FG,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_toggle_sched).pack(side="left", padx=(0, 6))
+        _ck.Button(sched_top, text="Jalankan Sekarang", fg_color="#1a2a3a", text_color="#60aaff",
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_run_sched_now).pack(side="left", padx=(0, 6))
+        _ck.Button(sched_top, text="Hapus", fg_color="#3A1A1A", text_color=RED,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_delete_sched).pack(side="left")
+
+        sched_tree = _tree(sched_card, [
+            ("name",    "Nama",          160),
+            ("url",     "URL",           220),
+            ("time",    "Waktu",          60),
+            ("repeat",  "Ulangi",         80),
+            ("status",  "Status",         70),
+        ])
+        sched_tree.configure(height=5)
+
+        def _refresh_sched():
+            sched_tree.delete(*sched_tree.get_children())
+            for it in self._browser_schedules.all():
+                status = "Aktif" if it.get("enabled", True) else "Nonaktif"
+                sched_tree.insert("", "end", iid=it["id"], values=(
+                    it.get("name",""), it.get("url","")[:50],
+                    it.get("time",""), it.get("repeat",""), status))
+
+        def _on_sched_select(event=None):
+            sel = sched_tree.selection()
+            _sel_sched[0] = sel[0] if sel else None
+
+        sched_tree.bind("<<TreeviewSelect>>", _on_sched_select)
+        sched_tree.bind("<Double-1>", lambda e: _sched_dialog(edit_id=_sel_sched[0]) if _sel_sched[0] else None)
+        _refresh_sched()
 
         # ── Browser History ───────────────────────────────────────────────────
         hc = _card(f, "History")
@@ -13994,6 +14360,81 @@ class SynthexApp:
                 self._root.after(0, lambda m=msg, ex=e: self._toast_error(m, ex))
 
         threading.Thread(target=_worker, daemon=True).start()
+
+    # ================================================================
+    #  Browser Schedule helpers
+    # ================================================================
+
+    def _run_browser_schedule(self, item_id: str):
+        """Called by APScheduler when a browser schedule fires."""
+        items = self._browser_schedules.all()
+        it = next((x for x in items if x["id"] == item_id), None)
+        if not it or not it.get("enabled", True):
+            return
+        url = it.get("url", "").strip()
+        if not url or not self.engine or not self.engine.browser:
+            return
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        try:
+            title = self.engine.open_url(url)
+            self._browser_hist.add(url, title or "")
+            self.logger.info("[BrowserSchedule] Opened '%s' -> %s", it["name"], url)
+            if self._root:
+                self._root.after(0, lambda n=it["name"]:
+                    self._show_toast("Jadwal '{}' dijalankan.".format(n)))
+        except Exception as e:
+            self.logger.error("[BrowserSchedule] '%s' failed: %s", it["name"], e)
+
+    def _register_browser_schedules(self):
+        """Register all enabled browser schedules with APScheduler."""
+        if not self.engine or not self.engine.scheduler:
+            return
+        _REPEAT_CRON = {
+            "daily":   "0 {h} * * *",
+            "weekday": "0 {h} * * 1-5",
+            "weekend": "0 {h} * * 6,0",
+            "once":    None,   # one-shot handled separately
+        }
+        for it in self._browser_schedules.all():
+            if not it.get("enabled", True):
+                continue
+            try:
+                hhmm = it.get("time", "08:00")
+                h, m = hhmm.split(":")
+                repeat = it.get("repeat", "daily")
+                job_id = "__bsched_{}__".format(it["id"])
+
+                if repeat == "once":
+                    from apscheduler.triggers.date import DateTrigger
+                    # fire today at given time (if already passed, skip)
+                    import datetime as _dt
+                    fire_dt = _dt.datetime.now().replace(
+                        hour=int(h), minute=int(m), second=0, microsecond=0)
+                    if fire_dt > _dt.datetime.now():
+                        self.engine.scheduler._scheduler.add_job(
+                            self._run_browser_schedule,
+                            trigger=DateTrigger(run_date=fire_dt),
+                            id=job_id, replace_existing=True,
+                            args=[it["id"]])
+                else:
+                    cron = _REPEAT_CRON.get(repeat, "0 {h} * * *").format(h=int(h))
+                    # replace minute too
+                    cron = "{m} {h} * * {dow}".format(
+                        m=int(m), h=int(h),
+                        dow={"daily": "*", "weekday": "1-5", "weekend": "6,0"}.get(repeat, "*"))
+                    self.engine.scheduler._scheduler.add_job(
+                        self._run_browser_schedule,
+                        trigger="cron",
+                        minute=int(m), hour=int(h),
+                        day_of_week={"daily": "*", "weekday": "mon-fri", "weekend": "sat,sun"}.get(repeat, "*"),
+                        id=job_id, replace_existing=True,
+                        args=[it["id"]])
+                self.logger.info("[BrowserSchedule] Registered '%s' @ %s (%s)",
+                                 it["name"], hhmm, repeat)
+            except Exception as e:
+                self.logger.error("[BrowserSchedule] Register failed for '%s': %s",
+                                  it.get("name", "?"), e)
 
     # ================================================================
     #  SPY actions
