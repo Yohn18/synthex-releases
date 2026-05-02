@@ -107,10 +107,24 @@ Yohn adalah pengguna vibe coding — dia memberi instruksi dalam bahasa natural,
 Selalu asumsikan Yohn ingin hasil langsung, bukan teori panjang.
 Semua data Synthex dan YohnShell ada di SSD external — portable antar PC.
 
+TOOLS yang kamu miliki — gunakan via function calling, BUKAN generate code block:
+- read_file(path)               → baca isi file dari disk
+- write_file(path, content)     → tulis/buat file (overwrite)
+- edit_file(path, old_text, new_text) → find-and-replace dalam file (SELALU baca dulu)
+- run_shell(command)            → jalankan PowerShell, dapat outputnya
+- list_dir(path?)               → list isi folder
+- search_in_files(path, pattern)→ grep/cari teks dalam file
+- download_file(url, path)      → download dari internet ke disk
+
+Kapan pakai tools vs code block:
+- Yohn minta baca/edit/buat/hapus file → PAKAI TOOLS (bukan generate code)
+- Yohn minta jalankan sesuatu → PAKAI run_shell
+- Yohn minta "buat script" atau "contoh kode" → generate code block biasa
+
 Aturan jawaban:
 - Bahasa Indonesia santai, kecuali kalau user pakai English
 - Singkat dan langsung — tidak bertele-tele
-- Kalau ada kode PowerShell yang bisa langsung dijalankan, bungkus di ```powershell
+- Kalau ada kode PowerShell siap dijalankan, bungkus di ```powershell
 - Kalau ada kode Python, bungkus di ```python
 - Kode lain: ```namalang
 - Kalau pertanyaannya simpel, jawab 1-2 kalimat. Kalau kompleks, jelaskan bertahap.
@@ -121,6 +135,17 @@ Konteks: semua project ada di D:\Yohn Project\  — synthex ada di D:\Yohn Proje
 
 # History percakapan — tersimpan selama sesi terminal aktif
 $_YOHNAI_HISTORY = [System.Collections.Generic.List[hashtable]]::new()
+
+# Tool definitions (OpenAI function calling format) — dipakai oleh Hermes 3
+$_YOHNAI_TOOLS = @(
+    @{ type="function"; function=@{ name="read_file"; description="Baca isi file dari disk. Gunakan sebelum edit."; parameters=@{ type="object"; properties=@{ path=@{ type="string"; description="Path file (absolut atau relatif)" } }; required=@("path") } } }
+    @{ type="function"; function=@{ name="write_file"; description="Tulis/buat file baru (overwrite jika ada)"; parameters=@{ type="object"; properties=@{ path=@{ type="string"; description="Path file" }; content=@{ type="string"; description="Isi file" } }; required=@("path","content") } } }
+    @{ type="function"; function=@{ name="edit_file"; description="Find-and-replace dalam file. Baca dulu sebelum edit."; parameters=@{ type="object"; properties=@{ path=@{ type="string"; description="Path file" }; old_text=@{ type="string"; description="Teks yang dicari (persis sama)" }; new_text=@{ type="string"; description="Teks pengganti" } }; required=@("path","old_text","new_text") } } }
+    @{ type="function"; function=@{ name="run_shell"; description="Jalankan perintah PowerShell dan kembalikan output"; parameters=@{ type="object"; properties=@{ command=@{ type="string"; description="Perintah PowerShell" } }; required=@("command") } } }
+    @{ type="function"; function=@{ name="list_dir"; description="List isi folder"; parameters=@{ type="object"; properties=@{ path=@{ type="string"; description="Path folder (kosong = current dir)" } }; required=@() } } }
+    @{ type="function"; function=@{ name="search_in_files"; description="Cari teks/pattern dalam file (seperti grep)"; parameters=@{ type="object"; properties=@{ path=@{ type="string"; description="File atau folder" }; pattern=@{ type="string"; description="Teks atau regex" } }; required=@("path","pattern") } } }
+    @{ type="function"; function=@{ name="download_file"; description="Download file dari URL ke disk"; parameters=@{ type="object"; properties=@{ url=@{ type="string"; description="URL" }; path=@{ type="string"; description="Path lokal tujuan" } }; required=@("url","path") } } }
+)
 
 function ai {
     param([Parameter(ValueFromRemainingArguments=$true)][string[]]$words)
@@ -207,6 +232,116 @@ function _api_call {
     }
 }
 
+# Versi raw: kembalikan full response object (untuk tool use)
+function _api_call_raw {
+    param([string]$uri, [string]$key, [string]$model, $messages, [int]$maxTok = 2048, [float]$temp = 0.7, [bool]$withTools = $false)
+    try {
+        if (-not $key) { return $null }
+        $payload = [ordered]@{
+            model       = $model
+            messages    = @($messages)
+            max_tokens  = $maxTok
+            temperature = $temp
+        }
+        if ($withTools) {
+            $payload.tools       = $script:_YOHNAI_TOOLS
+            $payload.tool_choice = "auto"
+        }
+        $body = ConvertTo-Json -InputObject $payload -Depth 20 -Compress
+        $headers = @{ "Authorization" = "Bearer $key" }
+        $r = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers `
+             -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 60
+        return $r
+    } catch {
+        $code = $null
+        try { $code = $_.Exception.Response.StatusCode.value__ } catch {}
+        $script:_lastApiError = "[$model] $(if ($code) {"HTTP $code — "})$($_.Exception.Message)"
+        try {
+            $ed = $_.ErrorDetails.Message | ConvertFrom-Json
+            $script:_lastApiError += " | $($ed.error.message)"
+        } catch {}
+        return $null
+    }
+}
+
+# Path helper — resolves relative paths from current dir
+function _resolve_path {
+    param([string]$p)
+    if (-not $p) { return (Get-Location).Path }
+    if ([System.IO.Path]::IsPathRooted($p)) { return $p }
+    return Join-Path (Get-Location).Path $p
+}
+
+# Tool executor — dipanggil oleh agentic loop saat Hermes call tools
+function _execute_tool {
+    param([string]$name, $targs)
+    try {
+        switch ($name) {
+            "read_file" {
+                $p = _resolve_path $targs.path
+                if (-not (Test-Path $p -PathType Leaf)) { return "ERROR: File tidak ditemukan: $p" }
+                $content = Get-Content $p -Raw -Encoding UTF8 -ErrorAction Stop
+                $lc = ($content -split "`n").Count
+                Write-Host "  ${GRY}  read ← $p ($lc baris)${R}"
+                return "=== $p ($lc baris) ===`n$content"
+            }
+            "write_file" {
+                $p = _resolve_path $targs.path
+                $dir = Split-Path $p -Parent
+                if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+                [System.IO.File]::WriteAllText($p, [string]$targs.content, [System.Text.UTF8Encoding]::new($false))
+                Write-Host "  ${GRN}  write → $p${R}"
+                return "OK: ditulis $p"
+            }
+            "edit_file" {
+                $p = _resolve_path $targs.path
+                if (-not (Test-Path $p -PathType Leaf)) { return "ERROR: File tidak ditemukan: $p" }
+                $content = Get-Content $p -Raw -Encoding UTF8 -ErrorAction Stop
+                $oldText = [string]$targs.old_text
+                $newText = [string]$targs.new_text
+                if (-not $content.Contains($oldText)) { return "WARN: Teks tidak ditemukan di $p — tidak ada perubahan" }
+                $newContent = $content.Replace($oldText, $newText)
+                [System.IO.File]::WriteAllText($p, $newContent, [System.Text.UTF8Encoding]::new($false))
+                Write-Host "  ${GRN}  edit ✓ $p${R}"
+                return "OK: $p diedit"
+            }
+            "run_shell" {
+                $cmd = [string]$targs.command
+                Write-Host "  ${YEL}  shell: $cmd${R}"
+                $out = Invoke-Expression $cmd 2>&1 | Out-String
+                return if ($out.Trim()) { $out.Trim() } else { "(no output)" }
+            }
+            "list_dir" {
+                $p = if ($targs.path) { _resolve_path $targs.path } else { (Get-Location).Path }
+                if (-not (Test-Path $p)) { return "ERROR: Path tidak ada: $p" }
+                $items = Get-ChildItem $p | Sort-Object PSIsContainer -Descending |
+                         ForEach-Object { "$(if ($_.PSIsContainer) {'[DIR] '} else {'[FILE]'})  $($_.Name)" }
+                Write-Host "  ${GRY}  list ← $p${R}"
+                return if ($items) { $items -join "`n" } else { "(kosong)" }
+            }
+            "search_in_files" {
+                $p = _resolve_path $targs.path
+                $hits = Select-String -Path $p -Pattern ([string]$targs.pattern) -Recurse -ErrorAction SilentlyContinue |
+                        Select-Object -First 50 |
+                        ForEach-Object { "$($_.Filename):$($_.LineNumber):  $($_.Line.Trim())" }
+                Write-Host "  ${GRY}  search '$($targs.pattern)' in $p${R}"
+                return if ($hits) { $hits -join "`n" } else { "(tidak ditemukan)" }
+            }
+            "download_file" {
+                $p = _resolve_path $targs.path
+                $dir = Split-Path $p -Parent
+                if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+                Invoke-WebRequest -Uri ([string]$targs.url) -OutFile $p -ErrorAction Stop
+                Write-Host "  ${GRN}  download → $p${R}"
+                return "OK: didownload ke $p"
+            }
+            default { return "ERROR: Tool tidak dikenal: $name" }
+        }
+    } catch {
+        return "ERROR ($name): $($_.Exception.Message)"
+    }
+}
+
 # ── Render reply (code blocks + run prompt) ───────────────────────────────────
 function _render_reply {
     param([string]$reply)
@@ -250,7 +385,6 @@ function _render_reply {
 
 function _yohnai_send {
     param([string]$prompt)
-
     [void]$_YOHNAI_HISTORY.Add(@{ role = "user"; content = $prompt })
 
     $OR  = "https://openrouter.ai/api/v1/chat/completions"
@@ -258,63 +392,101 @@ function _yohnai_send {
     $ORK = $env:OPENROUTER_API_KEY
     $GQK = $env:GROQ_API_KEY
 
-    # ── Urutan fallback ────────────────────────────────────────────────────────
-    # Primary: Hermes 3 405b (OpenRouter berbayar, terbaik)
-    # Fallback gratis: Groq Llama 3.3 → Groq DeepSeek R1 → OpenRouter free models
-    $chain = @(
-        @{ url=$OR; key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="Hermes 3";    icon="🔮"; color=$PRP }
+    $fallbackChain = @(
         @{ url=$GQ; key=$GQK; model="llama-3.3-70b-versatile";              label="Llama 3.3";   icon="💬"; color=$WHT }
-        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-qwen-32b";          label="DeepSeek R1"; icon="💻"; color=$GRN }
+        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-qwen-32b";         label="DeepSeek R1"; icon="💻"; color=$GRN }
         @{ url=$GQ; key=$GQK; model="llama-3.1-8b-instant";                 label="Llama 3.1";   icon="⚡"; color=$CYN }
         @{ url=$OR; key=$ORK; model="meta-llama/llama-3.3-70b-instruct:free"; label="Llama free"; icon="💬"; color=$GRY }
         @{ url=$OR; key=$ORK; model="qwen/qwen3-8b:free";                    label="Qwen3 free";  icon="🧠"; color=$GRY }
         @{ url=$OR; key=$ORK; model="mistralai/mistral-small-3.1-24b-instruct:free"; label="Mistral free"; icon="💡"; color=$GRY }
     )
 
-    # [void] wajib pada semua List.Add() — tanpanya PowerShell bocorkan return value ke pipeline
-    $sysMsgs = [System.Collections.Generic.List[object]]::new()
-    [void]$sysMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
-    foreach ($m in $_YOHNAI_HISTORY) { [void]$sysMsgs.Add(@{ role=$m.role; content=$m.content }) }
+    # Base messages dari history (termasuk user msg yang baru ditambah)
+    $baseMsgs = [System.Collections.Generic.List[object]]::new()
+    [void]$baseMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
+    foreach ($m in $_YOHNAI_HISTORY) { [void]$baseMsgs.Add($m) }
 
     Write-Host ""
     Write-Host "  ${PRP}🔮${R} ${GRY}mengirim ke Hermes 3...${R}"
 
     $reply     = $null
-    $usedEntry = $chain[0]
+    $usedEntry = @{ label="Hermes 3"; icon="🔮"; color=$PRP }
 
-    foreach ($entry in $chain) {
-        if (-not $entry.key) { continue }
-        $r = _api_call $entry.url $entry.key $entry.model $sysMsgs 2048
-        if ($r) { $reply = $r; $usedEntry = $entry; break }
+    # ══ PHASE 1: Hermes 3 dengan agentic tool use (max 8 round) ══════════════
+    if ($ORK) {
+        $toolMsgs = [System.Collections.Generic.List[object]]::new()
 
-        # Auto-fix: jika 401, reload key files dan retry sekali
-        if ($script:_lastApiError -like "*401*" -and -not $script:_keysReloaded) {
-            $script:_keysReloaded = $true
-            _reload_keys
-            $freshKey = if ($entry.url -like "*groq*") { $env:GROQ_API_KEY } else { $env:OPENROUTER_API_KEY }
-            if ($freshKey -and $freshKey -ne $entry.key) {
-                Write-Host "  ${YEL}🔑 Key diperbarui, retry...${R}"
-                $r2 = _api_call $entry.url $freshKey $entry.model $sysMsgs 2048
-                if ($r2) { $reply = $r2; $usedEntry = $entry; break }
+        for ($round = 0; $round -lt 8; $round++) {
+            $curMsgs = [System.Collections.Generic.List[object]]::new()
+            foreach ($m in $baseMsgs) { [void]$curMsgs.Add($m) }
+            foreach ($m in $toolMsgs) { [void]$curMsgs.Add($m) }
+
+            $raw = _api_call_raw $OR $ORK "nousresearch/hermes-3-llama-3.1-405b" $curMsgs 4096 0.7 $true
+            if (-not $raw) { break }
+
+            $msg       = $raw.choices[0].message
+            $toolCalls = $msg.tool_calls
+
+            if (-not $toolCalls -or $toolCalls.Count -eq 0) {
+                # Tidak ada tool call → reply akhir
+                $reply = $msg.content
+                break
+            }
+
+            # Ada tool calls → jalankan semua, tambah ke toolMsgs (BUKAN history utama)
+            [void]$toolMsgs.Add(@{
+                role       = "assistant"
+                content    = if ($msg.content) { [string]$msg.content } else { "" }
+                tool_calls = $toolCalls
+            })
+
+            foreach ($tc in $toolCalls) {
+                $tName = [string]$tc.function.name
+                try   { $tArgs = ([string]$tc.function.arguments) | ConvertFrom-Json }
+                catch { $tArgs = [PSCustomObject]@{} }
+
+                Write-Host "  ${PRP}🔧${R} ${WHT}$tName${R}"
+                $tResult = [string](_execute_tool $tName $tArgs)
+                [void]$toolMsgs.Add(@{ role="tool"; tool_call_id=[string]$tc.id; content=$tResult })
+            }
+            Write-Host "  ${PRP}🔮${R} ${GRY}Hermes memproses hasil...${R}"
+        }
+    }
+
+    # ══ PHASE 2: Fallback ke model gratis jika Hermes gagal ══════════════════
+    if (-not $reply) {
+        foreach ($entry in $fallbackChain) {
+            if (-not $entry.key) { continue }
+            $r = _api_call $entry.url $entry.key $entry.model $baseMsgs 2048
+            if ($r) { $reply = $r; $usedEntry = $entry; break }
+
+            if ($script:_lastApiError -like "*401*" -and -not $script:_keysReloaded) {
+                $script:_keysReloaded = $true
+                _reload_keys
+                $freshKey = if ($entry.url -like "*groq*") { $env:GROQ_API_KEY } else { $env:OPENROUTER_API_KEY }
+                if ($freshKey -and $freshKey -ne $entry.key) {
+                    Write-Host "  ${YEL}🔑 Key diperbarui, retry...${R}"
+                    $r2 = _api_call $entry.url $freshKey $entry.model $baseMsgs 2048
+                    if ($r2) { $reply = $r2; $usedEntry = $entry; break }
+                }
             }
         }
     }
 
     if (-not $reply) {
         Write-Host "  ${RED}YohnAI: Semua model tidak tersedia.${R}"
-        if ($script:_lastApiError) { Write-Host "  ${RED}Error terakhir: $($script:_lastApiError)${R}" }
-        Write-Host "  ${GRY}Cek: api (test)${R}"
+        if ($script:_lastApiError) { Write-Host "  ${RED}Error: $($script:_lastApiError)${R}" }
+        Write-Host "  ${GRY}Cek: diagnose${R}"
         [void]$_YOHNAI_HISTORY.RemoveAt($_YOHNAI_HISTORY.Count - 1)
         Write-Host ""; return
     }
 
     [void]$_YOHNAI_HISTORY.Add(@{ role = "assistant"; content = $reply })
-    while ($_YOHNAI_HISTORY.Count -gt 40) { [void]$_YOHNAI_HISTORY.RemoveAt(0) }
+    while ($_YOHNAI_HISTORY.Count -gt 60) { [void]$_YOHNAI_HISTORY.RemoveAt(0) }
 
-    # ══ DISPLAY ════════════════════════════════════════════════════════════════
     Write-Host "  $($usedEntry.icon) $($usedEntry.color)$($usedEntry.label)${R}"
     Write-Host ""
-    _render_reply $reply
+    $null = _render_reply $reply
     Write-Host ""
 }
 
