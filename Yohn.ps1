@@ -86,8 +86,13 @@ Kemampuan kamu:
 - Buat aplikasi dari nol (Python, web, Android, dll)
 - Bantu setup environment, install tools, konfigurasi sistem
 - Analisis error dan kasih solusi langsung
-- Jalankan perintah PowerShell/Python jika diminta
+- Kontrol hardware & OS lewat PowerShell (WinAPI, COM, registry, proses, file, jaringan)
+- Browser automation via Playwright/Selenium (Python atau JS) — tulis script, kirim ke YohnShell, jalankan langsung
+- Task scheduling, screen automation, input simulation (pyautogui, ahk, nircmd)
 - Diskusi teknis atau non-teknis
+
+PENTING tentang eksekusi kode di YohnShell:
+Setiap kode PowerShell atau Python yang kamu tulis bisa langsung dijalankan oleh Yohn — YohnShell akan tanya "Jalankan? [y/N]" setelah menampilkan kode. Jadi SELALU bungkus kode yang bisa dijalankan dalam ```powershell atau ```python. Ini adalah kekuatan utama YohnShell.
 
 YohnShell — Tim Spesialis AI (router pilih otomatis per tugas):
 - 💬 Llama 3.3 70b (Groq, gratis)     — chat umum, pertanyaan simpel
@@ -185,7 +190,7 @@ function _api_call {
             max_tokens  = $maxTok
             temperature = $temp
         }
-        $body = $payload | ConvertTo-Json -Depth 15 -Compress
+        $body = ConvertTo-Json -InputObject $payload -Depth 15 -Compress
         $headers = @{ "Authorization" = "Bearer $key" }
         $r = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers `
              -Body $body -ContentType "application/json; charset=utf-8" -TimeoutSec 30
@@ -205,7 +210,7 @@ function _api_call {
 # ── Render reply (code blocks + run prompt) ───────────────────────────────────
 function _render_reply {
     param([string]$reply)
-    $lines    = $reply -split "`n"
+    $lines    = ($reply -replace "`r`n","`n" -replace "`r","`n") -split "`n"
     $inCode   = $false
     $codeBuf  = [System.Collections.Generic.List[string]]::new()
     $codeLang = ""
@@ -259,11 +264,11 @@ function _yohnai_send {
     $chain = @(
         @{ url=$OR; key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="Hermes 3";    icon="🔮"; color=$PRP }
         @{ url=$GQ; key=$GQK; model="llama-3.3-70b-versatile";              label="Llama 3.3";   icon="💬"; color=$WHT }
-        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-llama-70b";        label="DeepSeek R1"; icon="💻"; color=$GRN }
+        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-qwen-32b";          label="DeepSeek R1"; icon="💻"; color=$GRN }
         @{ url=$GQ; key=$GQK; model="llama-3.1-8b-instant";                 label="Llama 3.1";   icon="⚡"; color=$CYN }
         @{ url=$OR; key=$ORK; model="meta-llama/llama-3.3-70b-instruct:free"; label="Llama free"; icon="💬"; color=$GRY }
-        @{ url=$OR; key=$ORK; model="google/gemini-2.0-flash-exp:free";       label="Gemini free"; icon="✨"; color=$GRY }
-        @{ url=$OR; key=$ORK; model="mistralai/mistral-7b-instruct:free";     label="Mistral free"; icon="💡"; color=$GRY }
+        @{ url=$OR; key=$ORK; model="qwen/qwen3-8b:free";                    label="Qwen3 free";  icon="🧠"; color=$GRY }
+        @{ url=$OR; key=$ORK; model="mistralai/mistral-small-3.1-24b-instruct:free"; label="Mistral free"; icon="💡"; color=$GRY }
     )
 
     # [void] wajib pada semua List.Add() — tanpanya PowerShell bocorkan return value ke pipeline
@@ -460,11 +465,11 @@ function models {
     Write-Host ""
     Write-Host "  ${GRY}FALLBACK GRATIS (jika Hermes limit/error)${R}"
     Write-Host "  ${WHT}💬 Llama 3.3 70b${R}  ${GRY}Groq — cepat, gratis${R}"
-    Write-Host "  ${WHT}💻 DeepSeek R1${R}    ${GRY}Groq — reasoning & coding${R}"
+    Write-Host "  ${WHT}💻 DeepSeek R1${R}    ${GRY}Groq — reasoning & coding (qwen-32b)${R}"
     Write-Host "  ${WHT}⚡ Llama 3.1 8b${R}   ${GRY}Groq — ringan, gratis${R}"
     Write-Host "  ${WHT}💬 Llama free${R}     ${GRY}OpenRouter free tier${R}"
-    Write-Host "  ${WHT}✨ Gemini free${R}    ${GRY}OpenRouter free tier${R}"
-    Write-Host "  ${WHT}💡 Mistral free${R}   ${GRY}OpenRouter free tier${R}"
+    Write-Host "  ${WHT}🧠 Qwen3 8b${R}      ${GRY}OpenRouter free tier${R}"
+    Write-Host "  ${WHT}💡 Mistral small${R}  ${GRY}OpenRouter free tier${R}"
     Write-Host ""
     Write-Host "  ${GRY}Hermes 3 selalu menjawab pertama.${R}"
     Write-Host "  ${GRY}Otomatis turun ke gratis jika rate limit.${R}"
@@ -545,18 +550,18 @@ function diagnose {
     $chainDiag = @(
         @{ url=$OR; key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="🔮 Hermes 3 405b" }
         @{ url=$GQ; key=$GQK; model="llama-3.3-70b-versatile";              label="💬 Llama 3.3 70b" }
-        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-llama-70b";        label="💻 DeepSeek R1 70b" }
+        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-qwen-32b";          label="💻 DeepSeek R1 (qwen)" }
         @{ url=$GQ; key=$GQK; model="llama-3.1-8b-instant";                 label="⚡ Llama 3.1 8b" }
         @{ url=$OR; key=$ORK; model="meta-llama/llama-3.3-70b-instruct:free"; label="💬 Llama free" }
-        @{ url=$OR; key=$ORK; model="google/gemini-2.0-flash-exp:free";       label="✨ Gemini free" }
-        @{ url=$OR; key=$ORK; model="mistralai/mistral-7b-instruct:free";     label="💡 Mistral free" }
+        @{ url=$OR; key=$ORK; model="qwen/qwen3-8b:free";                    label="🧠 Qwen3 8b free" }
+        @{ url=$OR; key=$ORK; model="mistralai/mistral-small-3.1-24b-instruct:free"; label="💡 Mistral small free" }
     )
     Write-Host "  ${PRP}${B}Test Model${R}"
     $okCount = 0
     foreach ($e in $chainDiag) {
         Write-Host "  $($e.label)... " -NoNewline
         if (-not $e.key) { Write-Host "${YEL}skip (no key)${R}"; continue }
-        $r = _api_call $e.url $e.key $e.model $testMsg 5
+        $r = [string]($(_api_call $e.url $e.key $e.model $testMsg 5) | Select-Object -Last 1)
         if ($r) { Write-Host "${GRN}OK${R}"; $okCount++ }
         else    { Write-Host "${RED}GAGAL${R}  ${GRY}$($script:_lastApiError)${R}" }
     }
@@ -603,7 +608,7 @@ $ExecutionContext.InvokeCommand.CommandNotFoundAction = {
     $eventArgs.CommandScriptBlock = {
         param([Parameter(ValueFromRemainingArguments=$true)][string[]]$rest)
         $full = (@($captured) + @($rest) | Where-Object { $_ }) -join " "
-        _yohnai_send $full
+        $null = _yohnai_send $full
     }.GetNewClosure()
     $eventArgs.StopSearch = $true
 }
