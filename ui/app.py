@@ -12,14 +12,11 @@ from core.config import Config
 from core.logger import get_logger
 
 _ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-def _get_data_file():
-    if getattr(sys, 'frozen', False):
-        _appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
-        _dir = os.path.join(_appdata, "Synthex", "data")
-        os.makedirs(_dir, exist_ok=True)
-        return os.path.join(_dir, "user_data.json")
-    return os.path.join(_ROOT, "data", "user_data.json")
-_DATA_FILE = _get_data_file()
+# Portable data dir: next to exe when frozen, project root when from source
+from core.paths import synthex_dir as _get_synthex_dir, data_dir as _get_data_dir
+_SYNTHEX_DIR = _get_synthex_dir()
+_DATA_DIR    = _get_data_dir()
+_DATA_FILE   = os.path.join(_DATA_DIR, "user_data.json")
 
 _DARK_PALETTE  = ("#0a0a0f","#111118","#16162a","#0d0d16",
                    "#7c3aed","#06b6d4","#e2e8f0","#64748b",
@@ -30,7 +27,7 @@ _LIGHT_PALETTE = ("#F4F4FA","#FFFFFF","#EEEEF6","#E8E8F2",
 
 def _get_theme_name() -> str:
     try:
-        _cfg = os.path.join(_ROOT, "config.json")
+        _cfg = os.path.join(_SYNTHEX_DIR, "config.json")
         with open(_cfg, encoding="utf-8") as _f:
             return json.load(_f).get("ui", {}).get("theme", "dark")
     except Exception:
@@ -122,7 +119,7 @@ class _TkLogHandler(logging.Handler):
 class _BrowserHistory:
     """Persistent browser navigation history, newest-first, max 500 entries."""
     MAX   = 500
-    _PATH = os.path.join(_ROOT, "data", "browser_history.json")
+    _PATH = os.path.join(_DATA_DIR, "browser_history.json")
 
     def __init__(self):
         self._entries: list = []
@@ -177,7 +174,7 @@ class _BrowserHistory:
 
 class _BrowserSessions:
     """Named browser sessions — each session is a list of {url, title} entries."""
-    _PATH = os.path.join(_ROOT, "data", "browser_sessions.json")
+    _PATH = os.path.join(_DATA_DIR, "browser_sessions.json")
 
     def __init__(self):
         self._sessions: list = []
@@ -253,7 +250,7 @@ class _BrowserSessions:
 
 class _UserScripts:
     """Per-domain userscripts — injected automatically after navigation."""
-    _PATH = os.path.join(_ROOT, "data", "userscripts.json")
+    _PATH = os.path.join(_DATA_DIR, "userscripts.json")
 
     def __init__(self):
         self._scripts: list = []
@@ -329,7 +326,7 @@ class _UserScripts:
 
 class _BrowserSchedules:
     """Scheduled browser automations — open URL / run steps at a set time."""
-    _PATH = os.path.join(_ROOT, "data", "browser_schedules.json")
+    _PATH = os.path.join(_DATA_DIR, "browser_schedules.json")
 
     def __init__(self):
         self._items: list = []
@@ -671,7 +668,7 @@ def _step_label(step):
 
 
 def _load_templates():
-    path = os.path.join(_ROOT, "data", "templates.json")
+    path = os.path.join(_DATA_DIR, "templates.json")
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -13729,7 +13726,7 @@ class SynthexApp:
 
         def _count_local():
             import json
-            p = os.path.join(_ROOT, "data", "templates.json")
+            p = os.path.join(_DATA_DIR, "templates.json")
             try:
                 with open(p, encoding="utf-8") as fh:
                     n = len(json.load(fh))
@@ -13744,7 +13741,7 @@ class SynthexApp:
             def _bg():
                 import json
                 from modules.master_config import set_firebase_templates
-                p = os.path.join(_ROOT, "data", "templates.json")
+                p = os.path.join(_DATA_DIR, "templates.json")
                 try:
                     with open(p, encoding="utf-8") as fh:
                         tpls = json.load(fh)
@@ -13771,7 +13768,7 @@ class SynthexApp:
                         self._root.after(0, lambda: _tpl_status.set(
                             "✗ Tidak ada template di Firebase."))
                     return
-                p = os.path.join(_ROOT, "data", "templates.json")
+                p = os.path.join(_DATA_DIR, "templates.json")
                 try:
                     with open(p, "w", encoding="utf-8") as fh:
                         json.dump(tpls, fh, indent=2, ensure_ascii=False)
@@ -17325,7 +17322,7 @@ class SynthexApp:
 
         def _export():
             date_str = datetime.now().strftime("%Y-%m-%d")
-            csv_path = os.path.join(_ROOT, "data",
+            csv_path = os.path.join(_DATA_DIR,
                                     "confirmation_report_{}.csv".format(date_str))
             if os.path.exists(csv_path):
                 self._show_alert("Export Report",
@@ -18097,10 +18094,9 @@ class SynthexApp:
             _fa_logout()
         except Exception:
             pass
-        # Clear token files (both legacy .json and new .enc)
-        _appdata = os.environ.get("APPDATA", "")
+        # Clear token files
         for _tname in ("token.enc", "token.json"):
-            _tp = os.path.join(_appdata, "Synthex", _tname)
+            _tp = os.path.join(_DATA_DIR, _tname)
             if os.path.exists(_tp):
                 try:
                     os.remove(_tp)
@@ -19417,9 +19413,8 @@ class SynthexApp:
         def _do_quit():
             dlg.destroy()
             import os as _os
-            _appdata = _os.environ.get("APPDATA", "")
             for _tname in ("token.enc", "token.json"):
-                _tp = _os.path.join(_appdata, "Synthex", _tname)
+                _tp = _os.path.join(_DATA_DIR, _tname)
                 if _os.path.exists(_tp):
                     try: _os.remove(_tp)
                     except Exception: pass

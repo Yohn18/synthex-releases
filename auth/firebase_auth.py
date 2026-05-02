@@ -16,9 +16,8 @@ import requests
 _logger       = logging.getLogger("firebase_auth")
 _session_lock = threading.Lock()
 
-_TOKEN_FILE = os.path.join(
-    os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex", "token.enc")
-os.makedirs(os.path.dirname(_TOKEN_FILE), exist_ok=True)
+from core.paths import data_dir as _get_data_dir
+_TOKEN_FILE = os.path.join(_get_data_dir(), "token.enc")
 
 # ── DPAPI helpers (Windows Data Protection API) ───────────────────────────────
 def _dpapi_encrypt(data: bytes) -> bytes:

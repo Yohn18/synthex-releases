@@ -7,14 +7,14 @@ import os
 import tempfile
 import threading
 from typing import Any
+from core.paths import synthex_dir as _get_synthex_dir
 
 
 class Config:
     def __init__(self, path: str = "config.json"):
-        # Resolve relative paths to AppData\Synthex so the EXE can write there
+        # Resolve relative paths to the Synthex data dir (next to exe when frozen)
         if not os.path.isabs(path):
-            appdata = os.environ.get("APPDATA", os.path.expanduser("~"))
-            synthex_dir = os.path.join(appdata, "Synthex")
+            synthex_dir = _get_synthex_dir()
             os.makedirs(synthex_dir, exist_ok=True)
             appdata_path = os.path.join(synthex_dir, os.path.basename(path))
             # Always sync app.version from bundled config so the exe version

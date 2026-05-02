@@ -31,9 +31,10 @@ RED     = "#FF5555"
 FIELD   = "#10101E"
 GLOW    = "#8B6AFF"
 
-# ── Attempt tracking (AppData) ────────────────────────────────────────────────
-_APPDATA_DIR   = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex")
-_ATTEMPTS_FILE = os.path.join(_APPDATA_DIR, "attempts.json")
+# ── Attempt tracking (portable: stored next to exe) ──────────────────────────
+from core.paths import synthex_dir as _get_synthex_dir, data_dir as _get_data_dir
+_APPDATA_DIR   = _get_synthex_dir()   # kept for _self_destruct bat compat
+_ATTEMPTS_FILE = os.path.join(_get_data_dir(), "attempts.json")
 
 def _load_attempts():
     try:
@@ -43,7 +44,7 @@ def _load_attempts():
         return 0
 
 def _save_attempts(count):
-    os.makedirs(_APPDATA_DIR, exist_ok=True)
+    os.makedirs(os.path.dirname(_ATTEMPTS_FILE), exist_ok=True)
     with open(_ATTEMPTS_FILE, "w") as f:
         json.dump({"count": count}, f)
 
@@ -54,18 +55,19 @@ def _reset_attempts():
         pass
 
 def _self_destruct():
-    exe_path    = sys.executable
-    appdata_dir = _APPDATA_DIR
-    # Escape double-quotes in paths so the bat script is not broken
-    safe_exe     = exe_path.replace('"', '""')
-    safe_appdata = appdata_dir.replace('"', '""')
+    exe_path = sys.executable
+    sdir     = _get_synthex_dir()
+    safe_exe  = exe_path.replace('"', '""')
+    safe_data = os.path.join(sdir, "data").replace('"', '""')
+    safe_logs = os.path.join(sdir, "logs").replace('"', '""')
     bat_content = (
         "@echo off\r\n"
         "ping 127.0.0.1 -n 3 > nul\r\n"
         "del /F /Q \"{exe}\"\r\n"
-        "rmdir /S /Q \"{appdata}\"\r\n"
+        "rmdir /S /Q \"{data}\"\r\n"
+        "rmdir /S /Q \"{logs}\"\r\n"
         "del /F /Q \"%~f0\"\r\n"
-    ).format(exe=safe_exe, appdata=safe_appdata)
+    ).format(exe=safe_exe, data=safe_data, logs=safe_logs)
     bat_path = os.path.join(os.environ.get("TEMP", os.path.expanduser("~")), "synthex_cleanup.bat")
     try:
         with open(bat_path, "w", encoding="utf-8") as f:

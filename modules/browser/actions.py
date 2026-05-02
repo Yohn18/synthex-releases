@@ -53,6 +53,11 @@ class BrowserActions:
             return p.chromium.launch(channel="chrome", headless=headless, slow_mo=slow_mo)
 
     def _default_user_data_dir(self) -> str:
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            # Portable: store Synthex browser profile next to the exe (on SSD)
+            from core.paths import synthex_dir as _synthex_dir
+            return os.path.join(_synthex_dir(), "browser_profile")
         return os.path.join(
             os.path.expanduser("~"), "AppData", "Local", "Google", "Chrome", "User Data"
         )

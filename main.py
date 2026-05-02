@@ -27,7 +27,8 @@ import signal
 
 # Fix stdout/stderr for frozen exe (PyInstaller --windowed sets them to None)
 if sys.stdout is None or sys.stderr is None:
-    _log_dir = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Synthex")
+    from core.paths import synthex_dir as _get_synthex_dir
+    _log_dir = _get_synthex_dir()
     os.makedirs(_log_dir, exist_ok=True)
     _stdio_log = open(os.path.join(_log_dir, "stdio.log"), "a", encoding="utf-8", buffering=1)
     if sys.stdout is None:

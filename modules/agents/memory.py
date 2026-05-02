@@ -8,9 +8,9 @@ import json
 import sqlite3
 import time
 import threading
+from core.paths import data_dir as _get_data_dir
 
-_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__)))), "data", "agents_memory.db")
+_DB_PATH = os.path.join(_get_data_dir(), "agents_memory.db")
 
 
 class AgentMemory:

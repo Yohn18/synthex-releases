@@ -11,7 +11,8 @@ import certifi
 _RTDB = "https://synthex-yohn18-default-rtdb.asia-southeast1.firebasedatabase.app"
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _RULES_PATH  = os.path.join(_ROOT, "database.rules.json")
-_GTOKEN_PATH = os.path.join(os.environ.get("APPDATA", ""), "Synthex", "gtoken.json")
+from core.paths import data_dir as _get_data_dir
+_GTOKEN_PATH = os.path.join(_get_data_dir(), "gtoken.json")
 
 _MASTER = "auth.token.email == 'yohanesnzzz777@gmail.com'"
 

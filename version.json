@@ -1,8 +1,8 @@
 {
-  "latest_version": "1.3.70",
-  "min_version": "1.3.67",
-  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.70/Synthex.exe",
-  "changelog": "1.3.70: Fix bug web browser — race condition restart, JS inject ke halaman aktif, validasi URL di open URL, STEP_TYPES lengkap, replay cek file dulu, hapus sleep di recording start",
+  "latest_version": "1.3.72",
+  "min_version": "1.3.71",
+  "download_url": "https://github.com/Yohn18/synthex-releases/releases/download/v1.3.72/Synthex.exe",
+  "changelog": "1.3.72: Portable SSD mode \u2014 semua data tulis next to exe; browser profile portable; agents_memory.db portable; fix backup.ps1 path + auto-hapus 10 backup terlama",
   "maintenance": false,
   "maintenance_msg": ""
 }
