@@ -119,6 +119,62 @@ class _TkLogHandler(logging.Handler):
         self._w.configure(state="disabled")
 
 
+class _BrowserHistory:
+    """Persistent browser navigation history, newest-first, max 500 entries."""
+    MAX   = 500
+    _PATH = os.path.join(_ROOT, "data", "browser_history.json")
+
+    def __init__(self):
+        self._entries: list = []
+        self._lock = threading.Lock()
+        self._load()
+
+    def _load(self):
+        try:
+            with open(self._PATH, "r", encoding="utf-8") as f:
+                self._entries = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            pass
+
+    def add(self, url: str, title: str):
+        entry = {"url": url, "title": title or url,
+                 "ts": datetime.now().strftime("%Y-%m-%d %H:%M")}
+        with self._lock:
+            self._entries = [e for e in self._entries if e.get("url") != url]
+            self._entries.insert(0, entry)
+            if len(self._entries) > self.MAX:
+                self._entries = self._entries[:self.MAX]
+        self._save()
+
+    def search(self, query: str) -> list:
+        q = query.lower()
+        with self._lock:
+            if not q:
+                return list(self._entries)
+            return [e for e in self._entries
+                    if q in e.get("url", "").lower() or q in e.get("title", "").lower()]
+
+    def clear(self):
+        with self._lock:
+            self._entries.clear()
+        self._save()
+
+    def _save(self):
+        os.makedirs(os.path.dirname(self._PATH), exist_ok=True)
+        import tempfile as _tf
+        d = os.path.dirname(self._PATH)
+        with self._lock:
+            snapshot = list(self._entries)
+        fd, tmp = _tf.mkstemp(dir=d, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(snapshot, fh, indent=2)
+            os.replace(tmp, self._PATH)
+        except Exception:
+            try: os.unlink(tmp)
+            except OSError: pass
+
+
 class UserData:
     def __init__(self):
         self._lock = threading.Lock()
@@ -479,8 +535,9 @@ class SynthexApp:
         self._root   = None
         self._email  = None
         self._token  = None
-        self._ud      = UserData()
-        self._ud_lock    = threading.Lock()
+        self._ud           = UserData()
+        self._browser_hist = _BrowserHistory()
+        self._ud_lock      = threading.Lock()
         self._dm_poll_id = None
         self._pages  = {}
         self._nav    = {}
@@ -2062,6 +2119,57 @@ class SynthexApp:
         _ck.Button(act_row, text="🗑 Hapus", fg_color="#3A1A1A", text_color=RED,
                    font=("Segoe UI", 9), padx=10, pady=4,
                    command=_delete_selected).pack(side="left")
+
+        # ── Browser History ───────────────────────────────────────────────────
+        hc = _card(f, "History")
+        hc.pack(fill="both", expand=True, padx=20, pady=(12, 0))
+
+        # Toolbar: search + clear
+        hist_top = _ck.Frame(hc, fg_color=CARD)
+        hist_top.pack(fill="x", pady=(0, 6))
+
+        hist_search_var = tk.StringVar()
+        hist_entry = _ck.Entry(hist_top, textvariable=hist_search_var,
+                               font=("Segoe UI", 10),
+                               placeholder_text="Cari URL atau judul…")
+        hist_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+
+        def _clear_hist():
+            self._browser_hist.clear()
+            _refresh_hist()
+
+        _ck.Button(hist_top, text="Hapus Semua", fg_color="#3A1A1A", text_color=RED,
+                   font=("Segoe UI", 9), padx=10, pady=4,
+                   command=_clear_hist).pack(side="left")
+
+        hist_tree = _tree(hc, [
+            ("ts",    "Waktu",  130),
+            ("title", "Judul",  220),
+            ("url",   "URL",    320),
+        ])
+
+        def _refresh_hist(query=""):
+            hist_tree.delete(*hist_tree.get_children())
+            for e in self._browser_hist.search(query):
+                hist_tree.insert("", "end", values=(
+                    e.get("ts", ""), e.get("title", ""), e.get("url", "")))
+
+        def _on_hist_search(*_):
+            _refresh_hist(hist_search_var.get().strip())
+
+        hist_search_var.trace_add("write", _on_hist_search)
+
+        def _open_hist(event=None):
+            sel = hist_tree.selection()
+            if not sel:
+                return
+            vals = hist_tree.item(sel[0], "values")
+            if vals and len(vals) >= 3:
+                self._url.set(vals[2])
+                self._open_url()
+
+        hist_tree.bind("<Double-1>", _open_hist)
+        _refresh_hist()
 
         _ck.Frame(f, fg_color=BG, height=20).pack()
         return f
@@ -13271,6 +13379,7 @@ class SynthexApp:
         def _worker():
             try:
                 title = self.engine.open_url(url)
+                self._browser_hist.add(url, title or "")
                 msg = "Dibuka: {}".format(title or url)
                 self._root.after(0, lambda: self._sv.set(msg))
             except Exception as e:
