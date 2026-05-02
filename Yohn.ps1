@@ -241,90 +241,33 @@ function _yohnai_send {
     $ORK = $env:OPENROUTER_API_KEY
     $GQK = $env:GROQ_API_KEY
 
-    # ── Definisi spesialis ────────────────────────────────────────────────────
-    # Tiap spesialis punya keahlian + model terbaik untuknya
-    $specDef = @{
-        # Gratis via Groq
-        "chat"     = @{ url=$GQ;  key=$GQK; model="llama-3.3-70b-versatile";              label="Llama 3.3";    icon="💬"; color=$WHT  }
-        "code"     = @{ url=$GQ;  key=$GQK; model="deepseek-r1-distill-llama-70b";        label="DeepSeek R1";  icon="💻"; color=$GRN  }
-        "reason"   = @{ url=$GQ;  key=$GQK; model="deepseek-r1-distill-llama-70b";        label="DeepSeek R1";  icon="🧠"; color=$YEL  }
-        # OpenRouter (berbayar, kualitas tinggi)
-        "codepro"  = @{ url=$OR;  key=$ORK; model="qwen/qwen-2.5-72b-instruct";           label="Qwen 2.5";     icon="⚡"; color=$CYN  }
-        "docs"     = @{ url=$OR;  key=$ORK; model="google/gemini-2.0-flash-001";           label="Gemini 2.0";   icon="✨"; color=$GRN  }
-        "creative" = @{ url=$OR;  key=$ORK; model="openai/gpt-4o-mini";                   label="GPT-4o";       icon="💡"; color=$WHT  }
-        # Hermes 3 — reasoning + tool use + instruction following terbaik
-        "hermes"   = @{ url=$OR;  key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="Hermes 3";     icon="🔮"; color=$PRP  }
-        # Claude — nuansa & sintesis
-        "claude"   = @{ url=$OR;  key=$ORK; model="anthropic/claude-haiku-4-5";           label="Claude Haiku"; icon="👑"; color=$PRP  }
-    }
-
-    # ══ STEP 1 — Router (Llama 8b, gratis, cepat) ════════════════════════════
-    Write-Host ""
-    Write-Host "  ${CYN}${B}YohnAI${R} ${GRY}▸ routing...${R}" -NoNewline
-
-    $routeContent = "Tugas user: $prompt`n`nPilih SATU worker + opsional 1 assistant:`n- chat: ngobrol/simpel`n- code: coding/debug`n- reason: logika/matematika`n- codepro: coding besar/arsitektur`n- docs: dokumen panjang/analisis`n- creative: kreatif/ide`n- hermes: multi-step reasoning, tool use, instruksi kompleks`n- claude: nuansa bahasa/sintesis`n`nHemat: pakai chat/code/reason dulu (gratis). hermes/claude hanya jika task kompleks.`n`nJawab JSON: {`"worker`":`"nama`",`"assistant`":null,`"reason`":`"singkat`"}"
-    $routeQ = [System.Collections.Generic.List[object]]::new()
-    $routeQ.Add(@{ role="system"; content="Kamu AI router. Jawab JSON saja tanpa teks lain." })
-    $routeQ.Add(@{ role="user"; content=$routeContent })
-
-    $routeRaw = _api_call $GQ $GQK "llama-3.1-8b-instant" $routeQ 80 0.1
-    if (-not $routeRaw) { $routeRaw = _api_call $OR $ORK "anthropic/claude-haiku-4-5" $routeQ 80 0.1 }
-
-    $route = $null
-    if ($routeRaw) {
-        $jsonStr = if ($routeRaw -match '\{[^{}]+\}') { $matches[0] } else { $routeRaw }
-        try { $route = $jsonStr | ConvertFrom-Json } catch {}
-    }
-
-    $workerKey    = if ($route -and $route.worker    -and $specDef.ContainsKey($route.worker))    { $route.worker }    else { "chat" }
-    $assistantKey = if ($route -and $route.assistant -and $specDef.ContainsKey($route.assistant)) { $route.assistant } else { $null }
-
-    # ══ STEP 2 — Worker utama menjawab ═══════════════════════════════════════
-    $wd = $specDef[$workerKey]
-    Write-Host "`r  $($wd.icon) ${GRY}$($wd.label) mengerjakan...${R}                    " -NoNewline
+    # ── Urutan fallback ────────────────────────────────────────────────────────
+    # Primary: Hermes 3 405b (OpenRouter berbayar, terbaik)
+    # Fallback gratis: Groq Llama 3.3 → Groq DeepSeek R1 → OpenRouter free models
+    $chain = @(
+        @{ url=$OR; key=$ORK; model="nousresearch/hermes-3-llama-3.1-405b"; label="Hermes 3";    icon="🔮"; color=$PRP }
+        @{ url=$GQ; key=$GQK; model="llama-3.3-70b-versatile";              label="Llama 3.3";   icon="💬"; color=$WHT }
+        @{ url=$GQ; key=$GQK; model="deepseek-r1-distill-llama-70b";        label="DeepSeek R1"; icon="💻"; color=$GRN }
+        @{ url=$GQ; key=$GQK; model="llama-3.1-8b-instant";                 label="Llama 3.1";   icon="⚡"; color=$CYN }
+        @{ url=$OR; key=$ORK; model="meta-llama/llama-3.3-70b-instruct:free"; label="Llama free"; icon="💬"; color=$GRY }
+        @{ url=$OR; key=$ORK; model="google/gemini-2.0-flash-exp:free";       label="Gemini free"; icon="✨"; color=$GRY }
+        @{ url=$OR; key=$ORK; model="mistralai/mistral-7b-instruct:free";     label="Mistral free"; icon="💡"; color=$GRY }
+    )
 
     $sysMsgs = [System.Collections.Generic.List[object]]::new()
     $sysMsgs.Add(@{ role="system"; content=$_YOHNAI_SYSTEM })
     foreach ($m in $_YOHNAI_HISTORY) { $sysMsgs.Add(@{ role=$m.role; content=$m.content }) }
 
-    $workerReply = _api_call $wd.url $wd.key $wd.model $sysMsgs 2048
-    if (-not $workerReply) { $workerReply = _api_call $GQ $GQK "llama-3.3-70b-versatile" $sysMsgs 2048 }
+    Write-Host ""
+    Write-Host "  ${PRP}🔮${R} ${GRY}Hermes 3 mengerjakan...${R}" -NoNewline
 
-    # ══ STEP 3 — Assistant review (opsional, hanya jika diperlukan) ══════════
-    $assistantNote = $null
-    if ($assistantKey -and $workerReply) {
-        $ad = $specDef[$assistantKey]
-        Write-Host "`r  $($ad.icon) ${GRY}$($ad.label) review...${R}                         " -NoNewline
-        $reviewMsgs = @(
-            @{ role="system"; content="Kamu reviewer AI. Baca jawaban berikut dan tambahkan HANYA jika ada yang kurang/salah. Jika sudah baik, jawab 'OK' saja. Singkat." },
-            @{ role="user";   content="Pertanyaan: $prompt`n`nJawaban: $workerReply" }
-        )
-        $rev = _api_call $ad.url $ad.key $ad.model $reviewMsgs 400
-        if ($rev -and $rev.Trim() -ne "OK" -and $rev.Length -gt 5) { $assistantNote = $rev }
-    }
+    $reply     = $null
+    $usedEntry = $chain[0]
 
-    # ══ STEP 4 — Gabungkan jika ada catatan assistant ═════════════════════════
-    $reply     = $workerReply
-    $usedLabel = $wd.label
-
-    if ($assistantNote) {
-        # Jika ada tambahan dari assistant, gabungkan lewat Claude atau worker sendiri
-        $mergeMsgs = @(
-            @{ role="system"; content="Gabungkan dua perspektif berikut jadi satu jawaban terbaik. Bahasa Indonesia santai. Langsung ke inti." },
-            @{ role="user";   content="Jawaban utama:`n$workerReply`n`nTambahan review:`n$assistantNote`n`nPertanyaan asal: $prompt" }
-        )
-        # Gunakan Claude untuk merge hanya jika ada dua perspektif
-        $merged = _api_call $OR $ORK "anthropic/claude-haiku-4-5" $mergeMsgs 2048
-        if (-not $merged) { $merged = _api_call $GQ $GQK "llama-3.3-70b-versatile" $mergeMsgs 2048 }
-        if ($merged) { $reply = $merged; $usedLabel = "$($wd.label) + $($specDef[$assistantKey].label)" }
-    }
-
-    # Fallback total — hanya model yang masih aktif di OpenRouter
-    if (-not $reply) {
-        foreach ($fm in @("meta-llama/llama-3.3-70b-instruct:free","google/gemini-2.0-flash-exp:free","mistralai/mistral-7b-instruct:free")) {
-            $r = _api_call $OR $ORK $fm $sysMsgs 2048
-            if ($r) { $reply = $r; $usedLabel = ($fm -split "/")[-1]; break }
-        }
+    foreach ($entry in $chain) {
+        if (-not $entry.key) { continue }
+        $r = _api_call $entry.url $entry.key $entry.model $sysMsgs 2048
+        if ($r) { $reply = $r; $usedEntry = $entry; break }
     }
 
     if (-not $reply) {
@@ -339,8 +282,8 @@ function _yohnai_send {
     while ($_YOHNAI_HISTORY.Count -gt 40) { $_YOHNAI_HISTORY.RemoveAt(0) }
 
     # ══ DISPLAY ════════════════════════════════════════════════════════════════
-    $workerColor = $wd.color
-    Write-Host "`r  $($wd.icon) $workerColor$($wd.label)${R} ${GRY}[$usedLabel]${R}                              "
+    $workerColor = $usedEntry.color
+    Write-Host "`r  $($usedEntry.icon) $workerColor$($usedEntry.label)${R}                                    "
     Write-Host ""
 
     _render_reply $reply
@@ -353,9 +296,9 @@ $_welcomeJob = Start-Job -ScriptBlock {
     $tod = if ($hour -lt 12) { "pagi" } elseif ($hour -lt 17) { "siang" } else { "malam" }
     $sys = "Kamu YohnAI di YohnShell terminal. Sambut Yohn dengan 1 kalimat singkat, santai, dan natural — seperti teman. Bahasa Indonesia gaul. Tanpa tanda bintang atau markdown."
     $models = @(
-        @{ uri="https://openrouter.ai/api/v1/chat/completions"; key=$orKey;   model="anthropic/claude-haiku-4-5"  },
-        @{ uri="https://openrouter.ai/api/v1/chat/completions"; key=$orKey;   model="anthropic/claude-3.5-haiku"  },
-        @{ uri="https://api.groq.com/openai/v1/chat/completions"; key=$groqKey; model="llama-3.1-8b-instant"     }
+        @{ uri="https://openrouter.ai/api/v1/chat/completions"; key=$orKey;   model="nousresearch/hermes-3-llama-3.1-405b" },
+        @{ uri="https://api.groq.com/openai/v1/chat/completions"; key=$groqKey; model="llama-3.3-70b-versatile"            },
+        @{ uri="https://api.groq.com/openai/v1/chat/completions"; key=$groqKey; model="llama-3.1-8b-instant"               }
     )
     foreach ($m in $models) {
         try {
@@ -485,30 +428,22 @@ function reload {
 # ── Models list ──────────────────────────────────────────────────────────────
 function models {
     Write-Host ""
-    Write-Host "  ${CYN}${B}YohnAI — Tim Spesialis${R}"
+    Write-Host "  ${CYN}${B}YohnAI — Model Chain${R}"
     Write-Host "  ${GRY}$('─' * 54)${R}"
     Write-Host ""
-    Write-Host "  ${GRY}ROUTER (gratis, ~0.2s)${R}"
-    Write-Host "  ${WHT}💬 Llama 3.1 8b${R}   ${GRY}Groq · klasifikasi tugas${R}"
+    Write-Host "  ${GRY}PRIMARY (selalu dicoba pertama)${R}"
+    Write-Host "  ${WHT}${PRP}🔮 Hermes 3 405b${R}  ${GRY}OpenRouter · reasoning, coding, semua task${R}"
     Write-Host ""
-    Write-Host "  ${GRY}WORKERS GRATIS (via Groq)${R}"
-    Write-Host "  ${WHT}💬 Llama 3.3 70b${R}  ${GRY}Ngobrol, Q&A umum, simpel${R}"
-    Write-Host "  ${WHT}💻 DeepSeek R1${R}    ${GRY}Coding, debug, reasoning, logika${R}"
+    Write-Host "  ${GRY}FALLBACK GRATIS (jika Hermes limit/error)${R}"
+    Write-Host "  ${WHT}💬 Llama 3.3 70b${R}  ${GRY}Groq — cepat, gratis${R}"
+    Write-Host "  ${WHT}💻 DeepSeek R1${R}    ${GRY}Groq — reasoning & coding${R}"
+    Write-Host "  ${WHT}⚡ Llama 3.1 8b${R}   ${GRY}Groq — ringan, gratis${R}"
+    Write-Host "  ${WHT}💬 Llama free${R}     ${GRY}OpenRouter free tier${R}"
+    Write-Host "  ${WHT}✨ Gemini free${R}    ${GRY}OpenRouter free tier${R}"
+    Write-Host "  ${WHT}💡 Mistral free${R}   ${GRY}OpenRouter free tier${R}"
     Write-Host ""
-    Write-Host "  ${GRY}WORKERS BERBAYAR (via OpenRouter)${R}"
-    Write-Host "  ${WHT}⚡ Qwen 2.5 72b${R}   ${GRY}Coding skala besar, arsitektur app${R}"
-    Write-Host "  ${WHT}✨ Gemini 2.0${R}     ${GRY}Dokumen panjang, analisis teks${R}"
-    Write-Host "  ${WHT}💡 GPT-4o mini${R}    ${GRY}Brainstorm kreatif, nulis konten${R}"
-    Write-Host ""
-    Write-Host "  ${GRY}SPESIALIS PREMIUM${R}"
-    Write-Host "  ${WHT}${PRP}🔮 Hermes 3 405b${R}  ${GRY}Multi-step reasoning, tool use, instruksi kompleks${R}"
-    Write-Host "  ${WHT}${PRP}👑 Claude Haiku${R}   ${GRY}Nuansa bahasa, sintesis${R}"
-    Write-Host ""
-    Write-Host "  ${GRY}FALLBACK (jika semua error)${R}"
-    Write-Host "  ${WHT}Llama 3.3 free · Gemini 2.0 free · Mistral 7b free${R}"
-    Write-Host ""
-    Write-Host "  ${GRY}Router otomatis pilih worker terbaik per tugas.${R}"
-    Write-Host "  ${GRY}Claude hanya dipanggil ~20% kasus.${R}"
+    Write-Host "  ${GRY}Hermes 3 selalu menjawab pertama.${R}"
+    Write-Host "  ${GRY}Otomatis turun ke gratis jika rate limit.${R}"
     Write-Host ""
 }
 
